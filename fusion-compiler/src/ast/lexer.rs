@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, write};
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
     Number(i64),
@@ -9,7 +11,30 @@ pub enum TokenKind {
     RightParen,
     Bad,
     Whitespace,
+    Let,
+    Identifier,
+    Equals,
     Eof,
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenKind::Number(_) => write!(f, "Number"),
+            TokenKind::Plus => write!(f, "+"),
+            TokenKind::Minus => write!(f, "-"),
+            TokenKind::Asterisk => write!(f, "*"),
+            TokenKind::Slash => write!(f, "/"),
+            TokenKind::LeftParen => write!(f, "("),
+            TokenKind::RightParen => write!(f, ")"),
+            TokenKind::Bad => write!(f, "Bad"),
+            TokenKind::Whitespace => write!(f, "Whitespace"),
+            TokenKind::Eof => write!(f, "Eof"),
+            TokenKind::Let => write!(f, "Let"),
+            TokenKind::Identifier => write!(f, "Identifier"),
+            TokenKind::Equals => write!(f, "="),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -70,6 +95,13 @@ impl<'a> Lexer<'a> {
             } else if Self::is_whitespace(&c){
                 self.consume();
                 kind = TokenKind::Whitespace;
+            } else if Self::is_identifier_start(&c){
+                let identifier = self.consume_identifier();
+                kind = match identifier.as_str() {
+                    "let" => TokenKind::Let,
+                    _ => TokenKind::Identifier,
+                }
+
             } else  {
                 kind = self.consume_punctuation();
             }
@@ -90,12 +122,17 @@ impl<'a> Lexer<'a> {
             '/' => TokenKind::Slash,
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
+            '=' => TokenKind::Equals,
             _ => TokenKind::Bad,
         }
     }
 
     fn is_number_start(c: &char) -> bool {
         c.is_digit(10)
+    }
+
+    fn is_identifier_start(c: &char) -> bool {
+        c.is_alphabetic()
     }
 
     fn is_whitespace(c: &char) -> bool {
@@ -114,6 +151,19 @@ impl<'a> Lexer<'a> {
         self.current_pos += 1;
 
         c
+    }
+
+    fn consume_identifier(&mut self) -> String {
+        let mut identifier = String::new();
+        while let Some(c) = self.current_char() {
+            if Self::is_identifier_start(&c) {
+                self.consume().unwrap();
+                identifier.push(c);
+            } else {
+                break;
+            }
+        }
+        identifier
     }
 
     fn consume_number(&mut self) -> i64 {
