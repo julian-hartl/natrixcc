@@ -20,17 +20,26 @@
     ```
 - [x] Add error reporting
 
-### Next stream
+### 09.04.2023
 
 - [ ] Add if statements
     ```
     let x = 30 
-    if x > 10 {
+    let b = if x > 10 {
         x = 10
+        10
     } else {
         x = 0
+        2
     }
+
     ```
+
+What do we have to consider?
+
+- New type: boolean
+- Conditional executing of statements
+- Scoping
 
 - [ ] Add while loops
     ```
@@ -47,3 +56,44 @@
         let x = 10
     }
     ```
+
+### Next stream
+
+- [ ] Add types & type checking
+    ```
+    let x: int = 10
+    let y: bool = false
+    let z: string = "Hello World"
+    let a = 10 // type inference => will be int
+    ```
+
+- [ ] IR Lowering
+    ```
+    let x = 10
+    let y = 20
+    if x > y {
+      x = 20
+    } else {
+      x = 10
+    }
+    ...
+  ```
+
+  ```
+    func main() {
+      x = 10
+    y = 20
+    gotoIfFalse x > y else
+  
+    x = 20
+    goto end
+    else: 
+    x = 10
+    end:
+    }
+    ...
+  ```
+- [ ] Add strings
+  ```
+    let hello_world = "Hello world\""
+  ```

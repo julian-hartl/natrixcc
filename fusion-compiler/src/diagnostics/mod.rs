@@ -5,14 +5,14 @@ use crate::ast::lexer::{TextSpan, Token, TokenKind};
 
 pub mod printer;
 
-#[derive(Clone, Copy,Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum DiagnosticKind {
     Error,
     Warning,
 }
 
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub message: String,
     pub span: TextSpan,
@@ -27,6 +27,7 @@ impl Diagnostic {
 
 pub type DiagnosticsBagCell = Rc<RefCell<DiagnosticsBag>>;
 
+#[derive( Debug)]
 pub struct DiagnosticsBag {
     pub diagnostics: Vec<Diagnostic>,
 }
@@ -56,6 +57,18 @@ impl DiagnosticsBag {
     pub fn report_undeclared_variable(&mut self, token: &Token) {
         self.report_error(format!("Undeclared variable '{}'", token.span.literal), token.span.clone());
     }
+
+    pub fn report_undeclared_function(&mut self, token: &Token) {
+        self.report_error(format!("Undeclared function '{}'", token.span.literal), token.span.clone());
+    }
+
+    pub fn report_invalid_argument_count(&mut self, token: &Token, expected: usize, actual: usize) {
+        self.report_error(format!("Function '{}' expects {} arguments, but was given {}", token.span.literal, expected, actual), token.span.clone());
+    }
+
+    pub fn report_function_already_declared(&mut self, token: &Token) {
+        self.report_error(format!("Function '{}' already declared", token.span.literal), token.span.clone());
+    }
 }
 
 #[cfg(test)]
@@ -71,7 +84,9 @@ mod test {
 
     impl DiagnosticsVerifier {
         pub fn new(input: &str, messages: Vec<&str>) -> Self {
+            let messages_len = messages.len();
             let expected = Self::parse_input(input, messages);
+            assert_eq!(expected.len(), messages_len);
             let actual = Self::compile(input);
             Self { expected, actual }
         }
@@ -79,8 +94,10 @@ mod test {
         fn compile(input: &str) -> Vec<Diagnostic> {
             let raw = Self::get_raw_text(input);
             let compilation_unit = CompilationUnit::compile(&raw);
-            let diagnostics = compilation_unit.diagnostics_bag.borrow();
-            diagnostics.diagnostics.clone()
+            match compilation_unit {
+                Ok(_) => vec![],
+                Err(e) => e.borrow().diagnostics.clone(),
+            }
         }
 
         fn get_raw_text(input: &str) -> String {
@@ -117,7 +134,6 @@ mod test {
         }
 
         fn verify(&self) {
-
             assert_eq!(self.actual.len(), self.expected.len(), "Expected {} diagnostics, found {}", self.expected.len(), self.actual.len());
 
             for (actual, expected) in self.actual.iter().zip(self.expected.iter()) {
@@ -126,7 +142,6 @@ mod test {
                 assert_eq!(actual.span.end, expected.span.end, "Expected end index {}, found {}", expected.span.end, actual.span.end);
                 assert_eq!(actual.span.literal, expected.span.literal, "Expected literal '{}', found '{}'", expected.span.literal, actual.span.literal);
             }
-
         }
     }
 
@@ -162,6 +177,104 @@ mod test {
         let verifier = DiagnosticsVerifier::new(input, expected);
         verifier.verify();
     }
+
+    #[test]
+    fn should_report_undeclared_variable_when_variable_was_declared_in_another_scope() {
+        let input = "\
+        let a = 0
+        let b = -1
+        if b > a {
+            a = 10
+           b = 2
+            let c = 10
+        }
+         else
+            a = 5
+        a
+b
+«c»
+    ";
+        let expected = vec![
+            "Undeclared variable 'c'"
+        ];
+
+        let verifier = DiagnosticsVerifier::new(input, expected);
+        verifier.verify();
+    }
+
+    #[test]
+    fn should_not_report_any_errors_when_shadowing_variable() {
+        let input = "\
+        let a = 0
+        {
+            let a = 10
+        }
+    ";
+        let expected = vec![];
+
+        let verifier = DiagnosticsVerifier::new(input, expected);
+        verifier.verify();
+    }
+
+    #[test]
+    fn should_report_undeclared_variable_when_variable_was_declared_in_if_without_block() {
+        let input = "\
+        let b = -1
+        if b > 10
+            let a = 10
+        «a»
+    ";
+        let expected = vec![
+            "Undeclared variable 'a'"
+        ];
+
+        let verifier = DiagnosticsVerifier::new(input, expected);
+        verifier.verify();
+    }
+
+    #[test]
+    fn should_report_function_already_declared() {
+        let input = "\
+        func a {}
+        func «a» {}
+    ";
+
+        let expected = vec![
+            "Function 'a' already declared"
+        ];
+
+        let verifier = DiagnosticsVerifier::new(input, expected);
+        verifier.verify();
+    }
+
+    #[test]
+    fn should_report_error_when_calling_undeclared_function() {
+        let input = "\
+        «a»()
+    ";
+
+            let expected = vec![
+                "Undeclared function 'a'"
+            ];
+
+            let verifier = DiagnosticsVerifier::new(input, expected);
+            verifier.verify();
+        }
+
+    #[test]
+    pub fn should_report_error_when_function_is_called_with_wrong_number_of_arguments() {
+        let input = "\
+        func a(a, b) {}
+        «a»(1)
+    ";
+
+            let expected = vec![
+                "Function 'a' expects 2 arguments, but was given 1"
+            ];
+
+            let verifier = DiagnosticsVerifier::new(input, expected);
+            verifier.verify();
+        }
 
 }
 
