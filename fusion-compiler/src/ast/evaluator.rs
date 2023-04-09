@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::ast::{ASTBinaryExpression, ASTBinaryOperatorKind, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTVariableExpression, ASTVisitor};
+use crate::ast::{ASTBinaryExpression, ASTBinaryOperatorKind, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableExpression, ASTVisitor};
 use crate::ast::lexer::TextSpan;
 
 pub struct ASTEvaluator {
@@ -31,6 +31,15 @@ impl ASTVisitor for ASTEvaluator {
         todo!()
     }
 
+    fn visit_unary_expression(&mut self, unary_expression: &ASTUnaryExpression) {
+        self.visit_expression(&unary_expression.operand);
+        let operand = self.last_value.unwrap();
+        self.last_value = Some(match unary_expression.operator.kind {
+            ASTUnaryOperatorKind::Minus => -operand,
+            ASTUnaryOperatorKind::BitwiseNot => !operand,
+        });
+    }
+
     fn visit_binary_expression(&mut self, expr: &ASTBinaryExpression) {
         self.visit_expression(&expr.left);
         let left = self.last_value.unwrap();
@@ -41,6 +50,10 @@ impl ASTVisitor for ASTEvaluator {
             ASTBinaryOperatorKind::Minus => left - right,
             ASTBinaryOperatorKind::Multiply => left * right,
             ASTBinaryOperatorKind::Divide => left / right,
+            ASTBinaryOperatorKind::Power => left.pow(right as u32),
+            ASTBinaryOperatorKind::BitwiseAnd => left & right,
+            ASTBinaryOperatorKind::BitwiseOr => left | right,
+            ASTBinaryOperatorKind::BitwiseXor => left ^ right,
         });
     }
 

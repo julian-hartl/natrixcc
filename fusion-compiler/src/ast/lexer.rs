@@ -2,18 +2,27 @@ use std::fmt::{Display, Formatter, write};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
+    // Literals
     Number(i64),
+    // Operators
     Plus,
     Minus,
     Asterisk,
     Slash,
+    Equals,
+    Ampersand,
+    Pipe,
+    Caret,
+    DoubleAsterisk,
+    Tilde,
+    // Keywords
+    Let,
+    // Other
     LeftParen,
     RightParen,
     Bad,
     Whitespace,
-    Let,
     Identifier,
-    Equals,
     Eof,
 }
 
@@ -33,6 +42,11 @@ impl Display for TokenKind {
             TokenKind::Let => write!(f, "Let"),
             TokenKind::Identifier => write!(f, "Identifier"),
             TokenKind::Equals => write!(f, "="),
+            TokenKind::Ampersand => write!(f, "&"),
+            TokenKind::Pipe => write!(f, "|"),
+            TokenKind::Caret => write!(f, "^"),
+            TokenKind::DoubleAsterisk => write!(f, "**"),
+            TokenKind::Tilde => write!(f, "~"),
         }
     }
 }
@@ -118,11 +132,26 @@ impl<'a> Lexer<'a> {
         match c {
             '+' => TokenKind::Plus,
             '-' => TokenKind::Minus,
-            '*' => TokenKind::Asterisk,
+            '*' => {
+                if let Some(next) = self.current_char() {
+                    if next == '*' {
+                        self.consume();
+                        TokenKind::DoubleAsterisk
+                    } else {
+                        TokenKind::Asterisk
+                    }
+                } else {
+                    TokenKind::Asterisk
+                }
+            },
             '/' => TokenKind::Slash,
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
             '=' => TokenKind::Equals,
+            '&' => TokenKind::Ampersand,
+            '|' => TokenKind::Pipe,
+            '^' => TokenKind::Caret,
+            '~' => TokenKind::Tilde,
             _ => TokenKind::Bad,
         }
     }
