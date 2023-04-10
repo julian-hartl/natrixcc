@@ -1,10 +1,14 @@
 use termion::color::{Fg, Reset};
-use crate::ast::{ASTAssignmentExpression, ASTBinaryExpression, ASTBlockStatement, ASTBooleanExpression, ASTCallExpression, ASTExpression, ASTExpressionKind, ASTFuncDeclStatement, ASTIfStatement, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTReturnStatement, ASTStatement, ASTStatementKind, ASTUnaryExpression, ASTVariableExpression, ASTWhileStatement};
-use crate::ast::lexer::TextSpan;
+use crate::ast::{Ast, ASTAssignmentExpression, ASTBinaryExpression, ASTBlockStatement, ASTBooleanExpression, ASTCallExpression, ASTExpression, ASTExpressionKind, ASTExprId, ASTFuncDeclStatement, ASTIfStatement, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTReturnStatement, ASTStatement, ASTStatementKind, ASTStmtId, ASTUnaryExpression, ASTVariableExpression, ASTWhileStatement};
+use crate::text::span::TextSpan;
 use crate::ast::printer::ASTPrinter;
 
-pub trait ASTVisitor<'a> {
-    fn do_visit_statement(&mut self, statement: &ASTStatement) {
+pub trait ASTVisitor {
+
+    fn get_ast(&self) -> &Ast;
+
+    fn do_visit_statement(&mut self, statement: &ASTStmtId) {
+        let statement = self.get_ast().query_stmt(statement).clone();
         match &statement.kind {
             ASTStatementKind::Expression(expr) => {
                 self.visit_expression(expr);
@@ -57,69 +61,70 @@ pub trait ASTVisitor<'a> {
         }
     }
     fn visit_let_statement(&mut self, let_statement: &ASTLetStatement);
-    fn visit_statement(&mut self, statement: &ASTStatement) {
+    fn visit_statement(&mut self, statement: &ASTStmtId) {
         self.do_visit_statement(statement);
     }
-    fn do_visit_expression(&mut self, expression: &ASTExpression) {
+    fn do_visit_expression(&mut self, expression: &ASTExprId) {
+        let expression = self.get_ast().query_expr(expression).clone();
         match &expression.kind {
             ASTExpressionKind::Number(number) => {
-                self.visit_number_expression(number);
+                self.visit_number_expression(number, &expression);
             }
             ASTExpressionKind::Binary(expr) => {
-                self.visit_binary_expression(expr);
+                self.visit_binary_expression(expr, &expression);
             }
             ASTExpressionKind::Parenthesized(expr) => {
-                self.visit_parenthesized_expression(expr);
+                self.visit_parenthesized_expression(expr, &expression);
             }
             ASTExpressionKind::Error(span) => {
                 self.visit_error(span);
             }
             ASTExpressionKind::Variable(expr) => {
-                self.visit_variable_expression(expr);
+                self.visit_variable_expression(expr, &expression);
             }
             ASTExpressionKind::Unary(expr) => {
-                self.visit_unary_expression(expr);
+                self.visit_unary_expression(expr, &expression);
             }
             ASTExpressionKind::Assignment(expr) => {
-                self.visit_assignment_expression(expr);
+                self.visit_assignment_expression(expr, &expression);
             }
             ASTExpressionKind::Boolean(expr) => {
-                self.visit_boolean_expression(expr);
+                self.visit_boolean_expression(expr, &expression);
             }
             ASTExpressionKind::Call(expr) => {
-                self.visit_call_expression(expr);
+                self.visit_call_expression(expr, &expression);
             }
 
         }
     }
-    fn visit_call_expression(&mut self, call_expression: &ASTCallExpression) {
+    fn visit_call_expression(&mut self, call_expression: &ASTCallExpression, expr: &ASTExpression) {
         for argument in &call_expression.arguments {
             self.visit_expression(argument);
         }
     }
-    fn visit_expression(&mut self, expression: &ASTExpression) {
+    fn visit_expression(&mut self, expression: &ASTExprId) {
         self.do_visit_expression(expression);
     }
 
-    fn visit_assignment_expression(&mut self, assignment_expression: &ASTAssignmentExpression) {
+    fn visit_assignment_expression(&mut self, assignment_expression: &ASTAssignmentExpression, expr: &ASTExpression) {
         self.visit_expression(&assignment_expression.expression);
     }
 
-    fn visit_variable_expression(&mut self, variable_expression: &ASTVariableExpression);
+    fn visit_variable_expression(&mut self, variable_expression: &ASTVariableExpression, expr: &ASTExpression);
 
-    fn visit_number_expression(&mut self, number: &ASTNumberExpression);
+    fn visit_number_expression(&mut self, number: &ASTNumberExpression, expr: &ASTExpression);
 
-    fn visit_boolean_expression(&mut self, boolean: &ASTBooleanExpression);
+    fn visit_boolean_expression(&mut self, boolean: &ASTBooleanExpression, expr: &ASTExpression);
 
     fn visit_error(&mut self, span: &TextSpan);
 
-    fn visit_unary_expression(&mut self, unary_expression: &ASTUnaryExpression);
+    fn visit_unary_expression(&mut self, unary_expression: &ASTUnaryExpression, expr: &ASTExpression);
 
-    fn visit_binary_expression(&mut self, binary_expression: &ASTBinaryExpression) {
+    fn visit_binary_expression(&mut self, binary_expression: &ASTBinaryExpression, expr: &ASTExpression) {
         self.visit_expression(&binary_expression.left);
         self.visit_expression(&binary_expression.right);
     }
-    fn visit_parenthesized_expression(&mut self, parenthesized_expression: &ASTParenthesizedExpression) {
+    fn visit_parenthesized_expression(&mut self, parenthesized_expression: &ASTParenthesizedExpression, expr: &ASTExpression) {
         self.visit_expression(&parenthesized_expression.expression);
     }
 }

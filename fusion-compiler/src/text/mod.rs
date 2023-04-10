@@ -1,3 +1,5 @@
+pub mod span;
+
 pub struct SourceText {
     text: String,
 }
