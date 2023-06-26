@@ -1,13 +1,14 @@
 use std::collections::HashMap;
+use std::env::var;
 use std::fmt::format;
 
-use crate::ast::{Ast, ASTAssignmentExpression, ASTBinaryExpression, ASTBinaryOperatorKind, ASTBlockStatement, ASTBooleanExpression, ASTCallExpression, ASTExpression, ASTFuncDeclStatement, ASTIfStatement, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTUnaryExpression, ASTUnaryOperatorKind, ASTVariableExpression, ASTWhileStatement};
+use crate::ast::{Ast, AssignExpr, BinaryExpr, BinOpKind, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, UnaryExpr, UnOpKid, VarExpr, WhileStmt, Stmt};
 use crate::ast::visitor::ASTVisitor;
-use crate::compilation_unit::GlobalScope;
+use crate::compilation_unit::{GlobalScope, VariableIdx};
 use crate::text::span::TextSpan;
 
 pub struct Frame {
-    variables: HashMap<String, i64>,
+    variables: HashMap<VariableIdx, i64>,
 }
 
 impl Frame {
@@ -17,12 +18,12 @@ impl Frame {
         }
     }
 
-    fn insert(&mut self, identifier: String, value: i64) {
-        self.variables.insert(identifier, value);
+    fn insert(&mut self, idx: VariableIdx, value: i64) {
+        self.variables.insert(idx, value);
     }
 
-    fn get(&self, identifier: &String) -> Option<&i64> {
-        self.variables.get(identifier)
+    fn get(&self, idx: &VariableIdx) -> Option<&i64> {
+        self.variables.get(idx)
     }
 }
 
@@ -45,23 +46,22 @@ impl Frames {
         self.frames.pop();
     }
 
-    fn update(&mut self, identifier: String, value: i64) {
+    fn update(&mut self, idx: VariableIdx, value: i64) {
         for frame in self.frames.iter_mut().rev() {
-            if frame.variables.contains_key(&identifier) {
-                frame.insert(identifier, value);
+            if frame.variables.contains_key(&idx) {
+                frame.insert(idx, value);
                 return;
             }
         }
-        panic!("Variable {} not found", identifier)
     }
 
-    fn insert(&mut self, identifier: String, value: i64) {
-        self.frames.last_mut().unwrap().insert(identifier, value);
+    fn insert(&mut self, idx: VariableIdx, value: i64) {
+        self.frames.last_mut().unwrap().insert(idx, value);
     }
 
-    fn get(&self, identifier: &String) -> Option<&i64> {
+    fn get(&self, idx: &VariableIdx) -> Option<&i64> {
         for frame in self.frames.iter().rev() {
-            if let Some(value) = frame.get(identifier) {
+            if let Some(value) = frame.get(idx) {
                 return Some(value);
             }
         }
@@ -73,15 +73,13 @@ pub struct ASTEvaluator<'a> {
     pub last_value: Option<i64>,
     pub frames: Frames,
     pub global_scope: &'a GlobalScope,
-    pub ast: &'a Ast,
 }
 
 impl<'a> ASTEvaluator<'a> {
     pub fn new(
         global_scope: &'a GlobalScope,
-        ast: &'a Ast,
     ) -> Self {
-        Self { last_value: None, frames: Frames::new(), global_scope, ast }
+        Self { last_value: None, frames: Frames::new(), global_scope }
     }
 
     fn eval_boolean_instruction<F>(&self, instruction: F) -> i64 where F: FnOnce() -> bool {
@@ -103,126 +101,122 @@ impl<'a> ASTEvaluator<'a> {
 }
 
 impl<'a> ASTVisitor for ASTEvaluator<'a> {
-    fn get_ast(&self) -> &Ast {
-        self.ast
-    }
 
-    fn visit_func_decl_statement(&mut self, func_decl_statement: &ASTFuncDeclStatement) {}
+    fn visit_function_declaration(&mut self, ast: &mut Ast, func_decl_statement: &FunctionDeclaration) {}
 
-    fn visit_while_statement(&mut self, while_statement: &ASTWhileStatement) {
+    fn visit_while_statement(&mut self, ast: &mut Ast,while_statement: &WhileStmt) {
         self.push_frame();
-        self.visit_expression(&while_statement.condition);
+        self.visit_expression(ast, while_statement.condition);
         while self.last_value.unwrap() != 0 {
-            self.visit_statement(&while_statement.body);
-            self.visit_expression(&while_statement.condition);
+            self.visit_expression(ast, while_statement.body);
+            self.visit_expression(ast, while_statement.condition);
         }
         self.pop_frame();
     }
 
-    fn visit_block_statement(&mut self, block_statement: &ASTBlockStatement) {
+    fn visit_block_expr(&mut self, ast: &mut Ast, block_statement: &BlockExpr, expr: &Expr) {
         self.push_frame();
-        for statement in &block_statement.statements {
-            self.visit_statement(statement);
+        for statement in &block_statement.stmts {
+            self.visit_statement(ast, *statement);
         }
         self.pop_frame();
     }
 
-    fn visit_if_statement(&mut self, if_statement: &ASTIfStatement) {
+    fn visit_if_expression(&mut self, ast: &mut Ast, if_statement: &IfExpr, expr: &Expr) {
         self.push_frame();
-        self.visit_expression(&if_statement.condition);
+        self.visit_expression(ast, if_statement.condition);
         if self.last_value.unwrap() != 0 {
             self.push_frame();
-            self.visit_statement(&if_statement.then_branch);
+            self.visit_expression(ast, if_statement.then_branch);
             self.pop_frame();
         } else {
             if let Some(else_branch) = &if_statement.else_branch {
                 self.push_frame();
-                self.visit_statement(&else_branch.else_statement);
+                self.visit_expression(ast, else_branch.expr);
                 self.pop_frame();
             }
         }
         self.pop_frame();
     }
 
-    fn visit_let_statement(&mut self, let_statement: &ASTLetStatement) {
-        self.visit_expression(&let_statement.initializer);
-        self.frames.insert(let_statement.identifier.span.literal.clone(), self.last_value.unwrap());
+    fn visit_let_statement(&mut self,ast: &mut Ast,let_statement: &LetStmt, stmt: &Stmt) {
+        self.visit_expression(ast, let_statement.initializer);
+        self.frames.insert(let_statement.variable_idx, self.last_value.unwrap());
     }
 
-    fn visit_call_expression(&mut self, call_expression: &ASTCallExpression, expr: &ASTExpression) {
-        let function = self.global_scope.lookup_function(&call_expression.identifier.span.literal).unwrap();
+    fn visit_call_expression(&mut self, ast: &mut Ast,call_expression: &CallExpr, expr: &Expr) {
+        let function_idx = self.global_scope.lookup_function(&call_expression.identifier.span.literal).unwrap();
+        let function = self.global_scope.functions.get(function_idx);
         let mut arguments = Vec::new();
         for argument in &call_expression.arguments {
-            self.visit_expression(argument);
+            self.visit_expression(ast, *argument);
             arguments.push(self.last_value.unwrap());
         }
         self.push_frame();
         for (argument, param) in arguments.iter().zip(function.parameters.iter()) {
-            let parameter_name = param.name.clone();
-            self.frames.insert(parameter_name, *argument);
+            self.frames.insert(*param, *argument);
         }
 
-        self.visit_statement(&function.body);
+        self.visit_statement(ast, function.body);
         self.pop_frame();
     }
 
-    fn visit_assignment_expression(&mut self, assignment_expression: &ASTAssignmentExpression, expr: &ASTExpression) {
-        let identifier = &assignment_expression.identifier.span.literal;
-        self.visit_expression(&assignment_expression.expression);
-        self.frames.update(identifier.clone(), self.last_value.unwrap());
+    fn visit_assignment_expression(&mut self,ast: &mut Ast, assign_expr: &AssignExpr, expr: &Expr) {
+        self.visit_expression(ast, assign_expr.expression);
+        self.frames.update(assign_expr.variable_idx, self.last_value.unwrap());
     }
 
-    fn visit_variable_expression(&mut self, variable_expression: &ASTVariableExpression, expr: &ASTExpression) {
-        let identifier = &variable_expression.identifier.span.literal;
-        self.last_value = Some(*self.frames.get(identifier).expect(format!("Variable {} not found", identifier).as_str()));
+    fn visit_variable_expression(&mut self, ast: &mut Ast,var_expr: &VarExpr, expr: &Expr) {
+        let identifier = &var_expr.identifier.span.literal;
+        self.last_value = Some(*self.frames.get(&var_expr.variable_idx).expect(format!("Variable {} not found", identifier).as_str()));
     }
 
-    fn visit_number_expression(&mut self, number: &ASTNumberExpression, expr: &ASTExpression) {
+    fn visit_number_expression(&mut self,ast: &mut Ast, number: &NumberExpr, expr: &Expr) {
         self.last_value = Some(number.number);
     }
 
 
-    fn visit_boolean_expression(&mut self, boolean: &ASTBooleanExpression, expr: &ASTExpression) {
+    fn visit_boolean_expression(&mut self,ast: &mut Ast, boolean: &BoolExpr, expr: &Expr) {
         self.last_value = Some(boolean.value as i64);
     }
 
-    fn visit_error(&mut self, span: &TextSpan) {
+    fn visit_error(&mut self, ast: &mut Ast,span: &TextSpan) {
         todo!()
     }
 
-    fn visit_unary_expression(&mut self, unary_expression: &ASTUnaryExpression, expr: &ASTExpression) {
-        self.visit_expression(&unary_expression.operand);
+    fn visit_unary_expression(&mut self,ast: &mut Ast, unary_expression: &UnaryExpr, expr: &Expr) {
+        self.visit_expression(ast, unary_expression.operand);
         let operand = self.last_value.unwrap();
         self.last_value = Some(match unary_expression.operator.kind {
-            ASTUnaryOperatorKind::Minus => -operand,
-            ASTUnaryOperatorKind::BitwiseNot => !operand,
+            UnOpKid::Minus => -operand,
+            UnOpKid::BitwiseNot => !operand,
         });
     }
 
-    fn visit_binary_expression(&mut self, binary_expr: &ASTBinaryExpression, expr: &ASTExpression) {
-        self.visit_expression(&binary_expr.left);
+    fn visit_binary_expression(&mut self,ast: &mut Ast, binary_expr: &BinaryExpr, expr: &Expr) {
+        self.visit_expression(ast, binary_expr.left);
         let left = self.last_value.unwrap();
-        self.visit_expression(&binary_expr.right);
+        self.visit_expression(ast, binary_expr.right);
         let right = self.last_value.unwrap();
         self.last_value = Some(match binary_expr.operator.kind {
-            ASTBinaryOperatorKind::Plus => left + right,
-            ASTBinaryOperatorKind::Minus => left - right,
-            ASTBinaryOperatorKind::Multiply => left * right,
-            ASTBinaryOperatorKind::Divide => left / right,
-            ASTBinaryOperatorKind::Power => left.pow(right as u32),
-            ASTBinaryOperatorKind::BitwiseAnd => left & right,
-            ASTBinaryOperatorKind::BitwiseOr => left | right,
-            ASTBinaryOperatorKind::BitwiseXor => left ^ right,
-            ASTBinaryOperatorKind::Equals => if left == right { 1 } else { 0 },
-            ASTBinaryOperatorKind::NotEquals => self.eval_boolean_instruction(|| left != right),
-            ASTBinaryOperatorKind::LessThan => self.eval_boolean_instruction(|| left < right),
-            ASTBinaryOperatorKind::LessThanOrEqual => self.eval_boolean_instruction(|| left <= right),
-            ASTBinaryOperatorKind::GreaterThan => self.eval_boolean_instruction(|| left > right),
-            ASTBinaryOperatorKind::GreaterThanOrEqual => self.eval_boolean_instruction(|| left >= right),
+            BinOpKind::Plus => left + right,
+            BinOpKind::Minus => left - right,
+            BinOpKind::Multiply => left * right,
+            BinOpKind::Divide => left / right,
+            BinOpKind::Power => left.pow(right as u32),
+            BinOpKind::BitwiseAnd => left & right,
+            BinOpKind::BitwiseOr => left | right,
+            BinOpKind::BitwiseXor => left ^ right,
+            BinOpKind::Equals => if left == right { 1 } else { 0 },
+            BinOpKind::NotEquals => self.eval_boolean_instruction(|| left != right),
+            BinOpKind::LessThan => self.eval_boolean_instruction(|| left < right),
+            BinOpKind::LessThanOrEqual => self.eval_boolean_instruction(|| left <= right),
+            BinOpKind::GreaterThan => self.eval_boolean_instruction(|| left > right),
+            BinOpKind::GreaterThanOrEqual => self.eval_boolean_instruction(|| left >= right),
         });
     }
 
-    fn visit_parenthesized_expression(&mut self, parenthesized_expression: &ASTParenthesizedExpression, expr: &ASTExpression) {
-        self.visit_expression(&parenthesized_expression.expression);
+    fn visit_parenthesized_expression(&mut self,ast: &mut Ast, parenthesized_expression: &ParenthesizedExpr, expr: &Expr) {
+        self.visit_expression(ast, parenthesized_expression.expression);
     }
 }

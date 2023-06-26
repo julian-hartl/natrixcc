@@ -4,11 +4,13 @@ use std::hash::Hash;
 use termion::color;
 use termion::color::{Fg, Reset};
 
+use fusion_compiler::{Idx, idx, IdxVec};
 use printer::ASTPrinter;
 use visitor::ASTVisitor;
 
 use crate::ast::lexer::Token;
 use crate::ast::parser::Counter;
+use crate::compilation_unit::VariableIdx;
 use crate::text::span::TextSpan;
 use crate::typings::Type;
 
@@ -18,190 +20,200 @@ pub mod evaluator;
 pub mod visitor;
 pub mod printer;
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ASTStmtId {
-    pub id: usize,
-}
+idx!(StmtId);
+idx!(ExprId);
+idx!(ItemId);
 
-impl ASTStmtId {
-    pub fn new(id: usize) -> Self {
-        ASTStmtId { id }
-    }
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
-pub struct ASTExprId {
-    pub id: usize,
-}
-
-impl ASTExprId {
-    pub fn new(id: usize) -> Self {
-        ASTExprId { id }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ASTNodeIdGen {
-    pub next_stmt_id: Counter,
-    pub next_expr_id: Counter,
-}
-
-impl ASTNodeIdGen {
-    pub fn new() -> Self {
-        Self { next_stmt_id: Counter::new(), next_expr_id: Counter::new() }
-    }
-
-    pub fn next_stmt_id(&self) -> ASTStmtId {
-        let id = self.next_stmt_id.get_value();
-        self.next_stmt_id.increment();
-        ASTStmtId::new(id)
-    }
-
-    pub fn next_expr_id(&self) -> ASTExprId {
-        let id = self.next_expr_id.get_value();
-        self.next_expr_id.increment();
-        ASTExprId::new(id)
-    }
-}
-
-#[derive(Debug, Clone)]
+#[cfg_attr(test, derive(Clone))]
+#[derive(Debug)]
 pub struct Ast {
-    pub statements: HashMap<ASTStmtId, ASTStatement>,
-    pub expressions: HashMap<ASTExprId, ASTExpression>,
-    pub top_level_statements: Vec<ASTStmtId>,
-    pub node_id_gen: ASTNodeIdGen,
+    pub statements: IdxVec<StmtId, Stmt>,
+    pub expressions: IdxVec<ExprId, Expr>,
+    pub items: IdxVec<ItemId, Item>,
 }
 
 impl Ast {
     pub fn new() -> Self {
-        Self { statements: HashMap::new(), expressions: HashMap::new(), node_id_gen: ASTNodeIdGen::new(), top_level_statements: Vec::new() }
+        Self { statements: IdxVec::new(), expressions: IdxVec::new(), items: IdxVec::new() }
     }
 
-    pub fn query_expr(&self, expr_id: &ASTExprId) -> &ASTExpression {
+    pub fn query_item(&self, item_id: ItemId) -> &Item {
+        &self.items[item_id]
+    }
+
+    pub fn query_expr(&self, expr_id: ExprId) -> &Expr {
         &self.expressions[expr_id]
     }
 
-    pub fn query_stmt(&self, stmt_id: &ASTStmtId) -> &ASTStatement {
+    fn query_expr_mut(&mut self, expr_id: ExprId) -> &mut Expr {
+        &mut self.expressions[expr_id]
+    }
+
+    pub fn query_stmt(&self, stmt_id: StmtId) -> &Stmt {
         &self.statements[stmt_id]
     }
 
-    pub fn set_type(&mut self, expr_id: &ASTExprId, ty: Type) {
-        let expr = self.expressions.get_mut(expr_id).unwrap();
-        expr.ty = ty;
+    fn query_stmt_mut(&mut self, stmt_id: StmtId) -> &mut Stmt {
+        &mut self.statements[stmt_id]
     }
 
-    pub fn mark_top_level_statement(&mut self, stmt_id: ASTStmtId) {
-        self.top_level_statements.push(stmt_id);
-    }
-
-    fn stmt_from_kind(&mut self, kind: ASTStatementKind) -> &ASTStatement {
-        let stmt = ASTStatement::new(kind, self.node_id_gen.next_stmt_id());
-        let id = stmt.id;
-        self.statements.insert(id, stmt);
-        &self.statements[&id]
-    }
-
-    pub fn expression_statement(&mut self, expr_id: ASTExprId) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::Expression(expr_id))
-    }
-
-    pub fn let_statement(&mut self, identifier: Token, initializer: ASTExprId, type_annotation: Option<StaticTypeAnnotation>) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::Let(ASTLetStatement { identifier, initializer, type_annotation }))
-    }
-
-    pub fn if_statement(&mut self, if_keyword: Token, condition: ASTExprId, then: ASTStmtId, else_statement: Option<ASTElseStatement>) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::If(ASTIfStatement { if_keyword, condition, then_branch: then, else_branch: else_statement }))
-    }
-
-    pub fn block_statement(&mut self, statements: Vec<ASTStmtId>) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::Block(ASTBlockStatement { statements }))
-    }
-
-    pub fn while_statement(&mut self, while_keyword: Token, condition: ASTExprId, body: ASTStmtId) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::While(ASTWhileStatement { while_keyword, condition, body }))
-    }
-
-    pub fn return_statement(&mut self, return_keyword: Token, return_value: Option<ASTExprId>) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::Return(ASTReturnStatement { return_keyword, return_value }))
-    }
-
-    pub fn func_decl_statement(&mut self, identifier: Token, parameters: Vec<FuncDeclParameter>, body: ASTStmtId, return_type: Option<ASTFunctionReturnType>) -> &ASTStatement {
-        self.stmt_from_kind(ASTStatementKind::FuncDecl(ASTFuncDeclStatement { identifier, parameters, body, return_type }))
-    }
-
-    fn expr_from_kind(&mut self, kind: ASTExpressionKind) -> &ASTExpression {
-        let expr = ASTExpression::new(kind, self.node_id_gen.next_expr_id(), Type::Unresolved);
-        let expr_id = expr.id;
-        self.expressions.insert(expr_id, expr);
-        &self.expressions[&expr_id]
-    }
-
-    pub fn number_expression(&mut self, token: Token, number: i64) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Number(ASTNumberExpression { number, token }))
-    }
-
-    pub fn binary_expression(&mut self, operator: ASTBinaryOperator, left: ASTExprId, right: ASTExprId) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Binary(ASTBinaryExpression { operator, left, right }))
-    }
-
-    pub fn parenthesized_expression(&mut self, left_paren: Token, expression: ASTExprId, right_paren: Token) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Parenthesized(ASTParenthesizedExpression { expression, left_paren, right_paren }))
-    }
-
-    pub fn variable_expression(&mut self, identifier: Token) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Variable(ASTVariableExpression { identifier }))
-    }
-
-    pub fn unary_expression(&mut self, operator: ASTUnaryOperator, operand: ASTExprId) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Unary(ASTUnaryExpression { operator, operand }))
-    }
-
-    pub fn assignment_expression(&mut self, identifier: Token, equals: Token, expression: ASTExprId) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Assignment(ASTAssignmentExpression { identifier, expression, equals }))
-    }
-
-    pub fn boolean_expression(&mut self, token: Token, value: bool) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Boolean(ASTBooleanExpression { token, value }))
-    }
-
-    pub fn call_expression(&mut self, identifier: Token, left_paren: Token, arguments: Vec<ASTExprId>, right_paren: Token) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Call(ASTCallExpression { identifier, arguments, left_paren, right_paren }))
-    }
-
-    pub fn error_expression(&mut self, span: TextSpan) -> &ASTExpression {
-        self.expr_from_kind(ASTExpressionKind::Error(span))
-    }
-
-    pub fn visit(&self, visitor: &mut dyn ASTVisitor) {
-        for statement in &self.top_level_statements {
-            visitor.visit_statement(statement);
+    pub fn set_variable(&mut self, expr_id: ExprId, variable_idx: VariableIdx) {
+        let expr = self.query_expr_mut(expr_id);
+        match &mut expr.kind {
+            ExprKind::Assignment(assign_expr) => {
+                assign_expr.variable_idx = variable_idx;
+            }
+            ExprKind::Variable(var_expr) => {
+                var_expr.variable_idx = variable_idx;
+            }
+            _ => unreachable!("Cannot set variable of non-variable expression")
         }
     }
 
-    pub fn visualize(&self) -> () {
-        let mut printer = ASTPrinter::new(
-            self
-        );
+    pub fn set_variable_for_stmt(&mut self, stmt_id: &StmtId, variable_idx: VariableIdx) {
+        let stmt = self.query_stmt_mut(*stmt_id);
+        match &mut stmt.kind {
+            StmtKind::Let(var_decl) => {
+                var_decl.variable_idx = variable_idx;
+            }
+            _ => unreachable!("Cannot set variable of non-variable statement")
+        }
+    }
+
+    pub fn set_type(&mut self, expr_id: ExprId, ty: Type) {
+        let expr = &mut self.expressions[expr_id];
+        expr.ty = ty;
+    }
+
+    fn stmt_from_kind(&mut self, kind: StmtKind) -> &Stmt {
+        let stmt = Stmt::new(kind, StmtId::new(0));
+        let id = self.statements.push(stmt);
+        self.statements[id].id = id;
+        &self.statements[id]
+    }
+
+    pub fn expression_statement(&mut self, expr_id: ExprId) -> &Stmt {
+        self.stmt_from_kind(StmtKind::Expr(expr_id))
+    }
+
+    pub fn let_statement(&mut self, identifier: Token, initializer: ExprId, type_annotation: Option<StaticTypeAnnotation>) -> &Stmt {
+        self.stmt_from_kind(StmtKind::Let(LetStmt { identifier, initializer, type_annotation, variable_idx: VariableIdx::new(0) }))
+    }
+
+    pub fn if_expr(&mut self, if_keyword: Token, condition: ExprId, then: ExprId, else_statement: Option<ElseBranch>) -> &Expr {
+        self.expr_from_kind(ExprKind::If(IfExpr { if_keyword, condition, then_branch: then, else_branch: else_statement }))
+    }
+
+    pub fn while_statement(&mut self, while_keyword: Token, condition: ExprId, body: ExprId) -> &Stmt {
+        self.stmt_from_kind(StmtKind::While(WhileStmt { while_keyword, condition, body }))
+    }
+
+    pub fn block_expression(&mut self, left_brace: Token, statements: Vec<StmtId>, right_brace: Token) -> &Expr {
+        self.expr_from_kind(ExprKind::Block(BlockExpr { left_brace, stmts: statements, right_brace }))
+    }
+
+    pub fn return_statement(&mut self, return_keyword: Token, return_value: Option<ExprId>) -> &Stmt {
+        self.stmt_from_kind(StmtKind::Return(ReturnStmt { return_keyword, return_value }))
+    }
+
+    pub fn function_declaration(&mut self, identifier: Token, parameters: Vec<FuncDeclParameter>, body: StmtId, return_type: Option<FunctionReturnTypeSyntax>) -> &Item {
+        self.item_from_kind(ItemKind::Func(FunctionDeclaration { identifier, parameters, body, return_type }))
+    }
+
+    pub fn item_from_kind(&mut self, kind: ItemKind) -> &Item {
+        let item = Item::new(kind, ItemId::new(0));
+        let id = self.items.push(item);
+        self.items[id].id = id;
+        &self.items[id]
+    }
+
+    fn expr_from_kind(&mut self, kind: ExprKind) -> &Expr {
+        let expr = Expr::new(kind, ExprId::new(0), Type::Unresolved);
+        let id = self.expressions.push(expr);
+        self.expressions[id].id = id;
+        &self.expressions[id]
+    }
+
+    pub fn number_expression(&mut self, token: Token, number: i64) -> &Expr {
+        self.expr_from_kind(ExprKind::Number(NumberExpr { number, token }))
+    }
+
+    pub fn binary_expression(&mut self, operator: BinOperator, left: ExprId, right: ExprId) -> &Expr {
+        self.expr_from_kind(ExprKind::Binary(BinaryExpr { operator, left, right }))
+    }
+
+    pub fn parenthesized_expression(&mut self, left_paren: Token, expression: ExprId, right_paren: Token) -> &Expr {
+        self.expr_from_kind(ExprKind::Parenthesized(ParenthesizedExpr { expression, left_paren, right_paren }))
+    }
+
+    pub fn variable_expression(&mut self, identifier: Token) -> &Expr {
+        self.expr_from_kind(ExprKind::Variable(VarExpr { identifier, variable_idx: VariableIdx::new(0) }))
+    }
+
+    pub fn unary_expression(&mut self, operator: UnOperator, operand: ExprId) -> &Expr {
+        self.expr_from_kind(ExprKind::Unary(UnaryExpr { operator, operand }))
+    }
+
+    pub fn assignment_expression(&mut self, identifier: Token, equals: Token, expression: ExprId) -> &Expr {
+        self.expr_from_kind(ExprKind::Assignment(AssignExpr { identifier, expression, equals, variable_idx: VariableIdx::new(0) }))
+    }
+
+    pub fn boolean_expression(&mut self, token: Token, value: bool) -> &Expr {
+        self.expr_from_kind(ExprKind::Boolean(BoolExpr { token, value }))
+    }
+
+    pub fn call_expression(&mut self, identifier: Token, left_paren: Token, arguments: Vec<ExprId>, right_paren: Token) -> &Expr {
+        self.expr_from_kind(ExprKind::Call(CallExpr { identifier, arguments, left_paren, right_paren }))
+    }
+
+    pub fn error_expression(&mut self, span: TextSpan) -> &Expr {
+        self.expr_from_kind(ExprKind::Error(span))
+    }
+
+    pub fn visit(&mut self, visitor: &mut dyn ASTVisitor) {
+        for item in self.items.clone().iter() {
+            visitor.visit_item(self, item.id);
+        }
+    }
+
+    pub fn visualize(&mut self) -> () {
+        let mut printer = ASTPrinter::new();
         self.visit(&mut printer);
         println!("{}", printer.result);
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ASTStatementKind {
-    Expression(ASTExprId),
-    Let(ASTLetStatement),
-    If(ASTIfStatement),
-    Block(ASTBlockStatement),
-    While(ASTWhileStatement),
-    FuncDecl(ASTFuncDeclStatement),
-    Return(ASTReturnStatement),
+pub struct Item {
+    pub id: ItemId,
+    pub kind: ItemKind,
+}
+
+impl Item {
+    pub fn new(kind: ItemKind, id: ItemId) -> Self {
+        Self { kind, id }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTReturnStatement {
+pub enum ItemKind {
+    Func(FunctionDeclaration),
+    Stmt(StmtId),
+}
+
+
+#[derive(Debug, Clone)]
+pub enum StmtKind {
+    Expr(ExprId),
+    Let(LetStmt),
+    While(WhileStmt),
+    Return(ReturnStmt),
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnStmt {
     pub return_keyword: Token,
-    pub return_value: Option<ASTExprId>,
+    pub return_value: Option<ExprId>,
 }
 
 #[derive(Debug, Clone)]
@@ -223,160 +235,194 @@ pub struct FuncDeclParameter {
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTFunctionReturnType {
+pub struct FunctionReturnTypeSyntax {
     pub arrow: Token,
     pub type_name: Token,
 }
 
-impl ASTFunctionReturnType {
+impl FunctionReturnTypeSyntax {
     pub fn new(arrow: Token, type_name: Token) -> Self {
         Self { arrow, type_name }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTFuncDeclStatement {
+pub struct FunctionDeclaration {
     pub identifier: Token,
     pub parameters: Vec<FuncDeclParameter>,
-    pub body: ASTStmtId,
-    pub return_type: Option<ASTFunctionReturnType>,
+    pub body: StmtId,
+    pub return_type: Option<FunctionReturnTypeSyntax>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTWhileStatement {
+pub struct WhileStmt {
     pub while_keyword: Token,
-    pub condition: ASTExprId,
-    pub body: ASTStmtId,
+    pub condition: ExprId,
+    pub body: ExprId,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTBlockStatement {
-    pub statements: Vec<ASTStmtId>,
+pub struct BlockExpr {
+    pub left_brace: Token,
+    pub stmts: Vec<StmtId>,
+    pub right_brace: Token,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTElseStatement {
+pub struct ElseBranch {
     pub else_keyword: Token,
-    pub else_statement: ASTStmtId,
+    pub expr: ExprId,
 }
 
-impl ASTElseStatement {
-    pub fn new(else_keyword: Token, else_statement: ASTStmtId) -> Self {
-        ASTElseStatement { else_keyword, else_statement }
+impl ElseBranch {
+    pub fn new(else_keyword: Token, expr: ExprId) -> Self {
+        ElseBranch { else_keyword, expr }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTIfStatement {
+pub struct IfExpr {
     pub if_keyword: Token,
-    pub condition: ASTExprId,
-    pub then_branch: ASTStmtId,
-    pub else_branch: Option<ASTElseStatement>,
+    pub condition: ExprId,
+    pub then_branch: ExprId,
+    pub else_branch: Option<ElseBranch>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTLetStatement {
+pub struct LetStmt {
     pub identifier: Token,
-    pub initializer: ASTExprId,
+    pub initializer: ExprId,
     pub type_annotation: Option<StaticTypeAnnotation>,
+    pub variable_idx: VariableIdx,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTStatement {
-    kind: ASTStatementKind,
-    id: ASTStmtId,
+pub struct Stmt {
+    pub kind: StmtKind,
+    pub id: StmtId,
 }
 
-impl ASTStatement {
-    pub fn new(kind: ASTStatementKind, id: ASTStmtId) -> Self {
-        ASTStatement { kind, id }
+impl Stmt {
+    pub fn new(kind: StmtKind, id: StmtId) -> Self {
+        Stmt { kind, id }
+    }
+
+    pub fn span(&self, ast: &Ast) -> TextSpan {
+        match &self.kind {
+            StmtKind::Expr(expr_id) => ast.query_expr(*expr_id).span(ast),
+            StmtKind::Let(let_stmt) => {
+                let mut spans = vec![let_stmt.identifier.span.clone()];
+                if let Some(type_annotation) = &let_stmt.type_annotation {
+                    spans.push(type_annotation.colon.span.clone());
+                    spans.push(type_annotation.type_name.span.clone());
+                }
+                TextSpan::combine(spans)
+            }
+            StmtKind::While(while_stmt) => {
+                let mut spans = vec![while_stmt.while_keyword.span.clone()];
+                spans.push(ast.query_expr(while_stmt.condition).span(ast));
+                spans.push(ast.query_expr(while_stmt.body).span(ast));
+                TextSpan::combine(spans)
+            }
+            StmtKind::Return(return_stmt) => {
+                let mut spans = vec![return_stmt.return_keyword.span.clone()];
+                if let Some(return_value) = &return_stmt.return_value {
+                    spans.push(ast.query_expr(*return_value).span(ast));
+                }
+                TextSpan::combine(spans)
+            }
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum ASTExpressionKind {
+pub enum ExprKind {
     Number(
-        ASTNumberExpression
+        NumberExpr
     ),
     Binary(
-        ASTBinaryExpression
+        BinaryExpr
     ),
     Unary(
-        ASTUnaryExpression
+        UnaryExpr
     ),
     Parenthesized(
-        ASTParenthesizedExpression
+        ParenthesizedExpr
     ),
 
     Variable(
-        ASTVariableExpression
+        VarExpr
     ),
     Assignment(
-        ASTAssignmentExpression
+        AssignExpr
     ),
     Boolean(
-        ASTBooleanExpression
+        BoolExpr
     ),
     Call(
-        ASTCallExpression
+        CallExpr
     ),
+    If(IfExpr),
+    Block(BlockExpr),
     Error(
         TextSpan
     ),
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTCallExpression {
+pub struct CallExpr {
     pub identifier: Token,
     pub left_paren: Token,
-    pub arguments: Vec<ASTExprId>,
+    pub arguments: Vec<ExprId>,
     pub right_paren: Token,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTBooleanExpression {
+pub struct BoolExpr {
     pub value: bool,
     pub token: Token,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTAssignmentExpression {
+pub struct AssignExpr {
     pub identifier: Token,
     pub equals: Token,
-    pub expression: ASTExprId,
+    pub expression: ExprId,
+    pub variable_idx: VariableIdx,
 
 }
 
 #[derive(Debug, Clone)]
-pub enum ASTUnaryOperatorKind {
+pub enum UnOpKid {
     Minus,
     BitwiseNot,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTUnaryOperator {
-    pub(crate) kind: ASTUnaryOperatorKind,
+pub struct UnOperator {
+    pub(crate) kind: UnOpKid,
     token: Token,
 }
 
-impl ASTUnaryOperator {
-    pub fn new(kind: ASTUnaryOperatorKind, token: Token) -> Self {
-        ASTUnaryOperator { kind, token }
+impl UnOperator {
+    pub fn new(kind: UnOpKid, token: Token) -> Self {
+        UnOperator { kind, token }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTUnaryExpression {
-    pub operator: ASTUnaryOperator,
-    pub operand: ASTExprId,
+pub struct UnaryExpr {
+    pub operator: UnOperator,
+    pub operand: ExprId,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTVariableExpression {
+pub struct VarExpr {
     pub identifier: Token,
+    pub variable_idx: VariableIdx,
 }
 
-impl ASTVariableExpression {
+impl VarExpr {
     pub fn identifier(&self) -> &str {
         &self.identifier.span.literal
     }
@@ -384,7 +430,7 @@ impl ASTVariableExpression {
 
 
 #[derive(Debug, Clone)]
-pub enum ASTBinaryOperatorKind {
+pub enum BinOpKind {
     // Arithmetic
     Plus,
     Minus,
@@ -405,127 +451,148 @@ pub enum ASTBinaryOperatorKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ASTBinaryOperatorAssociativity {
+pub enum BinOpAssociativity {
     Left,
     Right,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTBinaryOperator {
-    pub kind: ASTBinaryOperatorKind,
+pub struct BinOperator {
+    pub kind: BinOpKind,
     pub token: Token,
 }
 
-impl ASTBinaryOperator {
-    pub fn new(kind: ASTBinaryOperatorKind, token: Token) -> Self {
-        ASTBinaryOperator { kind, token }
+impl BinOperator {
+    pub fn new(kind: BinOpKind, token: Token) -> Self {
+        BinOperator { kind, token }
     }
 
     pub fn precedence(&self) -> u8 {
         match self.kind {
-            ASTBinaryOperatorKind::Power => 20,
-            ASTBinaryOperatorKind::Multiply => 19,
-            ASTBinaryOperatorKind::Divide => 19,
-            ASTBinaryOperatorKind::Plus => 18,
-            ASTBinaryOperatorKind::Minus => 18,
-            ASTBinaryOperatorKind::BitwiseAnd => 17,
-            ASTBinaryOperatorKind::BitwiseXor => 16,
-            ASTBinaryOperatorKind::BitwiseOr => 15,
-            ASTBinaryOperatorKind::Equals => 30,
-            ASTBinaryOperatorKind::NotEquals => 30,
-            ASTBinaryOperatorKind::LessThan => 29,
-            ASTBinaryOperatorKind::LessThanOrEqual => 29,
-            ASTBinaryOperatorKind::GreaterThan => 29,
-            ASTBinaryOperatorKind::GreaterThanOrEqual => 29,
+            BinOpKind::Power => 20,
+            BinOpKind::Multiply => 19,
+            BinOpKind::Divide => 19,
+            BinOpKind::Plus => 18,
+            BinOpKind::Minus => 18,
+            BinOpKind::BitwiseAnd => 17,
+            BinOpKind::BitwiseXor => 16,
+            BinOpKind::BitwiseOr => 15,
+            BinOpKind::Equals => 30,
+            BinOpKind::NotEquals => 30,
+            BinOpKind::LessThan => 29,
+            BinOpKind::LessThanOrEqual => 29,
+            BinOpKind::GreaterThan => 29,
+            BinOpKind::GreaterThanOrEqual => 29,
         }
     }
 
-    pub fn associativity(&self) -> ASTBinaryOperatorAssociativity {
+    pub fn associativity(&self) -> BinOpAssociativity {
         match self.kind {
-            ASTBinaryOperatorKind::Power => ASTBinaryOperatorAssociativity::Right,
-            _ => ASTBinaryOperatorAssociativity::Left,
+            BinOpKind::Power => BinOpAssociativity::Right,
+            _ => BinOpAssociativity::Left,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTBinaryExpression {
-    pub left: ASTExprId,
-    pub operator: ASTBinaryOperator,
-    pub right: ASTExprId,
+pub struct BinaryExpr {
+    pub left: ExprId,
+    pub operator: BinOperator,
+    pub right: ExprId,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTNumberExpression {
+pub struct NumberExpr {
     pub number: i64,
     pub token: Token,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTParenthesizedExpression {
+pub struct ParenthesizedExpr {
     pub left_paren: Token,
-    pub expression: ASTExprId,
+    pub expression: ExprId,
     pub right_paren: Token,
 }
 
 #[derive(Debug, Clone)]
-pub struct ASTExpression {
-    pub kind: ASTExpressionKind,
-    pub id: ASTExprId,
+pub struct Expr {
+    pub kind: ExprKind,
+    pub id: ExprId,
     pub ty: Type,
 }
 
-impl ASTExpression {
-    pub fn new(kind: ASTExpressionKind, id: ASTExprId, ty: Type) -> Self {
-        ASTExpression { kind, id, ty }
+impl Expr {
+    pub fn new(kind: ExprKind, id: ExprId, ty: Type) -> Self {
+        Expr { kind, id, ty }
     }
 
     pub fn span(&self, ast: &Ast) -> TextSpan {
         match &self.kind {
-            ASTExpressionKind::Number(expr) => expr.token.span.clone(),
-            ASTExpressionKind::Binary(expr) => {
-                let left = ast.query_expr(&expr.left).span(ast);
+            ExprKind::Block(block_stmt) => {
+                let mut spans = vec![block_stmt.left_brace.span.clone()];
+                for statement in &block_stmt.stmts {
+                    spans.push(ast.query_stmt(*statement).span(ast));
+                }
+                spans.push(block_stmt.right_brace.span.clone());
+                TextSpan::combine(spans)
+            }
+
+            ExprKind::Number(expr) => expr.token.span.clone(),
+            ExprKind::Binary(expr) => {
+                let left = ast.query_expr(expr.left).span(ast);
                 let operator = expr.operator.token.span.clone();
-                let right = ast.query_expr(&expr.right).span(ast);
+                let right = ast.query_expr(expr.right).span(ast);
                 TextSpan::combine(vec![left, operator, right])
             }
-            ASTExpressionKind::Unary(expr) => {
+            ExprKind::Unary(expr) => {
                 let operator = expr.operator.token.span.clone();
-                let operand = ast.query_expr(&expr.operand).span(ast);
+                let operand = ast.query_expr(expr.operand).span(ast);
                 TextSpan::combine(vec![operator, operand])
             }
-            ASTExpressionKind::Parenthesized(expr) => {
+            ExprKind::Parenthesized(expr) => {
                 let open_paren = expr.left_paren.span.clone();
-                let expression = ast.query_expr(&expr.expression).span(ast);
+                let expression = ast.query_expr(expr.expression).span(ast);
                 let close_paren = expr.right_paren.span.clone();
                 TextSpan::combine(vec![open_paren, expression, close_paren])
             }
-            ASTExpressionKind::Variable(expr) => expr.identifier.span.clone(),
-            ASTExpressionKind::Assignment(expr) => {
+            ExprKind::Variable(expr) => expr.identifier.span.clone(),
+            ExprKind::Assignment(expr) => {
                 let identifier = expr.identifier.span.clone();
                 let equals = expr.equals.span.clone();
-                let expression = ast.query_expr(&expr.expression).span(ast);
+                let expression = ast.query_expr(expr.expression).span(ast);
                 TextSpan::combine(vec![identifier, equals, expression])
             }
-            ASTExpressionKind::Boolean(expr) => expr.token.span.clone(),
-            ASTExpressionKind::Call(expr) => {
+            ExprKind::Boolean(expr) => expr.token.span.clone(),
+            ExprKind::Call(expr) => {
                 let identifier = expr.identifier.span.clone();
                 let left_paren = expr.left_paren.span.clone();
                 let right_paren = expr.right_paren.span.clone();
                 let mut spans = vec![identifier, left_paren, right_paren];
                 for arg in &expr.arguments {
-                    spans.push(ast.query_expr(arg).span(ast));
+                    spans.push(ast.query_expr(*arg).span(ast));
                 }
                 TextSpan::combine(spans)
             }
-            ASTExpressionKind::Error(span) => span.clone(),
+            ExprKind::If(expr) => {
+                let if_span = expr.if_keyword.span.clone();
+                let condition = ast.query_expr(expr.condition).span(ast);
+                let then_branch = ast.query_expr(expr.then_branch).span(ast);
+                let mut spans = vec![if_span, condition, then_branch];
+                if let Some(else_branch) = &expr.else_branch {
+                    let else_span = else_branch.else_keyword.span.clone();
+                    spans.push(else_span);
+                    spans.push(ast.query_expr(else_branch.expr).span(ast));
+                }
+                TextSpan::combine(spans)
+            }
+            ExprKind::Error(span) => span.clone(),
         }
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{Ast, ASTAssignmentExpression, ASTBinaryExpression, ASTBlockStatement, ASTBooleanExpression, ASTCallExpression, ASTExpression, ASTFuncDeclStatement, ASTIfStatement, ASTLetStatement, ASTNumberExpression, ASTParenthesizedExpression, ASTReturnStatement, ASTUnaryExpression, ASTVariableExpression, ASTWhileStatement};
+    use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, UnaryExpr, VarExpr, WhileStmt};
     use crate::compilation_unit::CompilationUnit;
     use crate::text::span::TextSpan;
 
@@ -566,7 +633,7 @@ mod test {
 
         fn flatten_ast(&mut self) {
             self.actual.clear();
-            let ast = &self.ast.clone();
+            let mut ast = self.ast.clone();
             ast.visit(&mut *self);
         }
 
@@ -582,95 +649,92 @@ mod test {
     }
 
     impl ASTVisitor for ASTVerifier {
-        fn get_ast(&self) -> &Ast {
-            &self.ast
-        }
 
-        fn visit_func_decl_statement(&mut self, func_decl_statement: &ASTFuncDeclStatement) {
+        fn visit_function_declaration(&mut self,ast: &mut Ast, func_decl_statement: &FunctionDeclaration) {
             self.actual.push(TestASTNode::Func);
-            self.visit_statement(&func_decl_statement.body);
+            self.visit_statement(ast, func_decl_statement.body);
         }
 
-        fn visit_return_statement(&mut self, return_statement: &ASTReturnStatement) {
+        fn visit_return_statement(&mut self, ast: &mut Ast,return_statement: &ReturnStmt) {
             self.actual.push(TestASTNode::Return);
             if let Some(expression) = &return_statement.return_value {
-                self.visit_expression(expression);
+                self.visit_expression(ast, *expression);
             }
         }
 
-        fn visit_while_statement(&mut self, while_statement: &ASTWhileStatement) {
+        fn visit_while_statement(&mut self,ast: &mut Ast, while_statement: &WhileStmt) {
             self.actual.push(TestASTNode::While);
-            self.visit_expression(&while_statement.condition);
-            self.visit_statement(&while_statement.body);
+            self.visit_expression(ast, while_statement.condition);
+            self.visit_expression(ast, while_statement.body);
         }
 
-        fn visit_block_statement(&mut self, block_statement: &ASTBlockStatement) {
+        fn visit_block_expr(&mut self,ast: &mut Ast, block_statement: &BlockExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Block);
-            for statement in &block_statement.statements {
-                self.visit_statement(statement);
+            for statement in &block_statement.stmts {
+                self.visit_statement(ast, *statement);
             }
         }
 
-        fn visit_if_statement(&mut self, if_statement: &ASTIfStatement) {
+        fn visit_if_expression(&mut self,ast: &mut Ast, if_statement: &IfExpr, expr: &Expr) {
             self.actual.push(TestASTNode::If);
-            self.visit_expression(&if_statement.condition);
-            self.visit_statement(&if_statement.then_branch);
+            self.visit_expression(ast, if_statement.condition);
+            self.visit_expression(ast, if_statement.then_branch);
             if let Some(else_branch) = &if_statement.else_branch {
                 self.actual.push(TestASTNode::Else);
 
-                self.visit_statement(&else_branch.else_statement);
+                self.visit_expression(ast, else_branch.expr);
             }
         }
 
-        fn visit_let_statement(&mut self, let_statement: &ASTLetStatement) {
+        fn visit_let_statement(&mut self,ast: &mut Ast, let_statement: &LetStmt, stmt: &Stmt) {
             self.actual.push(TestASTNode::Let);
-            self.visit_expression(&let_statement.initializer);
+            self.visit_expression(ast, let_statement.initializer);
         }
 
-        fn visit_call_expression(&mut self, call_expression: &ASTCallExpression, expr: &ASTExpression) {
+        fn visit_call_expression(&mut self, ast: &mut Ast,call_expression: &CallExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Call);
             for argument in &call_expression.arguments {
-                self.visit_expression(argument);
+                self.visit_expression(ast, *argument);
             }
         }
 
-        fn visit_assignment_expression(&mut self, assignment_expression: &ASTAssignmentExpression, expr: &ASTExpression) {
+        fn visit_assignment_expression(&mut self, ast: &mut Ast,assignment_expression: &AssignExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Assignment);
-            self.visit_expression(&assignment_expression.expression);
+            self.visit_expression(ast, assignment_expression.expression);
         }
 
-        fn visit_variable_expression(&mut self, variable_expression: &ASTVariableExpression, expr: &ASTExpression) {
+        fn visit_variable_expression(&mut self, ast: &mut Ast,variable_expression: &VarExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Variable(
                 variable_expression.identifier().to_string()
             ));
         }
 
-        fn visit_number_expression(&mut self, number: &ASTNumberExpression, expr: &ASTExpression) {
+        fn visit_number_expression(&mut self, ast: &mut Ast,number: &NumberExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Number(number.number));
         }
 
-        fn visit_boolean_expression(&mut self, boolean: &ASTBooleanExpression, expr: &ASTExpression) {
+        fn visit_boolean_expression(&mut self, ast: &mut Ast,boolean: &BoolExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Boolean(boolean.value));
         }
 
-        fn visit_error(&mut self, span: &TextSpan) {
+        fn visit_error(&mut self, ast: &mut Ast,span: &TextSpan) {
             // do nothing
         }
 
-        fn visit_unary_expression(&mut self, unary_expression: &ASTUnaryExpression, expr: &ASTExpression) {
+        fn visit_unary_expression(&mut self,ast: &mut Ast, unary_expression: &UnaryExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Unary);
-            self.visit_expression(&unary_expression.operand);
+            self.visit_expression(ast, unary_expression.operand);
         }
 
-        fn visit_binary_expression(&mut self, binary_expression: &ASTBinaryExpression, expr: &ASTExpression) {
+        fn visit_binary_expression(&mut self, ast: &mut Ast,binary_expression: &BinaryExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Binary);
-            self.visit_expression(&binary_expression.left);
-            self.visit_expression(&binary_expression.right);
+            self.visit_expression(ast, binary_expression.left);
+            self.visit_expression(ast, binary_expression.right);
         }
 
-        fn visit_parenthesized_expression(&mut self, parenthesized_expression: &ASTParenthesizedExpression, expr: &ASTExpression) {
+        fn visit_parenthesized_expression(&mut self, ast: &mut Ast,parenthesized_expression: &ParenthesizedExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Parenthesized);
-            self.visit_expression(&parenthesized_expression.expression);
+            self.visit_expression(ast, parenthesized_expression.expression);
         }
     }
 
