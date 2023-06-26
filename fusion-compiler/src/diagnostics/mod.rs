@@ -235,8 +235,9 @@ b
     fn should_report_undeclared_variable_when_variable_was_declared_in_if_without_block() {
         let input = "\
         let b = -1
-        if b > 10
+        if b > 10 {
             let a = 10
+        }
         «a»
     ";
         let expected = vec![
@@ -351,7 +352,7 @@ b
     #[test]
     pub fn should_report_type_mismatch_when_using_minus_unary_operator_on_bool() {
         let input = "\
-        let a = true
+        let a = true;
         -«a»
     ";
 

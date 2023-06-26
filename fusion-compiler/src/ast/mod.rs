@@ -24,6 +24,7 @@ idx!(StmtId);
 idx!(ExprId);
 idx!(ItemId);
 
+#[cfg_attr(test, derive(Clone))]
 #[derive(Debug)]
 pub struct Ast {
     pub statements: IdxVec<StmtId, Stmt>,
@@ -591,7 +592,7 @@ impl Expr {
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, UnaryExpr, VarExpr, WhileStmt};
+    use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, UnaryExpr, VarExpr, WhileStmt};
     use crate::compilation_unit::CompilationUnit;
     use crate::text::span::TextSpan;
 
@@ -632,7 +633,7 @@ mod test {
 
         fn flatten_ast(&mut self) {
             self.actual.clear();
-            let ast = &self.ast.clone();
+            let mut ast = self.ast.clone();
             ast.visit(&mut *self);
         }
 
@@ -648,95 +649,92 @@ mod test {
     }
 
     impl ASTVisitor for ASTVerifier {
-        fn get_ast(&self) -> &Ast {
-            &self.ast
-        }
 
-        fn visit_function_declaration(&mut self, func_decl_statement: &FunctionDeclaration) {
+        fn visit_function_declaration(&mut self,ast: &mut Ast, func_decl_statement: &FunctionDeclaration) {
             self.actual.push(TestASTNode::Func);
-            self.visit_statement(&func_decl_statement.body);
+            self.visit_statement(ast, func_decl_statement.body);
         }
 
-        fn visit_return_statement(&mut self, return_statement: &ReturnStmt) {
+        fn visit_return_statement(&mut self, ast: &mut Ast,return_statement: &ReturnStmt) {
             self.actual.push(TestASTNode::Return);
             if let Some(expression) = &return_statement.return_value {
-                self.visit_expression(expression);
+                self.visit_expression(ast, *expression);
             }
         }
 
-        fn visit_while_statement(&mut self, while_statement: &WhileStmt) {
+        fn visit_while_statement(&mut self,ast: &mut Ast, while_statement: &WhileStmt) {
             self.actual.push(TestASTNode::While);
-            self.visit_expression(&while_statement.condition);
-            self.visit_statement(&while_statement.body);
+            self.visit_expression(ast, while_statement.condition);
+            self.visit_expression(ast, while_statement.body);
         }
 
-        fn visit_block_expr(&mut self, block_statement: &BlockExpr) {
+        fn visit_block_expr(&mut self,ast: &mut Ast, block_statement: &BlockExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Block);
             for statement in &block_statement.stmts {
-                self.visit_statement(statement);
+                self.visit_statement(ast, *statement);
             }
         }
 
-        fn visit_if_expression(&mut self, if_statement: &IfExpr) {
+        fn visit_if_expression(&mut self,ast: &mut Ast, if_statement: &IfExpr, expr: &Expr) {
             self.actual.push(TestASTNode::If);
-            self.visit_expression(&if_statement.condition);
-            self.visit_statement(&if_statement.then_branch);
+            self.visit_expression(ast, if_statement.condition);
+            self.visit_expression(ast, if_statement.then_branch);
             if let Some(else_branch) = &if_statement.else_branch {
                 self.actual.push(TestASTNode::Else);
 
-                self.visit_statement(&else_branch.expr);
+                self.visit_expression(ast, else_branch.expr);
             }
         }
 
-        fn visit_let_statement(&mut self, let_statement: &LetStmt) {
+        fn visit_let_statement(&mut self,ast: &mut Ast, let_statement: &LetStmt, stmt: &Stmt) {
             self.actual.push(TestASTNode::Let);
-            self.visit_expression(&let_statement.initializer);
+            self.visit_expression(ast, let_statement.initializer);
         }
 
-        fn visit_call_expression(&mut self, call_expression: &CallExpr, expr: &Expr) {
+        fn visit_call_expression(&mut self, ast: &mut Ast,call_expression: &CallExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Call);
             for argument in &call_expression.arguments {
-                self.visit_expression(argument);
+                self.visit_expression(ast, *argument);
             }
         }
 
-        fn visit_assignment_expression(&mut self, assignment_expression: &AssignExpr, expr: &Expr) {
+        fn visit_assignment_expression(&mut self, ast: &mut Ast,assignment_expression: &AssignExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Assignment);
-            self.visit_expression(&assignment_expression.expression);
+            self.visit_expression(ast, assignment_expression.expression);
         }
 
-        fn visit_variable_expression(&mut self, variable_expression: &VarExpr, expr: &Expr) {
+        fn visit_variable_expression(&mut self, ast: &mut Ast,variable_expression: &VarExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Variable(
                 variable_expression.identifier().to_string()
             ));
         }
 
-        fn visit_number_expression(&mut self, number: &NumberExpr, expr: &Expr) {
+        fn visit_number_expression(&mut self, ast: &mut Ast,number: &NumberExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Number(number.number));
         }
 
-        fn visit_boolean_expression(&mut self, boolean: &BoolExpr, expr: &Expr) {
+        fn visit_boolean_expression(&mut self, ast: &mut Ast,boolean: &BoolExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Boolean(boolean.value));
         }
 
-        fn visit_error(&mut self, span: &TextSpan) {
+        fn visit_error(&mut self, ast: &mut Ast,span: &TextSpan) {
             // do nothing
         }
 
-        fn visit_unary_expression(&mut self, unary_expression: &UnaryExpr, expr: &Expr) {
+        fn visit_unary_expression(&mut self,ast: &mut Ast, unary_expression: &UnaryExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Unary);
-            self.visit_expression(&unary_expression.operand);
+            self.visit_expression(ast, unary_expression.operand);
         }
 
-        fn visit_binary_expression(&mut self, binary_expression: &BinaryExpr, expr: &Expr) {
+        fn visit_binary_expression(&mut self, ast: &mut Ast,binary_expression: &BinaryExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Binary);
-            self.visit_expression(&binary_expression.left);
-            self.visit_expression(&binary_expression.right);
+            self.visit_expression(ast, binary_expression.left);
+            self.visit_expression(ast, binary_expression.right);
         }
 
-        fn visit_parenthesized_expression(&mut self, parenthesized_expression: &ParenthesizedExpr, expr: &Expr) {
+        fn visit_parenthesized_expression(&mut self, ast: &mut Ast,parenthesized_expression: &ParenthesizedExpr, expr: &Expr) {
             self.actual.push(TestASTNode::Parenthesized);
-            self.visit_expression(&parenthesized_expression.expression);
+            self.visit_expression(ast, parenthesized_expression.expression);
         }
     }
 

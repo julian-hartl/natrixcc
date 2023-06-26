@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use crate::ast::{Ast, BinOpAssociativity, BinOperator, BinOpKind, ElseBranch, Expr, ExprId, FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt, UnaryExpr, UnOperator, UnOpKid};
+use crate::ast::{Ast, BinOpAssociativity, BinOperator, BinOpKind, ElseBranch, Expr, ExprId, FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt, StmtId, UnaryExpr, UnOperator, UnOpKid};
 use crate::ast::lexer::{Lexer, Token, TokenKind};
 use crate::diagnostics::DiagnosticsBagCell;
 
@@ -70,28 +70,30 @@ impl<'a> Parser<'a> {
                 self.parse_function_declaration()
             }
             _ => {
-                let stmt = self.parse_statement();
-                let id = stmt.id;
+                let id = self.parse_statement();
                 self.ast.item_from_kind(ItemKind::Stmt(id))
             }
         }
     }
 
-    fn parse_statement(&mut self) -> &Stmt {
-        match self.current().kind {
+    fn parse_statement(&mut self) -> StmtId {
+        let stmt = match self.current().kind {
             TokenKind::Let => {
-                self.parse_let_statement()
+                self.parse_let_statement().id
             }
             TokenKind::While => {
-                self.parse_while_statement()
+                self.parse_while_statement().id
             }
             TokenKind::Return => {
-                self.parse_return_statement()
+                self.parse_return_statement().id
             }
             _ => {
-                self.parse_expression_statement()
+                self.parse_expression_statement().id
             }
-        }
+        };
+        self.consume_if(TokenKind::SemiColon);
+        stmt
+
     }
 
     fn parse_function_declaration(&mut self) -> &Item {
@@ -99,7 +101,7 @@ impl<'a> Parser<'a> {
         let identifier = self.consume_and_check(TokenKind::Identifier).clone();
         let parameters = self.parse_optional_parameter_list();
         let return_type = self.parse_optional_return_type();
-        let body = self.parse_statement().id;
+        let body = self.parse_statement();
         self.ast.function_declaration(identifier, parameters, body, return_type)
     }
 
@@ -152,7 +154,7 @@ impl<'a> Parser<'a> {
     fn parse_block_expression(&mut self, left_brace: Token) -> &Expr {
         let mut statements = Vec::new();
         while self.current().kind != TokenKind::CloseBrace && !self.is_at_end() {
-            statements.push(self.parse_statement().id);
+            statements.push(self.parse_statement());
         }
         let right_brace = self.consume_and_check(TokenKind::CloseBrace).clone();
         self.ast.block_expression(left_brace, statements, right_brace)
@@ -391,6 +393,15 @@ impl<'a> Parser<'a> {
     fn consume(&self) -> &Token {
         self.current.increment();
         self.peek(-1)
+    }
+
+
+    fn consume_if(&self, kind: TokenKind) -> Option<&Token> {
+        if self.current().kind == kind {
+            Some(self.consume())
+        } else {
+            None
+        }
     }
 
     fn consume_and_check(&self, kind: TokenKind) -> &Token {
