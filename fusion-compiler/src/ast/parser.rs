@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use crate::ast::{Ast, ASTBinaryOperator, ASTBinaryOperatorKind, ASTElseStatement, ASTExpression, ASTFunctionReturnType, ASTStatement, ASTUnaryExpression, ASTUnaryOperator, ASTUnaryOperatorKind, FuncDeclParameter, StaticTypeAnnotation};
+use crate::ast::{Ast, ASTBinaryOperator, ASTBinaryOperatorKind, ASTElseStatement, ASTExpression, ASTExprId, ASTFunctionReturnType, ASTStatement, ASTUnaryExpression, ASTUnaryOperator, ASTUnaryOperatorKind, FuncDeclParameter, StaticTypeAnnotation, ASTBinaryOperatorAssociativity};
 use crate::ast::lexer::{Lexer, Token, TokenKind};
 use crate::diagnostics::DiagnosticsBagCell;
 
@@ -220,19 +220,31 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_binary_expression(&mut self, precedence: u8) -> &ASTExpression {
-        let mut left = self.parse_unary_expression().id;
+        let left = self.parse_unary_expression().id;
+        self.parse_binary_expression_recurse(left, precedence)
+    }
 
+    fn parse_binary_expression_recurse(&mut self, mut left: ASTExprId, precedence: u8) -> &ASTExpression {
         while let Some(operator) = self.parse_binary_operator() {
             let operator_precedence = operator.precedence();
             if operator_precedence < precedence {
                 break;
             }
             self.consume();
-            let right = self.parse_binary_expression(operator_precedence).id;
+            let mut right = self.parse_unary_expression().id;
+
+            while let Some(inner_operator) = self.parse_binary_operator() {
+                let greater_precedence = inner_operator.precedence() > operator.precedence();
+                let equal_precedence = inner_operator.precedence() == operator.precedence();
+                if !greater_precedence && !(equal_precedence && inner_operator.associativity() == ASTBinaryOperatorAssociativity::Right) {
+                    break;
+                }
+
+                right = self.parse_binary_expression_recurse(right, std::cmp::max(operator.precedence(), inner_operator.precedence())).id;
+            }
             left = self.ast.binary_expression(operator, left, right).id;
         }
-        let left = self.ast.query_expr(&left);
-        return left;
+        self.ast.query_expr(&left)
     }
 
     fn parse_unary_expression(&mut self) -> &ASTExpression {
