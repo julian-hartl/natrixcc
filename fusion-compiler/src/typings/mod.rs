@@ -1,10 +1,12 @@
 use std::fmt::{Display, Formatter};
+use crate::compilation_unit::FunctionIdx;
 
 #[derive(Debug, Clone)]
 pub enum Type {
     Int,
     Bool,
     Void,
+    Function(FunctionIdx),
     Unresolved,
     Error,
 }
@@ -16,6 +18,7 @@ impl Display for Type {
             Type::Bool => "bool",
             Type::Unresolved => "unresolved",
             Type::Void => "void",
+            Type::Function(_) => "function",
             Type::Error => "?",
         };
 
