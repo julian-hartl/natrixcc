@@ -1,21 +1,17 @@
 use termion::color::{Fg, Reset};
 
-use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, ExprKind, FunctionDeclaration, IfExpr, ItemId, ItemKind, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, StmtId, StmtKind, UnaryExpr, VarExpr, WhileStmt};
+use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, ExprKind, FuncExpr, FunctionDeclaration, IfExpr, ItemId, ItemKind, LetStmt, NumberExpr, ParenthesizedExpr, RecExpr, ReturnStmt, Stmt, StmtId, StmtKind, UnaryExpr, VarExpr, WhileStmt};
 use crate::ast::printer::ASTPrinter;
 use crate::text::span::TextSpan;
 
 pub trait ASTVisitor {
-
     fn visit_item(&mut self, ast: &mut Ast, item: ItemId) {
-       self.visit_item_default(ast, item);
+        self.visit_item_default(ast, item);
     }
 
     fn visit_item_default(&mut self, ast: &mut Ast, item: ItemId) {
         let item = ast.query_item(item).clone();
         match &item.kind {
-            ItemKind::Func(func_decl) => {
-                self.visit_function_declaration(ast, func_decl);
-            }
             ItemKind::Stmt(stmt) => {
                 self.visit_statement(ast, *stmt);
             }
@@ -40,7 +36,7 @@ pub trait ASTVisitor {
         }
     }
 
-    fn visit_function_declaration(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration);
+    fn visit_func_expr(&mut self, ast: &mut Ast, func_expr: &FuncExpr, expr_id: ExprId);
 
     fn visit_return_statement(&mut self, ast: &mut Ast, return_statement: &ReturnStmt) {
         if let Some(expr) = &return_statement.return_value {
@@ -100,19 +96,28 @@ pub trait ASTVisitor {
                 self.visit_call_expression(ast, expr, &expression);
             }
             ExprKind::If(expr) => {
-                    self.visit_if_expression(ast, expr, &expression);
+                self.visit_if_expression(ast, expr, &expression);
             }
             ExprKind::Block(block_expr) => {
                 self.visit_block_expr(ast, &block_expr, &expression);
             }
+            ExprKind::Func(func_expr) => {
+                self.visit_func_expr(ast, func_expr, expression.id);
+            }
+            ExprKind::Rec(expr) => {
+                self.visit_rec_expression(ast, expr, expression.id);
+            }
         }
     }
+
+    fn visit_rec_expression(&mut self, ast: &mut Ast, expr: &RecExpr, expr_id: ExprId) ;
+
     fn visit_call_expression(&mut self, ast: &mut Ast, call_expression: &CallExpr, expr: &Expr) {
         for argument in &call_expression.arguments {
             self.visit_expression(ast, *argument);
         }
     }
-    fn visit_expression(&mut self, ast: &mut Ast, expression:ExprId) {
+    fn visit_expression(&mut self, ast: &mut Ast, expression: ExprId) {
         self.do_visit_expression(ast, expression);
     }
 
