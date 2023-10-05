@@ -31,7 +31,6 @@ pub enum TokenKind {
     While,
     Func,
     Return,
-    Rec,
     // Separators
     LeftParen,
     RightParen,
@@ -88,7 +87,6 @@ impl Display for TokenKind {
             TokenKind::Colon => write!(f, "Colon"),
             TokenKind::Arrow => write!(f, "Arrow"),
             TokenKind::SemiColon => write!(f, "SemiColon"),
-            TokenKind::Rec => write!(f, "Rec"),
         }
     }
 }
@@ -145,7 +143,6 @@ impl<'a> Lexer<'a> {
                     "while" => TokenKind::While,
                     "func" => TokenKind::Func,
                     "return" => TokenKind::Return,
-                    "rec" => TokenKind::Rec,
                     _ => TokenKind::Identifier,
                 }
 

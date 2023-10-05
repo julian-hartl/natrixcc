@@ -10,7 +10,7 @@ use visitor::ASTVisitor;
 
 use crate::ast::lexer::Token;
 use crate::ast::parser::Counter;
-use crate::compilation_unit::VariableIdx;
+use crate::compilation_unit::{FunctionIdx, VariableIdx};
 use crate::text::span::TextSpan;
 use crate::typings::Type;
 
@@ -116,10 +116,19 @@ impl Ast {
         self.stmt_from_kind(StmtKind::Return(ReturnStmt { return_keyword, return_value }))
     }
 
-    pub fn func_expr(&mut self, func_keyword: Token, parameters: Vec<FuncDeclParameter>, body: ExprId, return_type: Option<FunctionReturnTypeSyntax>) -> &Expr {
-        self.expr_from_kind(ExprKind::Func(FuncExpr {
-            decl: FunctionDeclaration { func_keyword, parameters, body, return_type }
-        }))
+    pub fn func_item(&mut self, func_keyword: Token, identifier: Token, parameters: Vec<FuncDeclParameter>, body: ExprId, return_type: Option<FunctionReturnTypeSyntax>, function_idx: FunctionIdx) -> &Item {
+        return self.item_from_kind(
+            ItemKind::Function(
+                FunctionDeclaration {
+                    func_keyword,
+                    identifier,
+                    parameters,
+                    body,
+                    return_type,
+                    idx: function_idx,
+                }
+            )
+        );
     }
 
     pub fn item_from_kind(&mut self, kind: ItemKind) -> &Item {
@@ -164,16 +173,12 @@ impl Ast {
         self.expr_from_kind(ExprKind::Boolean(BoolExpr { token, value }))
     }
 
-    pub fn call_expression(&mut self, callee: ExprId, left_paren: Token, arguments: Vec<ExprId>, right_paren: Token) -> &Expr {
+    pub fn call_expression(&mut self, callee: Token, left_paren: Token, arguments: Vec<ExprId>, right_paren: Token) -> &Expr {
         self.expr_from_kind(ExprKind::Call(CallExpr { callee, arguments, left_paren, right_paren }))
     }
 
     pub fn error_expression(&mut self, span: TextSpan) -> &Expr {
         self.expr_from_kind(ExprKind::Error(span))
-    }
-
-    pub fn rec_expression(&mut self, rec_keyword: Token) -> &Expr {
-        self.expr_from_kind(ExprKind::Rec(RecExpr { rec_keyword }))
     }
 
     pub fn visit(&mut self, visitor: &mut dyn ASTVisitor) {
@@ -204,6 +209,7 @@ impl Item {
 #[derive(Debug, Clone)]
 pub enum ItemKind {
     Stmt(StmtId),
+    Function(FunctionDeclaration),
 }
 
 
@@ -254,9 +260,11 @@ impl FunctionReturnTypeSyntax {
 #[derive(Debug, Clone)]
 pub struct FunctionDeclaration {
     pub func_keyword: Token,
+    pub identifier: Token,
     pub parameters: Vec<FuncDeclParameter>,
     pub body: ExprId,
     pub return_type: Option<FunctionReturnTypeSyntax>,
+    pub idx: FunctionIdx,
 }
 
 #[derive(Debug, Clone)]
@@ -354,7 +362,6 @@ pub enum ExprKind {
     Parenthesized(
         ParenthesizedExpr
     ),
-
     Variable(
         VarExpr
     ),
@@ -369,29 +376,25 @@ pub enum ExprKind {
     ),
     If(IfExpr),
     Block(BlockExpr),
-    Func(FuncExpr),
-    Rec(RecExpr),
     Error(
         TextSpan
     ),
 }
 
 #[derive(Debug, Clone)]
-pub struct RecExpr {
-    pub rec_keyword: Token,
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncExpr {
-    pub decl: FunctionDeclaration,
-}
-
-#[derive(Debug, Clone)]
 pub struct CallExpr {
-    pub callee: ExprId,
+    pub callee: Token,
     pub left_paren: Token,
     pub arguments: Vec<ExprId>,
     pub right_paren: Token,
+}
+
+impl CallExpr {
+
+    pub fn function_name(&self) -> &str {
+        &self.callee.span.literal
+    }
+
 }
 
 #[derive(Debug, Clone)]
@@ -410,19 +413,19 @@ pub struct AssignExpr {
 }
 
 #[derive(Debug, Clone)]
-pub enum UnOpKid {
+pub enum UnOpKind {
     Minus,
     BitwiseNot,
 }
 
 #[derive(Debug, Clone)]
 pub struct UnOperator {
-    pub(crate) kind: UnOpKid,
+    pub(crate) kind: UnOpKind,
     token: Token,
 }
 
 impl UnOperator {
-    pub fn new(kind: UnOpKid, token: Token) -> Self {
+    pub fn new(kind: UnOpKind, token: Token) -> Self {
         UnOperator { kind, token }
     }
 }
@@ -581,7 +584,7 @@ impl Expr {
             }
             ExprKind::Boolean(expr) => expr.token.span.clone(),
             ExprKind::Call(expr) => {
-                let callee_span = ast.query_expr(expr.callee).span(ast);
+                let callee_span = expr.callee.span.clone();
                 let left_paren = expr.left_paren.span.clone();
                 let right_paren = expr.right_paren.span.clone();
                 let mut spans = vec![callee_span, left_paren, right_paren];
@@ -603,12 +606,6 @@ impl Expr {
                 TextSpan::combine(spans)
             }
             ExprKind::Error(span) => span.clone(),
-            ExprKind::Func(expr) => {
-                expr.decl.func_keyword.span.clone()
-            }
-            ExprKind::Rec(expr) => {
-                expr.rec_keyword.span.clone()
-            }
         }
     }
 }

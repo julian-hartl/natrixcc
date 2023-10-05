@@ -5,7 +5,7 @@ use std::rc::Rc;
 use fusion_compiler::{Idx, idx, IdxVec};
 
 use crate::{diagnostics, main, text};
-use crate::ast::{AssignExpr, Ast, BinaryExpr, BinOpKind, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, FuncExpr, FunctionDeclaration, FunctionReturnTypeSyntax, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, RecExpr, ReturnStmt, Stmt, StmtId, StmtKind, UnaryExpr, UnOpKid, VarExpr, WhileStmt};
+use crate::ast::{AssignExpr, Ast, BinaryExpr, BinOpKind, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, FunctionDeclaration, FunctionReturnTypeSyntax, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, StmtId, StmtKind, UnaryExpr, UnOpKind, VarExpr, WhileStmt};
 use crate::ast::evaluator::ASTEvaluator;
 use crate::ast::lexer::{Lexer, Token};
 use crate::ast::parser::Parser;
@@ -21,6 +21,7 @@ idx!(VariableIdx);
 #[derive(Debug, Clone)]
 pub struct Function {
     pub parameters: Vec<VariableIdx>,
+    pub name: String,
     pub body: ExprId,
     pub return_type: Type,
 }
@@ -46,7 +47,7 @@ impl GlobalScope {
         }
     }
 
-    fn declare_variable(&mut self, identifier: &str, ty: Type, is_global: bool) -> VariableIdx {
+    pub fn declare_variable(&mut self, identifier: &str, ty: Type, is_global: bool) -> VariableIdx {
         let variable = VariableSymbol {
             name: identifier.to_string(),
             ty,
@@ -65,14 +66,25 @@ impl GlobalScope {
             .map(|(variable_idx, _)| variable_idx)
     }
 
-    fn create_function(&mut self, function_body_id: &ExprId, parameters: Vec<VariableIdx>, return_type: Type) -> FunctionIdx {
+    pub fn create_function(&mut self, identifier: String, function_body_id: ExprId, parameters: Vec<VariableIdx>, return_type: Type) -> Result<FunctionIdx, FunctionIdx> {
+        // todo: check if function already exists
+        if let Some(existing_function_idx) = self.lookup_function(&identifier){
+            return Err(existing_function_idx);
+        }
         let function = Function {
             parameters,
-            body: *function_body_id,
+            body: function_body_id,
+            name: identifier,
             return_type,
         };
 
-        self.functions.push(function)
+        return Ok(self.functions.push(function));
+    }
+
+    pub fn lookup_function(&self, identifier: &str) -> Option<FunctionIdx> {
+        return self.functions.indexed_iter().find(
+            |(_, function)| function.name == identifier
+        ).map(|(idx, _)| idx);
     }
 
     fn set_variable_type(&mut self, variable_idx: VariableIdx, ty: Type) {
@@ -251,10 +263,10 @@ impl Resolver {
     }
 
 
-    pub fn resolve_unary_expression(&self, ast: &Ast, operand: &Expr, operator: &UnOpKid) -> Type {
+    pub fn resolve_unary_expression(&self, ast: &Ast, operand: &Expr, operator: &UnOpKind) -> Type {
         let matrix: (Type, Type) = match operator {
-            UnOpKid::Minus => (Type::Int, Type::Int),
-            UnOpKid::BitwiseNot => (Type::Int, Type::Int),
+            UnOpKind::Minus => (Type::Int, Type::Int),
+            UnOpKind::BitwiseNot => (Type::Int, Type::Int),
         };
 
         self.expect_type(matrix.0, &operand.ty, &operand.span(&ast));
@@ -263,7 +275,7 @@ impl Resolver {
     }
 }
 
-fn resolve_type_from_string(diagnostics: &DiagnosticsBagCell, type_name: &Token) -> Type {
+pub fn resolve_type_from_string(diagnostics: &DiagnosticsBagCell, type_name: &Token) -> Type {
     let ty = Type::from_str(&type_name.span.literal);
     let ty = match ty {
         None => {
@@ -277,40 +289,21 @@ fn resolve_type_from_string(diagnostics: &DiagnosticsBagCell, type_name: &Token)
 
 
 impl ASTVisitor for Resolver {
-    fn visit_func_expr(&mut self, ast: &mut Ast, func_expr: &FuncExpr, expr_id: ExprId) {
-        let decl = &func_expr.decl;
-        let parameters = decl.parameters
-            .iter()
-            .map(
-                |parameter| {
-                    let ty = resolve_type_from_string(&self.diagnostics, &parameter.type_annotation.type_name);
-                    self.scopes._declare_variable(
-                        &parameter.identifier.span.literal,
-                        ty,
-                        false,
-                    )
-                }
-            ).collect();
-        let return_type = decl.return_type.as_ref().map(|syntax| resolve_type_from_string(&self.diagnostics, &syntax.type_name)).unwrap_or(Type::Void);
-        let function_idx = self.scopes.global_scope.create_function(
-            &decl.body,
-            parameters,
-            return_type,
-        );
-        ast.set_type(expr_id, Type::Function(function_idx));
+    fn visit_func_decl(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration, item_id: ItemId) {
+        let function_idx = func_decl.idx;
         self.scopes.enter_function_scope(function_idx);
         let function = self.scopes.global_scope.functions.get(function_idx);
         for parameter in function.parameters.clone() {
             self.scopes.current_local_scope_mut().locals.push(parameter);
         }
-        self.visit_expression(ast, decl.body);
+        self.visit_expression(ast, func_decl.body);
         self.scopes.exit_function_scope();
     }
 
     fn visit_return_statement(&mut self, ast: &mut Ast, return_statement: &ReturnStmt) {
         let return_keyword = return_statement.return_keyword.clone();
         // todo: do not clone
-        match self.scopes.surrounding_function().map(|function| function.clone()) {
+        match self.scopes.surrounding_function().cloned() {
             None => {
                 let mut diagnostics_binding = self.diagnostics.borrow_mut();
                 diagnostics_binding.report_cannot_return_outside_function(&return_statement.return_keyword);
@@ -390,40 +383,23 @@ impl ASTVisitor for Resolver {
         ast.set_variable_for_stmt(&stmt.id, variable);
     }
 
-    fn visit_rec_expression(&mut self, ast: &mut Ast, expr: &RecExpr, expr_id: ExprId) {
-        match self.scopes.surrounding_function_idx() {
-            None => {
-                let mut diagnostics_binding = self.diagnostics.borrow_mut();
-                diagnostics_binding.report_cannot_use_rec_outside_of_function(&expr.rec_keyword);
-            }
-            Some(function) => {
-                ast.set_type(expr_id, Type::Function(function));
-            }
-        }
-    }
-
     fn visit_call_expression(&mut self, ast: &mut Ast, call_expression: &CallExpr, expr: &Expr) {
-        self.visit_expression(ast, call_expression.callee);
-        let callee = ast.query_expr(call_expression.callee);
-        let function = match &callee.ty {
-            Type::Function(function) => Some(*function),
-            _ => None,
-        };
+        let function  = self.scopes.global_scope.lookup_function(&call_expression.callee.span.literal);
+
         let ty = match function {
             None => {
                 let mut diagnostics_binding = self.diagnostics.borrow_mut();
-                diagnostics_binding.report_cannot_call_no_callable_expression(
-                    &ast.query_expr(callee.id).span(ast),
-                    &callee.ty,
+                diagnostics_binding.report_undeclared_function(
+                    &call_expression.callee
                 );
-                Type::Void
+                Type::Error
             }
             Some(function) => {
                 let function = self.scopes.global_scope.functions.get(function);
                 if function.parameters.len() != call_expression.arguments.len() {
                     let mut diagnostics_binding = self.diagnostics.borrow_mut();
                     diagnostics_binding.report_invalid_argument_count(
-                        &ast.query_expr(expr.id).span(ast),
+                        &call_expression.callee.span,
                         function.parameters.len(),
                         call_expression.arguments.len(),
                     );
@@ -534,15 +510,16 @@ impl CompilationUnit {
         }
         let diagnostics_bag: DiagnosticsBagCell = Rc::new(RefCell::new(diagnostics::DiagnosticsBag::new()));
         let mut ast = Ast::new();
+        let mut global_scope = GlobalScope::new();
         let mut parser = Parser::new(
             tokens,
             Rc::clone(&diagnostics_bag),
             &mut ast,
+            &mut global_scope,
         );
         parser.parse();
         ast.visualize();
         Self::check_diagnostics(&text, &diagnostics_bag).map_err(|_| Rc::clone(&diagnostics_bag))?;
-        let global_scope = GlobalScope::new();
         let scopes = Scopes::from_global_scope(global_scope);
         let mut resolver = Resolver::new(Rc::clone(&diagnostics_bag), scopes);
         resolver.resolve(&mut ast);
@@ -566,14 +543,9 @@ impl CompilationUnit {
         let mut eval = ASTEvaluator::new(
             &self.global_scope,
         );
-        let main_function_ref = self.global_scope.lookup_global_variable("main");
+        let main_function_ref = self.global_scope.lookup_function("main");
         if let Some(function) = main_function_ref {
-            let function = self.global_scope.variables.get(function);
-            let function = match &function.ty {
-                Type::Function(function) => function,
-                _ => panic!("Expected function type"),
-            };
-            let function = self.global_scope.functions.get(*function);
+            let function = self.global_scope.functions.get(function);
             eval.visit_expression(&mut self.ast, function.body);
         } else {
             self.ast.visit(&mut eval);

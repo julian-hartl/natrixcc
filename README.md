@@ -14,8 +14,8 @@
     - Statement
 - [x] Make everything an expression
 
-### Today
-- [] Make functions expressions
+### Stream #8
+- [x] Make functions expressions
   ```
     let add = func (a: int, b: int) -> int {
       return a + b
@@ -28,13 +28,20 @@
   ```
 
 
-### Todo
-- Add tests for evaluator
-- Add rec keyword that references the immediately enclosing function
-  ```
-  sum = add(sum, func () -> {
-  // This function is not named, so we can't reference it by name
-  rec()
-  })
-  ```
+### Stream #9
+- Rethink language design
+  - I'd like it not to become too functional - Therefore we should reconsider the current way of function declarations
+Instead of
+```
+let add = func(a: int, b: int) -> int {
+  return a + b
+}
+```
+We could do
+```
+func add(a: int, b: int) -> int {
+  return a + b
+}
+```
+- Refactor symbol resolving => Move to parsing stage because we have all the information (except for types) at that point
 
