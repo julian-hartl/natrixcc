@@ -3,7 +3,7 @@ use std::env::var;
 use std::fmt::format;
 use fusion_compiler::Idx;
 
-use crate::ast::{AssignExpr, Ast, BinaryExpr, BinOpKind, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, FuncExpr, FunctionDeclaration, IfExpr, LetStmt, NumberExpr, ParenthesizedExpr, RecExpr, Stmt, UnaryExpr, UnOpKid, VarExpr, WhileStmt};
+use crate::ast::{AssignExpr, Ast, BinaryExpr, BinOpKind, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, Stmt, UnaryExpr, UnOpKind, VarExpr, WhileStmt};
 use crate::ast::visitor::ASTVisitor;
 use crate::compilation_unit::{FunctionIdx, GlobalScope, VariableIdx};
 use crate::text::span::TextSpan;
@@ -130,7 +130,8 @@ impl<'a> ASTEvaluator<'a> {
 }
 
 impl<'a> ASTVisitor for ASTEvaluator<'a> {
-    fn visit_func_expr(&mut self, ast: &mut Ast, func_expr: &FuncExpr, expr_id: ExprId) {}
+    fn visit_func_decl(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration, item_id: ItemId) {
+    }
 
     fn visit_while_statement(&mut self, ast: &mut Ast, while_statement: &WhileStmt) {
         self.push_frame();
@@ -157,12 +158,10 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
             self.push_frame();
             self.visit_expression(ast, if_statement.then_branch);
             self.pop_frame();
-        } else {
-            if let Some(else_branch) = &if_statement.else_branch {
-                self.push_frame();
-                self.visit_expression(ast, else_branch.expr);
-                self.pop_frame();
-            }
+        } else if let Some(else_branch) = &if_statement.else_branch {
+            self.push_frame();
+            self.visit_expression(ast, else_branch.expr);
+            self.pop_frame();
         }
         self.pop_frame();
     }
@@ -172,22 +171,9 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
         self.frames.insert(let_statement.variable_idx, self.expect_last_value());
     }
 
-    fn visit_rec_expression(&mut self, ast: &mut Ast, expr: &RecExpr, expr_id: ExprId) {
-        let expr = ast.query_expr(expr_id);
-        let function = match expr.ty {
-            Type::Function(function) => function,
-            _ => panic!("Expected function type")
-        };
-        self.last_value = Some(Value::Function(function));
-    }
-
     fn visit_call_expression(&mut self, ast: &mut Ast, call_expression: &CallExpr, expr: &Expr) {
-        let callee = ast.query_expr(call_expression.callee);
-        let function_idx = match &callee.ty {
-            Type::Function(function_idx) => *function_idx,
-            _ => panic!("Expected function type")
-        };
-        let function = self.global_scope.functions.get(function_idx);
+        let function_name = call_expression.function_name();
+        let function = self.global_scope.lookup_function(function_name).map(|f| self.global_scope.functions.get(f)).expect(format!("Function '{}' not found", call_expression.callee.span.literal).as_str());
         let mut arguments = Vec::new();
         for argument in &call_expression.arguments {
             self.visit_expression(ast, *argument);
@@ -212,25 +198,25 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
         self.last_value = Some(*self.frames.get(&var_expr.variable_idx).expect(format!("Variable {} '{}' not found", var_expr.variable_idx.as_index(),  identifier).as_str()));
     }
 
+
     fn visit_number_expression(&mut self, ast: &mut Ast, number: &NumberExpr, expr: &Expr) {
         self.last_value = Some(Value::Number(number.number));
     }
-
 
     fn visit_boolean_expression(&mut self, ast: &mut Ast, boolean: &BoolExpr, expr: &Expr) {
         self.last_value = Some(Value::Boolean(boolean.value));
     }
 
     fn visit_error(&mut self, ast: &mut Ast, span: &TextSpan) {
-        todo!()
+        panic!("Cannot evaluate error expression")
     }
 
     fn visit_unary_expression(&mut self, ast: &mut Ast, unary_expression: &UnaryExpr, expr: &Expr) {
         self.visit_expression(ast, unary_expression.operand);
         let operand = self.expect_last_value().expect_number();
         self.last_value = Some(Value::Number(match unary_expression.operator.kind {
-            UnOpKid::Minus => -operand,
-            UnOpKid::BitwiseNot => !operand,
+            UnOpKind::Minus => -operand,
+            UnOpKind::BitwiseNot => !operand,
         }));
     }
 

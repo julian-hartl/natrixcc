@@ -6,7 +6,6 @@ pub enum Type {
     Int,
     Bool,
     Void,
-    Function(FunctionIdx),
     Unresolved,
     Error,
 }
@@ -18,7 +17,6 @@ impl Display for Type {
             Type::Bool => "bool",
             Type::Unresolved => "unresolved",
             Type::Void => "void",
-            Type::Function(_) => "function",
             Type::Error => "?",
         };
 

@@ -1,8 +1,10 @@
 use std::cell::Cell;
 
-use crate::ast::{Ast, BinOpAssociativity, BinOperator, BinOpKind, ElseBranch, Expr, ExprId, FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt, StmtId, UnaryExpr, UnOperator, UnOpKid};
-use crate::ast::lexer::{Lexer, Token, TokenKind};
+use crate::ast::{Ast, BinOpAssociativity, BinOperator, BinOpKind, ElseBranch, Expr, ExprId, FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt, StmtId, UnOperator, UnOpKind};
+use crate::ast::lexer::{Token, TokenKind};
+use crate::compilation_unit::{FunctionIdx, GlobalScope, resolve_type_from_string};
 use crate::diagnostics::DiagnosticsBagCell;
+use crate::typings::Type;
 
 #[derive(Debug, Clone)]
 pub struct Counter {
@@ -31,6 +33,7 @@ pub struct Parser<'a> {
     current: Counter,
     diagnostics_bag: DiagnosticsBagCell,
     ast: &'a mut Ast,
+    global_scope: &'a mut GlobalScope,
 }
 
 impl<'a> Parser<'a> {
@@ -38,6 +41,7 @@ impl<'a> Parser<'a> {
         tokens: Vec<Token>,
         diagnostics_bag: DiagnosticsBagCell,
         ast: &'a mut Ast,
+        global_scope: &'a mut GlobalScope,
     ) -> Self {
         Self {
             tokens: tokens.iter().filter(
@@ -46,6 +50,7 @@ impl<'a> Parser<'a> {
             current: Counter::new(),
             diagnostics_bag,
             ast,
+            global_scope,
         }
     }
 
@@ -65,8 +70,51 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_item(&mut self) -> &Item {
-        let id = self.parse_statement();
-        self.ast.item_from_kind(ItemKind::Stmt(id))
+        return match &self.current().kind {
+            TokenKind::Func =>
+                self.parse_func_item(),
+            _ => {
+                let id = self.parse_statement();
+                self.ast.item_from_kind(ItemKind::Stmt(id))
+            }
+        };
+    }
+
+    fn parse_func_item(&mut self) -> &Item {
+        let func_keyword = self.consume_and_check(TokenKind::Func).clone();
+        let identifier = self.consume_and_check(TokenKind::Identifier).clone();
+        let parameters = self.parse_optional_parameter_list();
+        let return_type = self.parse_optional_return_type();
+
+        let body = self.parse_expr();
+        let declared_parameters = parameters
+            .iter()
+            .map(
+                |parameter| {
+                    let ty = resolve_type_from_string(&self.diagnostics_bag, &parameter.type_annotation.type_name);
+                    self.global_scope.declare_variable(
+                        &parameter.identifier.span.literal,
+                        ty,
+                        false,
+                    )
+                }
+            ).collect();
+        let created_function_idx_result = self.global_scope.create_function(
+            identifier.span.literal.clone(),
+            body,
+            declared_parameters,
+            return_type.clone().map(|return_type| resolve_type_from_string(&self.diagnostics_bag, &return_type.type_name)).unwrap_or(Type::Void),
+        );
+        let function_idx =  match created_function_idx_result {
+            Ok(created_function_idx) => created_function_idx,
+            Err(already_existing_function_idx) => {
+                self.diagnostics_bag.borrow_mut().report_function_already_declared(
+                    &identifier,
+                );
+                already_existing_function_idx
+            }
+        };
+        return self.ast.func_item(func_keyword, identifier, parameters, body, return_type, function_idx);
     }
 
     fn parse_statement(&mut self) -> StmtId {
@@ -86,13 +134,6 @@ impl<'a> Parser<'a> {
         };
         self.consume_if(TokenKind::SemiColon);
         stmt
-    }
-
-    fn parse_func_expr(&mut self, func_keyword: Token) -> &Expr {
-        let parameters = self.parse_optional_parameter_list();
-        let return_type = self.parse_optional_return_type();
-        let body = self.parse_expr();
-        self.ast.func_expr(func_keyword, parameters, body, return_type)
     }
 
     fn parse_optional_return_type(&mut self) -> Option<FunctionReturnTypeSyntax> {
@@ -216,7 +257,7 @@ impl<'a> Parser<'a> {
         self.parse_binary_expression_recurse(left, 0)
     }
 
-    fn parse_binary_expression_recurse(&mut self, mut left: ExprId, precedence: u8) ->ExprId {
+    fn parse_binary_expression_recurse(&mut self, mut left: ExprId, precedence: u8) -> ExprId {
         while let Some(operator) = self.parse_binary_operator() {
             let operator_precedence = operator.precedence();
             if operator_precedence < precedence {
@@ -252,10 +293,10 @@ impl<'a> Parser<'a> {
         let token = self.current();
         let kind = match token.kind {
             TokenKind::Minus => {
-                Some(UnOpKid::Minus)
+                Some(UnOpKind::Minus)
             }
             TokenKind::Tilde => {
-                Some(UnOpKid::BitwiseNot)
+                Some(UnOpKind::BitwiseNot)
             }
             _ => {
                 None
@@ -319,13 +360,7 @@ impl<'a> Parser<'a> {
 
     fn parse_primary_expression(&mut self) -> ExprId {
         let token = self.consume().clone();
-        let expr = match token.kind {
-            TokenKind::Rec => {
-                self.ast.rec_expression(token)
-            }
-            TokenKind::Func => {
-                self.parse_func_expr(token)
-            }
+        return match token.kind {
             TokenKind::OpenBrace => {
                 self.parse_block_expression(token)
             }
@@ -342,6 +377,9 @@ impl<'a> Parser<'a> {
                 self.ast.parenthesized_expression(left_paren, expr, right_paren)
             }
             TokenKind::Identifier => {
+                if matches!(self.current().kind, TokenKind::LeftParen) {
+                    return self.parse_call_expression(token);
+                }
                 self.ast.variable_expression(token)
             }
             TokenKind::True | TokenKind::False => {
@@ -353,16 +391,9 @@ impl<'a> Parser<'a> {
                 self.ast.error_expression(token.span)
             }
         }.id;
-
-        return match &self.current().kind {
-            TokenKind::LeftParen => {
-                self.parse_call_expression(expr)
-            }
-            _ => expr
-        };
     }
 
-    fn parse_call_expression(&mut self, callee: ExprId) -> ExprId {
+    fn parse_call_expression(&mut self, identifier: Token) -> ExprId {
         let left_paren = self.consume_and_check(TokenKind::LeftParen).clone();
         let mut arguments = Vec::new();
         while self.current().kind != TokenKind::RightParen && !self.is_at_end() {
@@ -372,7 +403,7 @@ impl<'a> Parser<'a> {
             }
         }
         let right_paren = self.consume_and_check(TokenKind::RightParen).clone();
-        return self.ast.call_expression(callee, left_paren, arguments, right_paren).id;
+        return self.ast.call_expression(identifier, left_paren, arguments, right_paren).id;
     }
 
     fn peek(&self, offset: isize) -> &Token {
