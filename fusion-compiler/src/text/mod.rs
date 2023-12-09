@@ -6,9 +6,7 @@ pub struct SourceText {
 
 impl SourceText {
     pub fn new(text: String) -> Self {
-        Self {
-            text
-        }
+        Self { text }
     }
 
     pub fn line_index(&self, position: usize) -> usize {
@@ -20,6 +18,10 @@ impl SourceText {
     }
 
     pub fn line_start(&self, index: usize) -> usize {
-        self.text.lines().take(index).map(|line| line.len() + 1).sum()
+        self.text
+            .lines()
+            .take(index)
+            .map(|line| line.len() + 1)
+            .sum()
     }
 }

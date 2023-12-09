@@ -1,5 +1,5 @@
-use std::fmt::{Display, Formatter, write};
 use crate::text::span::TextSpan;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
@@ -15,6 +15,7 @@ pub enum TokenKind {
     Pipe,
     Caret,
     DoubleAsterisk,
+    Percent,
     Tilde,
     GreaterThan,
     LessThan,
@@ -67,6 +68,7 @@ impl Display for TokenKind {
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Caret => write!(f, "^"),
             TokenKind::DoubleAsterisk => write!(f, "**"),
+            TokenKind::Percent => write!(f, "%"),
             TokenKind::Tilde => write!(f, "~"),
             TokenKind::If => write!(f, "If"),
             TokenKind::Else => write!(f, "Else"),
@@ -87,6 +89,7 @@ impl Display for TokenKind {
             TokenKind::Colon => write!(f, "Colon"),
             TokenKind::Arrow => write!(f, "Arrow"),
             TokenKind::SemiColon => write!(f, "SemiColon"),
+
         }
     }
 }
@@ -110,7 +113,10 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
-        Self { input, current_pos: 0 }
+        Self {
+            input,
+            current_pos: 0,
+        }
     }
 
     pub fn next_token(&mut self) -> Option<Token> {
@@ -129,10 +135,10 @@ impl<'a> Lexer<'a> {
             if Self::is_number_start(&c) {
                 let number: i64 = self.consume_number();
                 kind = TokenKind::Number(number);
-            } else if Self::is_whitespace(&c){
+            } else if Self::is_whitespace(&c) {
                 self.consume();
                 kind = TokenKind::Whitespace;
-            } else if Self::is_identifier_start(&c){
+            } else if Self::is_identifier_start(&c) {
                 let identifier = self.consume_identifier();
                 kind = match identifier.as_str() {
                     "let" => TokenKind::Let,
@@ -145,8 +151,7 @@ impl<'a> Lexer<'a> {
                     "return" => TokenKind::Return,
                     _ => TokenKind::Identifier,
                 }
-
-            } else  {
+            } else {
                 kind = self.consume_punctuation();
             }
 
@@ -162,49 +167,53 @@ impl<'a> Lexer<'a> {
         match c {
             '+' => TokenKind::Plus,
             '-' => self.lex_potential_double_char_operator('>', TokenKind::Minus, TokenKind::Arrow),
-            '*' => {
-                self.lex_potential_double_char_operator('*', TokenKind::Asterisk, TokenKind::DoubleAsterisk)
-            },
+            '*' => self.lex_potential_double_char_operator(
+                '*',
+                TokenKind::Asterisk,
+                TokenKind::DoubleAsterisk,
+            ),
+            '%' => TokenKind::Percent,
             '/' => TokenKind::Slash,
             '(' => TokenKind::LeftParen,
             ')' => TokenKind::RightParen,
-            '=' => {
-                self.lex_potential_double_char_operator('=', TokenKind::Equals, TokenKind::EqualsEquals)
-            },
+            '=' => self.lex_potential_double_char_operator(
+                '=',
+                TokenKind::Equals,
+                TokenKind::EqualsEquals,
+            ),
             '&' => TokenKind::Ampersand,
             '|' => TokenKind::Pipe,
             '^' => TokenKind::Caret,
             '~' => TokenKind::Tilde,
-            '>' => {
-                self.lex_potential_double_char_operator('=', TokenKind::GreaterThan, TokenKind::GreaterThanEquals)
-            },
-            '<' => {
-                self.lex_potential_double_char_operator('=', TokenKind::LessThan, TokenKind::LessThanEquals)
-            },
+            '>' => self.lex_potential_double_char_operator(
+                '=',
+                TokenKind::GreaterThan,
+                TokenKind::GreaterThanEquals,
+            ),
+            '<' => self.lex_potential_double_char_operator(
+                '=',
+                TokenKind::LessThan,
+                TokenKind::LessThanEquals,
+            ),
             '!' => {
                 self.lex_potential_double_char_operator('=', TokenKind::Bad, TokenKind::BangEquals)
-            },
-            '{' => {
-                TokenKind::OpenBrace
-            },
-            '}' => {
-                TokenKind::CloseBrace
-            },
-            ',' => {
-                TokenKind::Comma
-            },
-            ':' => {
-                TokenKind::Colon
-            },
-            ';' => {
-                TokenKind::SemiColon
-            },
+            }
+            '{' => TokenKind::OpenBrace,
+            '}' => TokenKind::CloseBrace,
+            ',' => TokenKind::Comma,
+            ':' => TokenKind::Colon,
+            ';' => TokenKind::SemiColon,
 
             _ => TokenKind::Bad,
         }
     }
 
-    fn lex_potential_double_char_operator(&mut self, expected: char, one_char_kind: TokenKind, double_char_kind: TokenKind) -> TokenKind {
+    fn lex_potential_double_char_operator(
+        &mut self,
+        expected: char,
+        one_char_kind: TokenKind,
+        double_char_kind: TokenKind,
+    ) -> TokenKind {
         if let Some(next) = self.current_char() {
             if next == expected {
                 self.consume();
@@ -222,7 +231,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn is_identifier_start(c: &char) -> bool {
-        c.is_alphabetic()
+        c.is_alphabetic() || c == &'_'
     }
 
     fn is_whitespace(c: &char) -> bool {

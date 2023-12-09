@@ -13,7 +13,6 @@ pub enum DiagnosticKind {
     Warning,
 }
 
-
 #[derive(Clone, Debug)]
 pub struct Diagnostic {
     pub message: String,
@@ -23,7 +22,11 @@ pub struct Diagnostic {
 
 impl Diagnostic {
     pub fn new(message: String, span: TextSpan, kind: DiagnosticKind) -> Self {
-        Diagnostic { message, span, kind }
+        Diagnostic {
+            message,
+            span,
+            kind,
+        }
     }
 }
 
@@ -36,7 +39,9 @@ pub struct DiagnosticsBag {
 
 impl DiagnosticsBag {
     pub fn new() -> Self {
-        DiagnosticsBag { diagnostics: vec![] }
+        DiagnosticsBag {
+            diagnostics: vec![],
+        }
     }
 
     pub fn report_error(&mut self, message: String, span: TextSpan) {
@@ -50,46 +55,101 @@ impl DiagnosticsBag {
     }
 
     pub fn report_unexpected_token(&mut self, expected: &TokenKind, token: &Token) {
-        self.report_error(format!("Expected <{}>, found <{}>", expected, token.kind), token.span.clone());
+        self.report_error(
+            format!("Expected <{}>, found <{}>", expected, token.kind),
+            token.span.clone(),
+        );
     }
     pub fn report_expected_expression(&mut self, token: &Token) {
-        self.report_error(format!("Expected expression, found <{}>", token.kind), token.span.clone());
+        self.report_error(
+            format!("Expected expression, found <{}>", token.kind),
+            token.span.clone(),
+        );
     }
 
     pub fn report_undeclared_variable(&mut self, token: &Token) {
-        self.report_error(format!("Undeclared variable '{}'", token.span.literal), token.span.clone());
+        self.report_error(
+            format!("Undeclared variable '{}'", token.span.literal),
+            token.span.clone(),
+        );
     }
 
     pub fn report_undeclared_function(&mut self, token: &Token) {
-        self.report_error(format!("Undeclared function '{}'", token.span.literal), token.span.clone());
+        self.report_error(
+            format!("Undeclared function '{}'", token.span.literal),
+            token.span.clone(),
+        );
     }
 
-    pub fn report_cannot_call_no_callable_expression(&mut self, callee_span: &TextSpan, callee_type: &Type) {
-        self.report_error(format!("Cannot call non-callable expression of type '{}'", callee_type), callee_span.clone());
+    pub fn report_cannot_call_no_callable_expression(
+        &mut self,
+        callee_span: &TextSpan,
+        callee_type: &Type,
+    ) {
+        self.report_error(
+            format!(
+                "Cannot call non-callable expression of type '{}'",
+                callee_type
+            ),
+            callee_span.clone(),
+        );
     }
 
-    pub fn report_invalid_argument_count(&mut self, callee_span: &TextSpan, expected: usize, actual: usize) {
-        self.report_error(format!("Function '{}' expects {} {}, but was given {}", callee_span.literal, expected, if expected == 1 { "argument" } else { "arguments" }, actual), callee_span.clone());
+    pub fn report_invalid_argument_count(
+        &mut self,
+        callee_span: &TextSpan,
+        expected: usize,
+        actual: usize,
+    ) {
+        self.report_error(
+            format!(
+                "Function '{}' expects {} {}, but was given {}",
+                callee_span.literal,
+                expected,
+                if expected == 1 {
+                    "argument"
+                } else {
+                    "arguments"
+                },
+                actual
+            ),
+            callee_span.clone(),
+        );
     }
 
     pub fn report_function_already_declared(&mut self, token: &Token) {
-        self.report_error(format!("Function '{}' already declared", token.span.literal), token.span.clone());
+        self.report_error(
+            format!("Function '{}' already declared", token.span.literal),
+            token.span.clone(),
+        );
     }
 
     pub fn report_type_mismatch(&mut self, span: &TextSpan, expected: &Type, actual: &Type) {
-        self.report_error(format!("Expected type '{}', found '{}'", expected, actual), span.clone());
+        self.report_error(
+            format!("Expected type '{}', found '{}'", expected, actual),
+            span.clone(),
+        );
     }
 
     pub fn report_undeclared_type(&mut self, token: &Token) {
-        self.report_error(format!("Undeclared type '{}'", token.span.literal), token.span.clone());
+        self.report_error(
+            format!("Undeclared type '{}'", token.span.literal),
+            token.span.clone(),
+        );
     }
 
     pub fn report_cannot_return_outside_function(&mut self, token: &Token) {
-        self.report_error(format!("Cannot use 'return' outside of function"), token.span.clone());
+        self.report_error(
+            format!("Cannot use 'return' outside of function"),
+            token.span.clone(),
+        );
     }
 
     pub fn report_cannot_use_rec_outside_of_function(&mut self, token: &Token) {
-        self.report_error(format!("Cannot use 'rec' outside of function"), token.span.clone());
+        self.report_error(
+            format!("Cannot use 'rec' outside of function"),
+            token.span.clone(),
+        );
     }
 }
 
@@ -156,13 +216,35 @@ mod test {
         }
 
         fn verify(&self) {
-            assert_eq!(self.actual.len(), self.expected.len(), "Expected {} diagnostics, found {}", self.expected.len(), self.actual.len());
+            assert_eq!(
+                self.actual.len(),
+                self.expected.len(),
+                "Expected {} diagnostics, found {}",
+                self.expected.len(),
+                self.actual.len()
+            );
 
             for (actual, expected) in self.actual.iter().zip(self.expected.iter()) {
-                assert_eq!(actual.message, expected.message, "Expected message '{}', found '{}'", expected.message, actual.message);
-                assert_eq!(actual.span.start, expected.span.start, "Expected start index {}, found {}", expected.span.start, actual.span.start);
-                assert_eq!(actual.span.end, expected.span.end, "Expected end index {}, found {}", expected.span.end, actual.span.end);
-                assert_eq!(actual.span.literal, expected.span.literal, "Expected literal '{}', found '{}'", expected.span.literal, actual.span.literal);
+                assert_eq!(
+                    actual.message, expected.message,
+                    "Expected message '{}', found '{}'",
+                    expected.message, actual.message
+                );
+                assert_eq!(
+                    actual.span.start, expected.span.start,
+                    "Expected start index {}, found {}",
+                    expected.span.start, actual.span.start
+                );
+                assert_eq!(
+                    actual.span.end, expected.span.end,
+                    "Expected end index {}, found {}",
+                    expected.span.end, actual.span.end
+                );
+                assert_eq!(
+                    actual.span.literal, expected.span.literal,
+                    "Expected literal '{}', found '{}'",
+                    expected.span.literal, actual.span.literal
+                );
             }
         }
     }
@@ -175,20 +257,15 @@ mod test {
     #[test]
     fn should_report_undeclared_variable() {
         let input = "let a = «b»";
-        let expected = vec![
-            "Undeclared variable 'b'"
-        ];
+        let expected = vec!["Undeclared variable 'b'"];
 
         assert_diagnostics(input, expected);
     }
 
-
     #[test]
     fn should_report_expected_expression() {
         let input = "let a = «+»";
-        let expected = vec![
-            "Expected expression, found <+>"
-        ];
+        let expected = vec!["Expected expression, found <+>"];
 
         assert_diagnostics(input, expected);
     }
@@ -196,9 +273,7 @@ mod test {
     #[test]
     fn should_report_bad_token() {
         let input = "let a = 8 «@» 2";
-        let expected = vec![
-            "Expected expression, found <Bad>"
-        ];
+        let expected = vec!["Expected expression, found <Bad>"];
 
         assert_diagnostics(input, expected);
     }
@@ -219,9 +294,7 @@ mod test {
 b
 «c»
     ";
-        let expected = vec![
-            "Undeclared variable 'c'"
-        ];
+        let expected = vec!["Undeclared variable 'c'"];
 
         assert_diagnostics(input, expected);
     }
@@ -248,9 +321,7 @@ b
         }
         «a»
     ";
-        let expected = vec![
-            "Undeclared variable 'a'"
-        ];
+        let expected = vec!["Undeclared variable 'a'"];
 
         assert_diagnostics(input, expected);
     }
@@ -262,9 +333,7 @@ b
         func «a» {}
     ";
 
-        let expected = vec![
-            "Function 'a' already declared"
-        ];
+        let expected = vec!["Function 'a' already declared"];
 
         assert_diagnostics(input, expected);
     }
@@ -275,9 +344,7 @@ b
         «a»()
     ";
 
-        let expected = vec![
-            "Undeclared function 'a'"
-        ];
+        let expected = vec!["Undeclared function 'a'"];
 
         assert_diagnostics(input, expected);
     }
@@ -289,9 +356,7 @@ b
         «a»(1)
     ";
 
-        let expected = vec![
-            "Function 'a' expects 2 arguments, but was given 1"
-        ];
+        let expected = vec!["Function 'a' expects 2 arguments, but was given 1"];
 
         assert_diagnostics(input, expected);
     }
@@ -304,9 +369,7 @@ b
         }
     ";
 
-        let expected = vec![
-            "Expected type 'bool', found 'int'"
-        ];
+        let expected = vec!["Expected type 'bool', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
@@ -320,15 +383,14 @@ b
         }
     ";
 
-        let expected = vec![
-            "Expected type 'bool', found 'int'"
-        ];
+        let expected = vec!["Expected type 'bool', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
 
     #[test]
-    pub fn should_report_type_mismatch_when_binary_expression_of_type_int_is_used_in_if_condition() {
+    pub fn should_report_type_mismatch_when_binary_expression_of_type_int_is_used_in_if_condition()
+    {
         let input = "\
         let a = 1
         if «a + 1» {
@@ -336,9 +398,7 @@ b
         }
     ";
 
-        let expected = vec![
-            "Expected type 'bool', found 'int'"
-        ];
+        let expected = vec!["Expected type 'bool', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
@@ -350,9 +410,7 @@ b
         a + «true»
     ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -364,9 +422,7 @@ b
         -«a»
     ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -381,9 +437,7 @@ b
         }
         ";
 
-        let expected = vec![
-            "Expected type 'bool', found 'int'"
-        ];
+        let expected = vec!["Expected type 'bool', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
@@ -396,9 +450,7 @@ b
         }
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -411,9 +463,7 @@ b
         }
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -424,9 +474,7 @@ b
         let a: int = «true»
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -437,9 +485,7 @@ b
         «return» 2
         ";
 
-        let expected = vec![
-            "Cannot use 'return' outside of function"
-        ];
+        let expected = vec!["Cannot use 'return' outside of function"];
 
         assert_diagnostics(input, expected);
     }
@@ -452,9 +498,7 @@ b
         func a {}
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'void'"
-        ];
+        let expected = vec!["Expected type 'int', found 'void'"];
 
         assert_diagnostics(input, expected);
     }
@@ -465,9 +509,7 @@ b
         let a: «b» = 1
         ";
 
-        let expected = vec![
-            "Undeclared type 'b'"
-        ];
+        let expected = vec!["Undeclared type 'b'"];
 
         assert_diagnostics(input, expected);
     }
@@ -478,9 +520,7 @@ b
         func a -> «b» {}
         ";
 
-        let expected = vec![
-            "Undeclared type 'b'"
-        ];
+        let expected = vec!["Undeclared type 'b'"];
 
         assert_diagnostics(input, expected);
     }
@@ -491,9 +531,7 @@ b
         func a(a: «b») {}
         ";
 
-        let expected = vec![
-            "Undeclared type 'b'"
-        ];
+        let expected = vec!["Undeclared type 'b'"];
 
         assert_diagnostics(input, expected);
     }
@@ -505,9 +543,7 @@ b
         a(«true»)
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'bool'"
-        ];
+        let expected = vec!["Expected type 'int', found 'bool'"];
 
         assert_diagnostics(input, expected);
     }
@@ -520,9 +556,7 @@ b
         }
         ";
 
-        let expected = vec![
-            "Expected type 'void', found 'int'"
-        ];
+        let expected = vec!["Expected type 'void', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
@@ -535,9 +569,7 @@ b
         }
         ";
 
-        let expected = vec![
-            "Expected type 'int', found 'void'"
-        ];
+        let expected = vec!["Expected type 'int', found 'void'"];
 
         assert_diagnostics(input, expected);
     }
@@ -548,9 +580,7 @@ b
         «a» = 1
         ";
 
-        let expected = vec![
-            "Undeclared variable 'a'"
-        ];
+        let expected = vec!["Undeclared variable 'a'"];
 
         assert_diagnostics(input, expected);
     }
@@ -568,11 +598,8 @@ b
 
     ";
 
-        let expected = vec![
-            "Expected type 'bool', found 'int'"
-        ];
+        let expected = vec!["Expected type 'bool', found 'int'"];
 
         assert_diagnostics(input, expected);
     }
 }
-

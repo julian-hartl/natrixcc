@@ -7,13 +7,15 @@ pub struct TextSpan {
 
 impl TextSpan {
     pub fn new(start: usize, end: usize, literal: String) -> Self {
-        Self { start, end, literal }
+        Self {
+            start,
+            end,
+            literal,
+        }
     }
 
     pub fn combine(mut spans: Vec<TextSpan>) -> TextSpan {
-        spans.sort_by(
-            |a, b| a.start.cmp(&b.start)
-        );
+        spans.sort_by(|a, b| a.start.cmp(&b.start));
 
         let start = spans.first().unwrap().start;
         let end = spans.last().unwrap().end;

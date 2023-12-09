@@ -1,68 +1,68 @@
-#![allow(clippy::needless_return)]
+#![feature(exit_status_error)]
 
 use std::fs::File;
 use std::io::Write;
-use std::process::Command;
-use crate::codegen::CTranspiler;
+
+use anyhow::{anyhow, Result};
+
 use crate::compilation_unit::CompilationUnit;
+use crate::hir::{HIRBuilder, HIRWriter};
+use crate::mir::{MIRBuilder, MIRWriter};
+use crate::mir::optimizations::Optimizer;
+
 mod ast;
+mod codegen;
+mod compilation_unit;
 mod diagnostics;
 mod text;
-mod compilation_unit;
 mod typings;
-mod codegen;
+mod mir;
+mod hir;
 
-fn main() -> Result<(), ()> {
-    let input = "\
-        1 - 1 + 1
-        let a = 10
-        let b = 20
-        let b = b + 20
 
-        let z = mul(a, a)
-        func mul (a: int, b: int) -> int {
-            let sum = 0
-            while b > 0 {
-                sum = sum + a
-                b = b - 1
+fn main() -> Result<()> {
+    std::env::set_var("RUST_BACKTRACE", "1");
+    std::env::set_var("RUST_LOG", "debug");
+    tracing_subscriber::fmt::init();
+    let input = "
+
+
+        func main() -> int {
+            let d = 2;
+            while d < 10 {
+                d = d + if d < 5 {
+                    1
+                } else {
+                    2
+                };
             }
-            return sum
+            return d;
         }
-
-        let c = mul(a, b)
-
-        let d = if a == b {
-            {
-                {
-                {
-                10
-            }
-            }
-            }
-        } else {
-            20
-        }
-        let e = c + d
-        z
     ";
-    let mut compilation_unit = CompilationUnit::compile(input).map_err(|_| ())?;
+    let mut compilation_unit = CompilationUnit::compile(input).map_err(
+        |err| anyhow!("Compilation failed")
+    )?;
     compilation_unit.run();
-    let mut c_transpiler = CTranspiler::new(&compilation_unit.global_scope);
-    let transpiled_code = c_transpiler.transpile(&mut compilation_unit.ast);
-    println!("{}", transpiled_code);
-    let mut c_file = File::create("out.c").unwrap();
-    c_file.write_all(transpiled_code.as_bytes()).unwrap();
-    // compile with clang using rust
-    Command::new("clang")
-        .arg("out.c")
-        .arg("-o")
-        .arg("out")
-        .status()
-        .unwrap();
-    // run the compiled binary
-    Command::new("./out")
-        .status()
-        .unwrap();
-
+    // let program = CProgram::from_compilation_unit(&compilation_unit);
+    // let c_return_value = program.run()?;
+    // println!("C program returned {}", c_return_value);
+    let hir_builder = HIRBuilder::new();
+    let hir = hir_builder.build(&compilation_unit.ast, &mut compilation_unit.global_scope);
+    let mut hir_txt = String::new();
+    HIRWriter::write(&mut hir_txt, &hir, &compilation_unit.global_scope)?;
+    println!("{}", hir_txt);
+    let ir_builder = MIRBuilder::new();
+    let mut ir = ir_builder.build(&hir, &compilation_unit.global_scope);
+    let mut ir_text = String::new();
+    MIRWriter::write_text_representation(&mut ir_text, &ir)?;
+    let mut mir_graphviz = String::new();
+    MIRWriter::write_graphviz_representation(&mut mir_graphviz, &ir)?;
+    File::create("mir.dot")?.write_all(mir_graphviz.as_bytes())?;
+    println!("{}", ir_text);
+    let mut optimizer = Optimizer::new();
+    optimizer.run(&mut ir);
+    let mut mir_graphviz = String::new();
+    MIRWriter::write_graphviz_representation(&mut mir_graphviz, &ir)?;
+    File::create("mir-optimized.dot")?.write_all(mir_graphviz.as_bytes())?;
     Ok(())
 }

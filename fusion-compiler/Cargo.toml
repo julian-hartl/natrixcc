@@ -6,4 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.75"
+serial_test = "2.0.0"
 termion = "2.0.1"
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"

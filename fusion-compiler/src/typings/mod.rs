@@ -1,5 +1,5 @@
+
 use std::fmt::{Display, Formatter};
-use crate::compilation_unit::FunctionIdx;
 
 #[derive(Debug, Clone)]
 pub enum Type {
