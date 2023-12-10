@@ -2,17 +2,15 @@
 macro_rules! idx {
     ($name:ident) => {
         #[derive(Debug, Clone, Eq, PartialEq, Hash, Copy, Ord, PartialOrd)]
-        pub struct $name {
-            index: usize,
-        }
+        pub struct $name(usize);
 
         impl Idx for $name {
             fn as_index(&self) -> usize {
-                self.index
+                self.0
             }
 
             fn new(index: usize) -> Self {
-                Self { index }
+                Self(index)
             }
 
         }
@@ -94,9 +92,6 @@ impl<Index: Idx, T> IdxVec<Index, T>
             .collect()
     }
 
-    pub fn first_index(&self) -> Index {
-        Index::new(0)
-    }
 
     pub fn len(&self) -> usize {
         self.vec.len()

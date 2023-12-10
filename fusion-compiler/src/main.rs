@@ -26,15 +26,26 @@ fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
     let input = "
 
+        func gcd(a: int, b: int) -> int {
+            while a != b {
+                if a > b {
+                    a = a - b;
+                } else {
+                    b = b - a;
+                }
+            }
+            return a;
+        }
 
         func main() -> int {
-            let d = 2;
-            while d < 10 {
-                d = d + if d < 5 {
-                    1
-                } else {
-                    2
-                };
+            let i = 0;
+            let d = 0;
+            while i < 10 {
+                let a = i * 2;
+                let b = i * 3;
+                let c = gcd(a, b);
+                d = d + c;
+                i = i + 1;
             }
             return d;
         }

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+
 use crate::mir::{BasicBlockIdx, FunctionIdx, InstructionIdx, InstructionKind, MIR, TerminatorKind};
 use crate::mir::optimizations::local::LocalMIRPass;
 
@@ -10,7 +11,7 @@ impl LocalMIRPass for CopyPropagation {
         // Marks an instruction as a copy of another instruction
         let mut copies_of: HashMap<InstructionIdx, InstructionIdx> = HashMap::new();
         let function = mir.functions.get_mut(function_idx);
-        let bb = function.basic_blocks.get_mut_or_panic(bb_idx);
+        let bb = mir.basic_blocks.get_mut_or_panic(bb_idx);
         for instruction_idx in bb.instructions.iter().copied() {
             let instruction = &mut function.instructions[instruction_idx];
             match &mut instruction.kind {
@@ -41,7 +42,6 @@ impl LocalMIRPass for CopyPropagation {
                     if value.replace_with_new_reference_from_copies(&copies_of) {
                         changes += 1;
                     }
-
                 }
                 InstructionKind::Call {
                     arguments,
@@ -62,19 +62,21 @@ impl LocalMIRPass for CopyPropagation {
                 }
             }
         }
-        match &mut bb.terminator.kind {
-            TerminatorKind::Return { value } => {
-                if value.replace_with_new_reference_from_copies(&copies_of) {
-                    changes += 1;
+        if let Some(terminator) = bb.terminator.as_mut() {
+            match &mut terminator.kind {
+                TerminatorKind::Return { value } => {
+                    if value.replace_with_new_reference_from_copies(&copies_of) {
+                        changes += 1;
+                    }
                 }
-            }
-            TerminatorKind::Jump(_) => {}
-            TerminatorKind::SwitchInt { value, .. } => {
-                if value.replace_with_new_reference_from_copies(&copies_of) {
-                    changes += 1;
+                TerminatorKind::Jump(_) => {}
+                TerminatorKind::SwitchInt { value, .. } => {
+                    if value.replace_with_new_reference_from_copies(&copies_of) {
+                        changes += 1;
+                    }
                 }
+                TerminatorKind::Unresolved => {}
             }
-            TerminatorKind::Unresolved | TerminatorKind::Unreachable => {}
         }
         changes
     }

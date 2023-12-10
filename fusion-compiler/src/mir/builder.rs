@@ -5,7 +5,8 @@ use fusion_compiler::{bug, Idx, IdxVec};
 
 use crate::compilation_unit::{GlobalScope, VariableIdx};
 use crate::hir::{HIR, HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind};
-use crate::mir::{BasicBlock, BasicBlockIdx, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, PhiNode, TerminatorKind, Value};
+use crate::mir::{BasicBlocks, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, PhiNode, TerminatorKind, Value};
+use crate::mir::basic_block::{BasicBlock, BasicBlockIdx};
 
 pub struct MIRBuilder {}
 
@@ -16,27 +17,40 @@ impl MIRBuilder {
     }
 
     pub fn build(self, hir: &HIR, global_scope: &GlobalScope) -> MIR {
-        let mut functions: IdxVec<FunctionIdx, Function> = IdxVec::new();
+        let mut mir = MIR::new();
+        let mut calls_to_resolve = Vec::new();
+        let mut function_map = HashMap::new();
         for (function_idx, function_body) in hir.functions.iter() {
             let function = global_scope.functions.get(*function_idx);
             let function_builder = FunctionBuilder::new(
                 Function {
                     name: function.name.clone(),
                     return_type: function.return_type.clone().into(),
-                    parameters: function.parameters.iter().map(
-                        |param| global_scope.variables.get(*param).ty.clone().into(),
-                    ).collect(),
-                    basic_blocks: IdxVec::new(),
+                    parameters: function.parameters.clone(),
+                    basic_blocks: Vec::new(),
                     instructions: IdxVec::new(),
                 }
             );
-            let function = function_builder.build(
+            let (function, to_be_resolved) = function_builder.build(
+                &mut mir.basic_blocks,
                 global_scope,
                 function_body,
             );
-            functions.push(function);
+            let mir_function_idx = mir.functions.push(function);
+            calls_to_resolve.extend(to_be_resolved.into_iter().map(|(instruction_idx, function_idx)| (instruction_idx, function_idx, mir_function_idx)));
+            function_map.insert(*function_idx, mir_function_idx);
         }
-        MIR::new(functions)
+        for (instruction_idx, function_idx, function_that_called) in calls_to_resolve {
+            let mir_function_idx = function_map[&function_idx];
+            let instruction = mir.functions[function_that_called].instructions.get_mut(instruction_idx);
+            match &mut instruction.kind {
+                InstructionKind::Call { function_idx: call_function_idx, .. } => {
+                    *call_function_idx = mir_function_idx;
+                }
+                _ => bug!("Expected call instruction, found {:?}", instruction.kind)
+            }
+        }
+        mir
     }
 }
 
@@ -78,6 +92,7 @@ struct FunctionBuilder {
     definitions: HashMap<VariableIdx, HashMap<BasicBlockIdx, InstructionIdx>>,
     incomplete_phis: HashMap<BasicBlockIdx, Vec<(InstructionIdx, VariableIdx)>>,
     sealed_blocks: HashSet<BasicBlockIdx>,
+    call_references_to_resolve: Vec<(InstructionIdx, crate::compilation_unit::FunctionIdx)>,
 }
 
 impl FunctionBuilder {
@@ -89,74 +104,138 @@ impl FunctionBuilder {
             definitions: HashMap::new(),
             incomplete_phis: HashMap::new(),
             sealed_blocks: HashSet::new(),
+            call_references_to_resolve: Vec::new(),
         }
     }
 
-    pub fn build(mut self, global_scope: &GlobalScope, body: &[HIRStmt]) -> Function {
-        let mut bb_builder = BasicBlockBuilder::new(&mut self.function);
-        for stmt in body.iter() {
-            self.build_stmt(&mut bb_builder, global_scope, stmt)
+    pub fn build(mut self, basic_blocks: &mut BasicBlocks, global_scope: &GlobalScope, body: &[HIRStmt]) -> (Function, Vec<(InstructionIdx, crate::compilation_unit::FunctionIdx)>) {
+        let mut bb_builder = BasicBlockBuilder::new(basic_blocks, &mut self.function);
+        for (index, variable_idx) in self.function.parameters.clone().into_iter().enumerate() {
+            let param_type = global_scope.variables.get(variable_idx).ty.clone().into();
+            let instruction_idx = bb_builder.add_instruction(basic_blocks, &mut self.function, Instruction::new(
+                InstructionKind::Value(Value::ParameterRef(index)),
+                param_type,
+            ));
+            self.write_variable(variable_idx, bb_builder.current_bb, instruction_idx);
         }
-        for block in self.function.basic_blocks.indices() {
+        for stmt in body.iter() {
+            self.build_stmt(basic_blocks, &mut bb_builder, global_scope, stmt)
+        }
+        for block in self.function.basic_blocks.iter().copied() {
             assert!(self.is_sealed(block));
         }
         assert!(self.incomplete_phis.is_empty());
-        self.function
+        assert!(self.loops.is_empty());
+        (self.function, self.call_references_to_resolve)
     }
 
-    fn build_stmt(&mut self, bb_builder: &mut BasicBlockBuilder, global_scope: &GlobalScope, stmt: &HIRStmt) {
+    fn build_stmt(&mut self, basic_blocks: &mut BasicBlocks, bb_builder: &mut BasicBlockBuilder, global_scope: &GlobalScope, stmt: &HIRStmt) {
         match &stmt.kind {
             HIRStmtKind::Expr {
                 expr
             } => {
-                let value = self.build_expr(bb_builder, global_scope, expr);
-                let ty = expr.ty.clone();
-                bb_builder.add_instruction(&mut self.function, Instruction::new(InstructionKind::Value(value), ty.into()));
+                // Transform the expression into a value and assign it to a new instruction
+                // E.g. `1 + 2` becomes `%0 = 1 + 2`
+                let value = self.build_expr(basic_blocks, bb_builder, global_scope, expr);
+                let ty = expr.ty.clone().into();
+                bb_builder.add_instruction(basic_blocks, &mut self.function, Instruction::new(InstructionKind::Value(value), ty));
             }
             HIRStmtKind::Decl {
                 initializer,
                 variable_idx
             } => {
-                let value = initializer.as_ref().map(|initializer| self.build_expr(bb_builder, global_scope, initializer));
+                // Transform the initializer into a value and assign it to a new instruction
+                // The instruction now represents the variable
+                // E.g.:
+                // ```text
+                // let a = 1 + 2
+                // println(a)
+                // ```
+                // becomes:
+                // ```text
+                // %0 = 1 + 2
+                // println(%0)
+                // ```
+                let value = initializer.as_ref().map(|initializer| self.build_expr(basic_blocks, bb_builder, global_scope, initializer));
                 let ty = global_scope.variables.get(*variable_idx).ty.clone().into();
-                let instruction_idx = bb_builder.add_instruction(&mut self.function, Instruction::new(
+                // todo: we should figure out a way to omit the instruction if the variable is not initialized, e.g. by just setting the variable as live (using a StorageLive instruction?)
+                let instruction_idx = bb_builder.add_instruction(basic_blocks, &mut self.function, Instruction::new(
                     InstructionKind::Value(value.unwrap_or(Value::Void)), ty));
                 self.write_variable(*variable_idx, bb_builder.current_bb, instruction_idx);
             }
             HIRStmtKind::Loop {
                 body
             } => {
-                let pred = bb_builder.terminate_and(&mut self.function, |loop_bb| TerminatorKind::Jump(loop_bb));
-                self.seal_block(pred, global_scope);
-                let body_bb = bb_builder.current_bb;
-                tracing::debug!("Entering loop at {:?}", body_bb);
-                self.push_loop();
+                // High level steps:
+                // 1. Create a loop entry block
+                // 2. Build the loop body
+                // 3. Terminate the last block of the loop body with a jump to the loop entry block.
+                //    We only do that, if the last block of the loop body is not already terminated,
+                //    because otherwise, we could override `break` and `return` statements.
+                // 4. Create a loop exit block
+                // 5. Update all blocks that need to know the exit block of the loop
+                //    This includes e.g. `break` statements
+                //
+                // Note, that during construction, phi nodes are automatically inserted, if necessary.
+                //
+                // Example:
+                // ```text
+                // let a = 10
+                // loop {
+                //   if a == 5 { break }
+                //   else { a = a - 1 }
+                // }
+                // ```
+                // becomes:
+                // ```text
+                // bb0:
+                //   %0 = 10
+                // bb1: <-- loop entry
+                //   %1 = phi { bb0 -> %0, bb4 -> %3 }
+                //   %2 = %1 == 5
+                //   switchInt(%2) {
+                //     case 0: bb2
+                //     default: bb3
+                //   }
+                // bb2:
+                //   %3 = %1 - 1
+                //   jump bb4
+                // bb3:
+                //   jump bb5 <-- is updated with the exit block of the loop
+                // bb4:
+                //   jump bb1
+                // bb5: <-- loop exit
+                //   return
+                let pred = bb_builder.terminate_and(basic_blocks, &mut self.function, |loop_bb| TerminatorKind::Jump(loop_bb));
+                // We can only seal the block here, because we currently have not introduced labeled continues,
+                // so there is no way new predecessors are added after this loop has been built.
+                self.seal_block(basic_blocks, pred, global_scope);
+                let loop_entry_bb = bb_builder.current_bb;
+                self.push_loop(loop_entry_bb);
                 for stmt in body.iter() {
-                    self.build_stmt(bb_builder, global_scope, stmt);
+                    self.build_stmt(basic_blocks, bb_builder, global_scope, stmt);
                 }
-                if !self.function.basic_blocks.get_or_panic(bb_builder.current_bb).is_terminated() {
-                    bb_builder.terminate(&mut self.function, TerminatorKind::Jump(body_bb));
-                    self.seal_block(bb_builder.current_bb, global_scope);
+                if !basic_blocks.get_or_panic(bb_builder.current_bb).is_terminated() {
+                    bb_builder.terminate(basic_blocks, TerminatorKind::Jump(loop_entry_bb));
+                    self.seal_block(basic_blocks, bb_builder.current_bb, global_scope);
                 }
                 // todo: reevaluate this once we add continue
-                tracing::debug!("Sealing loop body");
-                self.seal_block(body_bb, global_scope);
-                let exit_block = bb_builder.start_new_bb(&mut self.function);
-                tracing::debug!("Exiting loop at {:?}", exit_block);
-                self.pop_loop_and_update(exit_block);
-                self.seal_block(exit_block, global_scope);
+                self.seal_block(basic_blocks, loop_entry_bb, global_scope);
+                let exit_block = bb_builder.start_new_bb(basic_blocks, &mut self.function);
+                self.pop_loop_and_update(basic_blocks, exit_block);
+                self.seal_block(basic_blocks, exit_block, global_scope);
             }
             HIRStmtKind::Return {
                 expr
             } => {
-                let value = self.build_expr(bb_builder, global_scope, expr);
-                if self.function.basic_blocks.get_or_panic(bb_builder.current_bb).is_terminated() {
-                    bb_builder.start_new_bb(&mut self.function);
+                let value = self.build_expr(basic_blocks, bb_builder, global_scope, expr);
+                if basic_blocks.get_or_panic(bb_builder.current_bb).is_terminated() {
+                    bb_builder.start_new_bb(basic_blocks, &mut self.function);
                 }
-                let bb = bb_builder.terminate(&mut self.function, TerminatorKind::Return {
+                let bb = bb_builder.terminate(basic_blocks, TerminatorKind::Return {
                     value,
                 });
-                self.seal_block(bb, global_scope);
+                self.seal_block(basic_blocks, bb, global_scope);
             }
             HIRStmtKind::If {
                 condition,
@@ -165,12 +244,12 @@ impl FunctionBuilder {
             } => {
                 tracing::debug!("Building if statement");
                 tracing::debug!("Building condition");
-                let condition = self.build_expr(bb_builder, global_scope, condition);
+                let condition = self.build_expr(basic_blocks, bb_builder, global_scope, condition);
                 let pred = bb_builder.current_bb;
-                let then_start_bb = bb_builder.start_new_bb(&mut self.function);
-                let else_start_bb = bb_builder.start_new_bb(&mut self.function);
+                let then_start_bb = bb_builder.start_new_bb(basic_blocks, &mut self.function);
+                let else_start_bb = bb_builder.start_new_bb(basic_blocks, &mut self.function);
                 bb_builder.set_bb(pred);
-                bb_builder.terminate(&mut self.function, TerminatorKind::SwitchInt {
+                bb_builder.terminate(basic_blocks, TerminatorKind::SwitchInt {
                     value: condition,
                     cases: vec![
                         (0, else_start_bb),
@@ -178,51 +257,51 @@ impl FunctionBuilder {
                     default: then_start_bb,
                 });
                 tracing::debug!("Built condition");
-                // self.seal_block(pred, global_scope);
-                self.seal_block(then_start_bb, global_scope);
-                self.seal_block(else_start_bb, global_scope);
+                // self.seal_block(mir, pred, global_scope);
+                self.seal_block(basic_blocks, then_start_bb, global_scope);
+                self.seal_block(basic_blocks, else_start_bb, global_scope);
                 tracing::debug!("Building then body");
                 bb_builder.set_bb(then_start_bb);
                 for stmt in then_body.iter() {
-                    self.build_stmt(bb_builder, global_scope, stmt);
+                    self.build_stmt(basic_blocks, bb_builder, global_scope, stmt);
                 }
                 tracing::debug!("Built then body");
                 let then_exit_bb = bb_builder.current_bb;
                 tracing::debug!("Building else body");
                 bb_builder.set_bb(else_start_bb);
                 for stmt in else_body.iter() {
-                    self.build_stmt(bb_builder, global_scope, stmt);
+                    self.build_stmt(basic_blocks, bb_builder, global_scope, stmt);
                 }
                 tracing::debug!("Built else body");
                 let else_exit_bb = bb_builder.current_bb;
-                let if_end_bb = bb_builder.start_new_bb(&mut self.function);
+                let if_end_bb = bb_builder.start_new_bb(basic_blocks, &mut self.function);
                 tracing::debug!("Building if terminator");
-                self.function.basic_blocks.get_mut_or_panic(then_exit_bb).maybe_set_terminator(
+                basic_blocks.get_mut_or_panic(then_exit_bb).maybe_set_terminator(
                     TerminatorKind::Jump(if_end_bb)
                 );
-                self.function.basic_blocks.get_mut_or_panic(else_exit_bb).maybe_set_terminator(
+                basic_blocks.get_mut_or_panic(else_exit_bb).maybe_set_terminator(
                     TerminatorKind::Jump(if_end_bb)
                 );
                 tracing::debug!("Built if terminator");
-                self.seal_block(if_end_bb, global_scope);
+                self.seal_block(basic_blocks, if_end_bb, global_scope);
             }
             HIRStmtKind::Block { body } => {
                 for stmt in body.iter() {
-                    self.build_stmt(bb_builder, global_scope, stmt);
+                    self.build_stmt(basic_blocks, bb_builder, global_scope, stmt);
                 }
             }
             HIRStmtKind::Assign {
                 rhs,
                 lhs
             } => {
-                let value = self.build_expr(bb_builder, global_scope, rhs);
-                let instruction_idx = bb_builder.add_instruction(&mut self.function, Instruction::new(
+                let value = self.build_expr(basic_blocks, bb_builder, global_scope, rhs);
+                let instruction_idx = bb_builder.add_instruction(basic_blocks, &mut self.function, Instruction::new(
                     InstructionKind::Value(value), rhs.ty.clone().into()));
                 self.write_variable(*lhs, bb_builder.current_bb, instruction_idx);
             }
             HIRStmtKind::Break => {
-                let break_block = bb_builder.terminate(&mut self.function, TerminatorKind::Unreachable);
-                // self.seal_block(break_block, global_scope);
+                let break_block = bb_builder.terminate(basic_blocks, TerminatorKind::Unresolved);
+                // self.seal_block(mir, break_block, global_scope);
                 self.push_depending_block(break_block);
             }
         }
@@ -232,16 +311,17 @@ impl FunctionBuilder {
         self.loops.last_mut().unwrap().push(bb);
     }
 
-    fn pop_loop_and_update(&mut self, exit_block: BasicBlockIdx) {
+    fn pop_loop_and_update(&mut self, basic_blocks: &mut BasicBlocks, exit_block: BasicBlockIdx) {
+        tracing::debug!("Exiting loop at {}", exit_block);
         let basic_blocks_to_update = self.pop_loop();
         for bb in basic_blocks_to_update.iter() {
-            let bb = self.function.basic_blocks.get_mut_or_panic(*bb);
-            assert_eq!(bb.terminator.kind, TerminatorKind::Unreachable);
+            let bb = basic_blocks.get_mut_or_panic(*bb);
+            assert_eq!(bb.terminator.as_ref().map(|terminator| &terminator.kind), Some(&TerminatorKind::Unresolved), "Basic blocks that depend on the exit/start block of a loop must have an unresolved terminator");
             bb.set_terminator(TerminatorKind::Jump(exit_block));
         }
     }
 
-    fn build_expr(&mut self, bb_builder: &mut BasicBlockBuilder, global_scope: &GlobalScope, expr: &HIRExpr) -> Value {
+    fn build_expr(&mut self, basics_blocks: &mut BasicBlocks, bb_builder: &mut BasicBlockBuilder, global_scope: &GlobalScope, expr: &HIRExpr) -> Value {
         match &expr.kind {
             HIRExprKind::Number(value) => Value::ConstantInt(*value),
             HIRExprKind::Bool(value) => Value::ConstantInt(if *value { 1 } else { 0 }),
@@ -250,19 +330,19 @@ impl FunctionBuilder {
                 operator,
                 rhs
             } => {
-                let lhs = self.build_expr(bb_builder, global_scope, lhs);
-                let rhs = self.build_expr(bb_builder, global_scope, rhs);
+                let lhs = self.build_expr(basics_blocks, bb_builder, global_scope, lhs);
+                let rhs = self.build_expr(basics_blocks, bb_builder, global_scope, rhs);
                 let ty = expr.ty.clone().into();
-                let instruction_ref = bb_builder.add_instruction(
-                    &mut self.function,
-                    Instruction::new(
-                        InstructionKind::Binary {
-                            operator: (*operator).into(),
-                            lhs,
-                            rhs,
-                        },
-                        ty,
-                    ),
+                let instruction_ref = bb_builder.add_instruction(basics_blocks,
+                                                                 &mut self.function,
+                                                                 Instruction::new(
+                                                                     InstructionKind::Binary {
+                                                                         operator: (*operator).into(),
+                                                                         lhs,
+                                                                         rhs,
+                                                                     },
+                                                                     ty,
+                                                                 ),
                 );
                 Value::InstructionRef(instruction_ref)
             }
@@ -270,22 +350,22 @@ impl FunctionBuilder {
                 operator,
                 operand
             } => {
-                let operand = self.build_expr(bb_builder, global_scope, operand);
+                let operand = self.build_expr(basics_blocks, bb_builder, global_scope, operand);
                 let ty = expr.ty.clone().into();
-                let instruction_ref = bb_builder.add_instruction(
-                    &mut self.function,
-                    Instruction::new(
-                        InstructionKind::Unary {
-                            operator: (*operator).into(),
-                            operand,
-                        },
-                        ty,
-                    ),
+                let instruction_ref = bb_builder.add_instruction(basics_blocks,
+                                                                 &mut self.function,
+                                                                 Instruction::new(
+                                                                     InstructionKind::Unary {
+                                                                         operator: (*operator).into(),
+                                                                         operand,
+                                                                     },
+                                                                     ty,
+                                                                 ),
                 );
                 Value::InstructionRef(instruction_ref)
             }
             HIRExprKind::Var(variable_idx) => {
-                let instruction_ref = self.read_variable(*variable_idx, bb_builder.current_bb, global_scope).unwrap();
+                let instruction_ref = self.read_variable(basics_blocks, *variable_idx, bb_builder.current_bb, global_scope).unwrap();
                 Value::InstructionRef(instruction_ref)
             }
             HIRExprKind::Call {
@@ -293,20 +373,21 @@ impl FunctionBuilder {
                 arguments
             } => {
                 let arguments = arguments.iter().map(
-                    |arg| self.build_expr(bb_builder, global_scope, arg)
+                    |arg| self.build_expr(basics_blocks, bb_builder, global_scope, arg)
                 ).collect();
                 let ty = expr.ty.clone().into();
-                let instruction_idx = bb_builder.add_instruction(
-                    &mut self.function,
-                    Instruction::new(
-                        InstructionKind::Call {
-                            // todo: fix this
-                            function_idx: FunctionIdx::new(function_idx.as_index()),
-                            arguments,
-                        },
-                        ty,
-                    ),
+                let instruction_idx = bb_builder.add_instruction(basics_blocks,
+                                                                 &mut self.function,
+                                                                 Instruction::new(
+                                                                     InstructionKind::Call {
+                                                                         // todo: fix this
+                                                                         function_idx: FunctionIdx::first(),
+                                                                         arguments,
+                                                                     },
+                                                                     ty,
+                                                                 ),
                 );
+                self.call_references_to_resolve.push((instruction_idx, *function_idx));
                 Value::InstructionRef(instruction_idx)
             }
             HIRExprKind::Unit => Value::Void,
@@ -314,7 +395,8 @@ impl FunctionBuilder {
     }
 
     #[inline]
-    pub fn push_loop(&mut self) {
+    pub fn push_loop(&mut self, entry_bb: BasicBlockIdx) {
+        tracing::debug!("Entering loop at {}", entry_bb);
         self.loops.push(vec![]);
     }
 
@@ -323,8 +405,8 @@ impl FunctionBuilder {
         self.loops.pop().unwrap()
     }
 
-    #[inline]
     /// Records the definition of a variable in the current basic block.
+    #[inline]
     pub fn write_variable(&mut self, variable: VariableIdx, bb_idx: BasicBlockIdx, instruction: InstructionIdx) {
         self.definitions.entry(variable).or_default().insert(bb_idx, instruction);
     }
@@ -334,34 +416,34 @@ impl FunctionBuilder {
     ///
     /// It first checks if there is a definition in the given basic block (local definition).
     /// todo!()
-    pub fn read_variable(&mut self, variable: VariableIdx, bb_idx: BasicBlockIdx, scope: &GlobalScope) -> Option<InstructionIdx> {
+    pub fn read_variable(&mut self, basic_blocks: &mut BasicBlocks, variable: VariableIdx, bb_idx: BasicBlockIdx, scope: &GlobalScope) -> Option<InstructionIdx> {
         let definitions = self.definitions.get(&variable)?;
         match definitions.get(&bb_idx) {
             Some(instruction) => Some(*instruction),
             None => {
-                self.read_variable_recursive(variable, bb_idx, scope)
+                self.read_variable_recursive(basic_blocks, variable, bb_idx, scope)
             }
         }
     }
 
-    pub fn read_variable_recursive(&mut self, variable: VariableIdx, bb_idx: BasicBlockIdx, scope: &GlobalScope) -> Option<InstructionIdx> {
-        let predecessors = self.function.predecessors();
+    pub fn read_variable_recursive(&mut self, basic_blocks: &mut BasicBlocks, variable: VariableIdx, bb_idx: BasicBlockIdx, scope: &GlobalScope) -> Option<InstructionIdx> {
+        let predecessors = self.function.predecessors(basic_blocks);
         let preceding_bbs = predecessors.get_immediate(bb_idx)?;
         let instruction_ref = if !self.is_sealed(bb_idx) {
             tracing::debug!("Found unsealed block {:?} for variable {:?}. Inserting operandless phi", bb_idx, variable);
-            let instruction_ref = self.add_operandless_phi_to_bb(variable, bb_idx, scope);
+            let instruction_ref = self.add_operandless_phi_to_bb(basic_blocks, variable, bb_idx, scope);
             self.incomplete_phis.entry(bb_idx).or_default().push((instruction_ref, variable));
             instruction_ref
         } else if preceding_bbs.len() == 1 {
             // Optimize the common use case of a single predecessor
-            self.read_variable(variable, preceding_bbs[0], scope)?
+            self.read_variable(basic_blocks, variable, preceding_bbs[0], scope)?
         } else {
             // Break potential cycles with operandless phi
             tracing::debug!("Inserting operandless phi for variable {:?} in block {:?}", variable, bb_idx);
-            let instruction_ref = self.add_operandless_phi_to_bb(variable, bb_idx, scope);
+            let instruction_ref = self.add_operandless_phi_to_bb(basic_blocks, variable, bb_idx, scope);
             self.write_variable(variable, bb_idx, instruction_ref);
 
-            self.add_phi_operands(instruction_ref, variable, &preceding_bbs, scope);
+            self.add_phi_operands(basic_blocks, instruction_ref, variable, &preceding_bbs, scope);
             // todo: remove trivial phi
             // self.try_remove_trivial_phi(phi);
             instruction_ref
@@ -370,20 +452,20 @@ impl FunctionBuilder {
         Some(instruction_ref)
     }
 
-    fn add_operandless_phi_to_bb(&mut self, variable: VariableIdx, bb: BasicBlockIdx, scope: &GlobalScope) -> InstructionIdx {
+    fn add_operandless_phi_to_bb(&mut self, basic_blocks: &mut BasicBlocks, variable: VariableIdx, bb: BasicBlockIdx, scope: &GlobalScope) -> InstructionIdx {
         let instruction_ref = self.function.instructions.push(
             Instruction::new(InstructionKind::Phi(PhiNode::operandless()), scope.variables[variable].ty.clone().into(),
             ));
-        let instructions = self.function.basic_blocks.get_or_panic(bb).instructions.clone();
+        let instructions = basic_blocks.get_or_panic(bb).instructions.clone();
         let mut instructions_with_phi = vec![instruction_ref];
         instructions_with_phi.extend(instructions);
-        self.function.basic_blocks.get_mut_or_panic(bb).instructions = instructions_with_phi;
+        basic_blocks.get_mut_or_panic(bb).instructions = instructions_with_phi;
         instruction_ref
     }
 
     fn try_remove_trivial_phi(&self, phi: &mut PhiNode) {}
 
-    fn seal_block(&mut self, bb_idx: BasicBlockIdx, global_scope: &GlobalScope) {
+    fn seal_block(&mut self, basic_blocks: &mut BasicBlocks, bb_idx: BasicBlockIdx, global_scope: &GlobalScope) {
         if self.is_sealed(bb_idx) {
             tracing::debug!("Tried to seal block {:?} after it had been sealed", bb_idx);
             return;
@@ -392,23 +474,23 @@ impl FunctionBuilder {
         // todo: do not clone
         if let Some(incomplete_phis) = self.incomplete_phis.get(&bb_idx).cloned() {
             tracing::debug!("{:?} has incomplete phis {:?}", bb_idx, incomplete_phis);
-            let predecessors = self.function.predecessors();
+            let predecessors = self.function.predecessors(basic_blocks);
             for (incomplete_phi, variable_idx) in incomplete_phis.iter().copied() {
-                self.add_phi_operands(incomplete_phi, variable_idx, &predecessors.get_immediate(bb_idx).unwrap(), global_scope);
+                self.add_phi_operands(basic_blocks, incomplete_phi, variable_idx, &predecessors.get_immediate(bb_idx).unwrap(), global_scope);
             }
         }
         self.incomplete_phis.remove(&bb_idx);
         self.sealed_blocks.insert(bb_idx);
     }
 
-    fn add_phi_operands(&mut self, phi: InstructionIdx, variable: VariableIdx, preds: &Vec<BasicBlockIdx>, scope: &GlobalScope) {
+    fn add_phi_operands(&mut self, basic_blocks: &mut BasicBlocks, phi: InstructionIdx, variable: VariableIdx, preds: &Vec<BasicBlockIdx>, scope: &GlobalScope) {
         tracing::debug!("Adding phi operands for {:?}  with predecessors {:?}", phi, preds);
         for pred in preds.iter().copied() {
-            let variable_ref = self.read_variable(variable, pred, scope).unwrap_or_else(|| {
+            let variable_ref = self.read_variable(basic_blocks, variable, pred, scope).unwrap_or_else(|| {
                 bug!("No definition for variable {:?} in block {:?}", variable, pred)
             });
             let phi = self.function.instructions[phi].kind.as_phi_mut().unwrap();
-            phi.push(variable_ref)
+            phi.push((pred, variable_ref))
         }
     }
     fn is_sealed(&self, bb_idx: BasicBlockIdx) -> bool {
@@ -417,64 +499,102 @@ impl FunctionBuilder {
 }
 
 
+/// A helper to build basic blocks.
+///
+/// Can be used to start new basic blocks, add instructions and terminate basic blocks.
 struct BasicBlockBuilder {
     current_bb: BasicBlockIdx,
 }
 
 impl BasicBlockBuilder {
-    pub fn new(ctx: &mut Function) -> Self {
-        Self {
-            current_bb: ctx.new_basic_block(),
-        }
+    pub fn new(basic_blocks: &mut BasicBlocks, function: &mut Function) -> Self {
+        let mut builder = Self {
+            // Temporary value, will be overwritten in the next step
+            current_bb: BasicBlockIdx::first(),
+        };
+        let new_bb = builder.start_new_bb(basic_blocks, function);
+        builder.set_bb(new_bb);
+        builder
     }
 
-    pub fn add_instruction(&mut self, ctx: &mut Function, instruction: Instruction) -> InstructionIdx {
-        if self.get_current_bb(ctx).is_terminated() {
-            bug!("bb already has a terminator: {:?}", self.get_current_bb(ctx).terminator.kind)
+    pub fn add_instruction(&mut self, basic_blocks: &mut BasicBlocks, function: &mut Function, instruction: Instruction) -> InstructionIdx {
+        let current_bb = self.get_current_bb_mut(basic_blocks);
+        if let Some(terminator) = current_bb.terminator.as_ref() {
+            bug!("{} already has a terminator: {:?}", self.current_bb, terminator)
         }
-        let instruction_idx = ctx.instructions.push(instruction);
-        self.get_current_bb_mut(ctx).instructions.push(instruction_idx);
+        let instruction_idx = function.instructions.push(instruction);
+        current_bb.instructions.push(instruction_idx);
         instruction_idx
     }
 
-    /// Starts a new basic block and returns it.
-    pub fn start_new_bb(&mut self, ctx: &mut Function) -> BasicBlockIdx {
-        let new_bb = ctx.new_basic_block();
+    /// Starts a new basic block in `function` and returns it.
+    pub fn start_new_bb(&mut self, basic_blocks: &mut BasicBlocks, function: &mut Function) -> BasicBlockIdx {
+        let new_bb = basic_blocks.push_basic_block();
+        function.basic_blocks.push(new_bb);
         tracing::debug!("Starting new basic block {:?}", new_bb);
         self.current_bb = new_bb;
         new_bb
     }
 
     /// Terminates and returns the current basic block.
-    pub fn terminate(&mut self, ctx: &mut Function, terminator: TerminatorKind) -> BasicBlockIdx {
-        let bb = self.get_current_bb_mut(ctx);
-        if bb.is_terminated() {
-            bug!("bb already has a terminator: {:?}", bb.terminator.kind)
+    ///
+    /// **Panics** if the current basic block is already terminated.
+    ///
+    /// Note: This does not start a new basic block. Use [`BasicBlockBuilder::terminate_and`] for that.
+    pub fn terminate(&mut self, basic_blocks: &mut BasicBlocks, terminator: TerminatorKind) -> BasicBlockIdx {
+        let bb = self.get_current_bb_mut(basic_blocks);
+        if let Some(terminator) = bb.terminator.as_ref() {
+            bug!("{:?} already has a terminator: {:?}", self.current_bb, terminator)
         }
+        // Ensure that we do not jump to the same basic block, which at the moment would lead to an infinite loop, when reading variables.
+        match &terminator {
+            TerminatorKind::Jump(to) => {
+                assert_ne!(*to, self.current_bb, "Jumping to the same basic block is not yet supported");
+            }
+            TerminatorKind::SwitchInt { default, cases, .. } => {
+                assert_ne!(*default, self.current_bb, "Jumping to the same basic block is not yet supported");
+                for (_, target) in cases {
+                    assert_ne!(*target, self.current_bb, "Jumping to the same basic block is not yet supported");
+                }
+            }
+            TerminatorKind::Return { .. } |
+            TerminatorKind::Unresolved => {}
+        };
         bb.set_terminator(terminator);
         self.current_bb
     }
 
-    /// Terminates the current basic block and starts a new one.
+    /// Terminates the current basic block `b` with the result of `terminator_builder`, starts a new one and returns the previous basic block `b`.
     ///
-    /// Returns the previous basic block.
-    pub fn terminate_and(&mut self, ctx: &mut Function, terminator_builder: impl FnOnce(BasicBlockIdx) -> TerminatorKind) -> BasicBlockIdx {
-        let new_bb = ctx.new_basic_block();
-        self.get_current_bb_mut(ctx).set_terminator(terminator_builder(new_bb));
-        std::mem::replace(&mut self.current_bb, new_bb)
+    /// `terminator_builder` is called with the index of the new basic block.
+    ///
+    /// See [`BasicBlockBuilder::terminate`] and [`BasicBlockBuilder::start_new_bb`].
+    pub fn terminate_and(&mut self, basic_blocks: &mut BasicBlocks, function: &mut Function, terminator_builder: impl FnOnce(BasicBlockIdx) -> TerminatorKind) -> BasicBlockIdx {
+        let old_bb = self.current_bb;
+        let new_bb = self.start_new_bb(basic_blocks, function);
+        self.set_bb(old_bb);
+        self.terminate(basic_blocks, terminator_builder(new_bb));
+        self.set_bb(new_bb);
+        old_bb
     }
 
+    /// Sets the current basic block.
+    ///
+    /// This means that all methods that do **NOT** explicitly take a basic block index as argument will operate on `bb`.
+    #[inline]
     pub fn set_bb(&mut self, bb: BasicBlockIdx) {
         tracing::debug!("Setting current basic block to {:?}", bb);
         self.current_bb = bb;
     }
 
-    fn get_current_bb_mut<'ctx>(&mut self, ctx: &'ctx mut Function) -> &'ctx mut BasicBlock {
-        ctx.basic_blocks.get_mut_or_panic(self.current_bb)
+    #[inline]
+    fn get_current_bb_mut<'ctx>(&mut self, basic_blocks: &'ctx mut BasicBlocks) -> &'ctx mut BasicBlock {
+        basic_blocks.get_mut_or_panic(self.current_bb)
     }
 
-    fn get_current_bb<'ctx>(&self, ctx: &'ctx Function) -> &'ctx BasicBlock {
-        ctx.basic_blocks.get_or_panic(self.current_bb)
+    #[inline]
+    fn get_current_bb<'ctx>(&self, basic_blocks: &'ctx BasicBlocks) -> &'ctx BasicBlock {
+        basic_blocks.get_or_panic(self.current_bb)
     }
 }
 
@@ -609,132 +729,53 @@ impl Successors {
 }
 
 impl Function {
-    fn instruction_to_basic_block(&self) -> HashMap<InstructionIdx, BasicBlockIdx> {
-        let mut instruction_to_basic_block = HashMap::new();
-        for (bb_idx, bb) in self.basic_blocks.indexed_iter_as_option().flatten() {
-            for instruction_idx in bb.instructions.iter().copied() {
-                instruction_to_basic_block.insert(instruction_idx, bb_idx);
-            }
-        }
-        instruction_to_basic_block
-    }
-
-    fn compute_all_dominators(&self) -> HashMap<BasicBlockIdx, HashSet<BasicBlockIdx>> {
-        let mut dominators = HashMap::new();
-        let start_node = self.basic_blocks.first_index();
-        let all_nodes = self.basic_blocks.indices().collect::<HashSet<_>>();
-
-        // Initialize dominators: start node dominates itself; all others dominate all nodes
-        for &node in &all_nodes {
-            dominators.insert(node, if node == start_node { HashSet::from([start_node]) } else { all_nodes.clone() });
-        }
-
-        let mut changed = true;
-        let predecessors = self.predecessors();
-        while changed {
-            changed = false;
-
-            for &node in &all_nodes {
-                if node == start_node {
-                    continue;
-                }
-
-                let mut new_doms = all_nodes.clone();
-                let preds = predecessors.get_immediate(node);
-                if let Some(preds) = preds {
-                    for &pred in preds {
-                        let pred_doms = dominators.get(&pred).unwrap();
-                        new_doms = new_doms.intersection(pred_doms).cloned().collect();
-                    }
-                }
-                new_doms.insert(node); // A node always dominates itself
-
-                if new_doms != *dominators.get(&node).unwrap() {
-                    dominators.insert(node, new_doms);
-                    changed = true;
-                }
-            }
-        }
-
-        dominators
-    }
-
-    fn extract_immediate_dominators(&self, all_dominators: HashMap<BasicBlockIdx, HashSet<BasicBlockIdx>>) -> HashMap<BasicBlockIdx, BasicBlockIdx> {
-        let mut immediate_dominators = HashMap::new();
-        let start_node = self.basic_blocks.first_index();
-        dbg!(&all_dominators);
-        for (&node, dominators) in all_dominators.iter() {
-            if node == start_node {
-                continue;
-            }
-
-            // Find the immediate dominator based on the provided definition
-            let idom = dominators.iter()
-                .filter(|&&dom| dom != node) // Strictly dominates N
-                .filter(|&&dom|
-                    // Every other dominator P that strictly dominates N also dominates M
-                    dominators.iter().all(|&p| p == dom || p == node || !all_dominators.get(&p).unwrap().contains(&node) || all_dominators.get(&p).unwrap().contains(&dom)))
-                .cloned()
-                .next()
-                .unwrap(); // There should always be one immediate dominator
-
-            immediate_dominators.insert(node, idom);
-        }
-
-        immediate_dominators
-    }
-
-
-    fn dominators(&self) -> Dominators {
-        let all_dominators = self.compute_all_dominators();
-        let idoms = self.extract_immediate_dominators(all_dominators);
-        Dominators::from_immediate_dominators(idoms)
-    }
-
-
-    pub fn successors(&self) -> Successors {
+    pub fn successors(&self, basic_blocks: &BasicBlocks) -> Successors {
         let mut successors = Successors::new();
-        for (idx, bb) in self.basic_blocks.indexed_iter_as_option().flatten() {
-            match &bb.terminator.kind {
-                TerminatorKind::Jump(target) => {
-                    successors.insert_immediate(idx, *target);
-                }
-                TerminatorKind::SwitchInt {
-                    default,
-                    cases,
-                    ..
-                } => {
-                    successors.insert_immediate(idx, *default);
-                    for (_, target) in cases {
+        for (idx, bb) in basic_blocks.indexed_iter_as_option().flatten() {
+            if let Some(terminator) = bb.terminator.as_ref() {
+                match &terminator.kind {
+                    TerminatorKind::Jump(target) => {
                         successors.insert_immediate(idx, *target);
                     }
+                    TerminatorKind::SwitchInt {
+                        default,
+                        cases,
+                        ..
+                    } => {
+                        successors.insert_immediate(idx, *default);
+                        for (_, target) in cases {
+                            successors.insert_immediate(idx, *target);
+                        }
+                    }
+                    TerminatorKind::Return { .. } => {}
+                    TerminatorKind::Unresolved => {}
                 }
-                TerminatorKind::Return { .. } => {}
-                TerminatorKind::Unresolved | TerminatorKind::Unreachable => {}
             }
         }
         successors
     }
 
-    pub fn predecessors(&self) -> Predecessors {
+    pub fn predecessors(&self, basic_blocks: &BasicBlocks) -> Predecessors {
         let mut predecessors = Predecessors::new();
-        for (idx, bb) in self.basic_blocks.indexed_iter_as_option().flatten() {
-            match &bb.terminator.kind {
-                TerminatorKind::Jump(target) => {
-                    predecessors.insert_immediate(*target, idx);
-                }
-                TerminatorKind::SwitchInt {
-                    default,
-                    cases,
-                    ..
-                } => {
-                    predecessors.insert_immediate(*default, idx);
-                    for (_, target) in cases {
+        for (idx, bb) in basic_blocks.indexed_iter_as_option().flatten() {
+            if let Some(terminator) = bb.terminator.as_ref() {
+                match &terminator.kind {
+                    TerminatorKind::Jump(target) => {
                         predecessors.insert_immediate(*target, idx);
                     }
+                    TerminatorKind::SwitchInt {
+                        default,
+                        cases,
+                        ..
+                    } => {
+                        predecessors.insert_immediate(*default, idx);
+                        for (_, target) in cases {
+                            predecessors.insert_immediate(*target, idx);
+                        }
+                    }
+                    TerminatorKind::Return { .. } => {}
+                    TerminatorKind::Unresolved => {}
                 }
-                TerminatorKind::Return { .. } => {}
-                TerminatorKind::Unresolved | TerminatorKind::Unreachable => {}
             }
         }
         predecessors

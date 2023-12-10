@@ -30,8 +30,8 @@ impl MIRPass for LocalOptimizer {
     fn run(&mut self, mir: &mut MIR) -> u32 {
         let mut changes = 0;
         for function_idx in mir.functions.indices() {
-            for bb_idx in mir.functions[function_idx].basic_blocks.indices() {
-                if mir.functions[function_idx].basic_blocks[bb_idx].is_none() {
+            for bb_idx in mir.functions[function_idx].basic_blocks.clone() {
+                if mir.basic_blocks[bb_idx].is_none() {
                     continue;
                 }
                 for pass in self.passes.iter_mut() {

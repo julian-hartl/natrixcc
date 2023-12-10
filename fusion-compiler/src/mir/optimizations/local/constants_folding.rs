@@ -37,6 +37,7 @@ impl ComputedConstantValues {
                 }
             }
             Value::Void => Some(Value::Void),
+            Value::ParameterRef(_) => None,
         }
     }
 }
@@ -62,7 +63,7 @@ impl LocalMIRPass for ConstantFolding {
     fn run_on_basic_block(&mut self, mir: &mut MIR, function_idx: FunctionIdx, bb_idx: BasicBlockIdx) -> u32 {
         let mut changes = 0;
         let function = mir.functions.get_mut(function_idx);
-        let bb = function.basic_blocks.get_mut_or_panic(bb_idx);
+        let bb = mir.basic_blocks.get_mut_or_panic(bb_idx);
         let mut constant_values = ComputedConstantValues::new();
         for instruction_idx in bb.instructions.iter().copied() {
             let instruction = function.instructions.get_mut(instruction_idx);
@@ -139,27 +140,28 @@ impl LocalMIRPass for ConstantFolding {
                 }
             };
         }
-        match &mut bb.terminator.kind {
-            TerminatorKind::Return { value } => {
-                if let Some(constant_value) = constant_values.get_as_constant_value(value) {
-                    if value.replace_if_not_equal(constant_value.clone()) {
-                        changes += 1;
+        if let Some(terminator) = bb.terminator.as_mut() {
+            match &mut terminator.kind {
+                TerminatorKind::Return { value } => {
+                    if let Some(constant_value) = constant_values.get_as_constant_value(value) {
+                        if value.replace_if_not_equal(constant_value.clone()) {
+                            changes += 1;
+                        }
                     }
                 }
-            }
-            TerminatorKind::Jump(_) => {}
-            TerminatorKind::SwitchInt {
-                value,
-                ..
-            } => {
-                if let Some(constant_value) = constant_values.get_as_constant_value(value) {
-                    if value.replace_if_not_equal(constant_value.clone()) {
-                        changes += 1;
+                TerminatorKind::Jump(_) => {}
+                TerminatorKind::SwitchInt {
+                    value,
+                    ..
+                } => {
+                    if let Some(constant_value) = constant_values.get_as_constant_value(value) {
+                        if value.replace_if_not_equal(constant_value.clone()) {
+                            changes += 1;
+                        }
                     }
                 }
+                TerminatorKind::Unresolved  => {}
             }
-            TerminatorKind::Unresolved |
-            TerminatorKind::Unreachable => {}
         }
         changes
     }

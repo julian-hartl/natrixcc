@@ -1,18 +1,22 @@
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
+use basic_block::BasicBlock;
+use fusion_compiler::{bug, idx, Idx, IdxVec};
+use crate::compilation_unit::VariableIdx;
+use crate::{ast, compilation_unit};
 
 #[allow(unused)]
 pub use builder::MIRBuilder;
-use fusion_compiler::{bug, idx, Idx, IdxVec};
+
 #[allow(unused)]
 pub use writer::MIRWriter;
-
-use crate::{ast, compilation_unit};
+use basic_block::BasicBlockIdx;
 
 mod builder;
 mod writer;
 pub mod optimizations;
+mod basic_block;
 
 
 #[derive(Debug, Copy, Clone)]
@@ -33,110 +37,73 @@ impl From<compilation_unit::Type> for Type {
     }
 }
 
+pub type Functions = IdxVec<FunctionIdx, Function>;
 #[derive(Debug)]
 pub struct MIR {
-    pub functions: IdxVec<FunctionIdx, Function>,
+    pub functions: Functions,
+    pub basic_blocks: BasicBlocks,
 }
-
 
 impl MIR {
     pub fn new(
-        functions: IdxVec<FunctionIdx, Function>,
     ) -> Self {
         Self {
-            functions,
+            functions: Functions::new(),
+            basic_blocks: BasicBlocks::new(),
         }
     }
-}
 
-idx!(FunctionIdx);
-
-pub type Instructions = IdxVec<InstructionIdx, Instruction>;
-pub type BasicBlocks = IdxVec<BasicBlockIdx, Option<BasicBlock>>;
-
-#[derive(Debug)]
-pub struct Function {
-    pub name: String,
-    pub return_type: Type,
-    pub parameters: Vec<Type>,
-    pub basic_blocks: BasicBlocks,
-    pub instructions: Instructions,
-}
-
-impl Function {
     pub fn new_basic_block(&mut self) -> BasicBlockIdx {
         self.basic_blocks.push_with_index(|idx| Some(BasicBlock::new(idx)))
     }
 }
 
+#[derive(Debug)]
+pub struct BasicBlocks(IdxVec<BasicBlockIdx, Option<BasicBlock>>);
 
-idx!(BasicBlockIdx);
+impl BasicBlocks {
+    pub fn new() -> Self {
+        Self(IdxVec::new())
+    }
 
-impl Display for BasicBlockIdx {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "bb{}", self.as_index())
+    pub fn push_basic_block(&mut self) -> BasicBlockIdx {
+        self.push_with_index(|idx| Some(BasicBlock::new(idx)))
+    }
+}
+
+impl Deref for BasicBlocks {
+    type Target = IdxVec<BasicBlockIdx, Option<BasicBlock>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
 
-#[derive(Debug, Clone)]
-pub struct BasicBlock {
-    pub instructions: Vec<InstructionIdx>,
-    terminator: Terminator,
-    pub idx: BasicBlockIdx,
-}
-
-impl BasicBlock {
-    pub fn new(
-        idx: BasicBlockIdx,
-    ) -> Self {
-        Self {
-            instructions: vec![],
-            terminator: Terminator::new(TerminatorKind::Unresolved),
-            idx
-        }
-    }
-
-    pub fn has_instructions(&self) -> bool {
-        !self.instructions.is_empty()
-    }
-
-    pub fn is_terminated(&self) -> bool {
-        match self.terminator.kind {
-            TerminatorKind::Unresolved => false,
-            _ => true,
-        }
-    }
-
-    pub fn set_terminator(&mut self, kind: TerminatorKind) {
-        tracing::debug!("Setting terminator of {:?} to {:?}",self.idx , kind);
-        self.terminator = Terminator::new(kind);
-    }
-
-    /// Sets the terminator if it is not already set.
-    pub fn maybe_set_terminator(&mut self,  kind: TerminatorKind) {
-        if !self.is_terminated() {
-            self.set_terminator(kind);
-        }
-    }
-
-
-    /// Appends `other` to `self`.
-    ///
-    /// 1. Adds the arguments of `other` to `self`
-    /// 2. Replaces all references to the arguments of `other` with the arguments of `self`
-    /// 3. Appends the instructions of `other` to `self`
-    /// 4. Replaces `self.terminator` with `other.terminator`
-    pub fn append(&mut self, other: Self) {
-        self.instructions.extend(other.instructions);
-        self.terminator = other.terminator;
+impl DerefMut for BasicBlocks {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
+
+pub type Instructions = IdxVec<InstructionIdx, Instruction>;
+
+#[derive(Debug)]
+pub struct Function {
+    pub name: String,
+    pub return_type: Type,
+    pub parameters: Vec<VariableIdx>,
+    pub basic_blocks: Vec<BasicBlockIdx>,
+    pub instructions: Instructions,
+}
+
+idx!(FunctionIdx);
 
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Value {
     InstructionRef(InstructionIdx),
+    ParameterRef(usize),
     ConstantInt(i64),
     Void,
 }
@@ -202,7 +169,7 @@ impl Value {
 }
 
 
-idx!(InstructionIdx);
+
 
 #[derive(Debug)]
 pub struct Instruction {
@@ -246,7 +213,7 @@ impl Instruction {
                 }
             }
             InstructionKind::Phi(phi) => {
-                for index in phi.operands.iter_mut() {
+                for (_, index) in phi.operands.iter_mut() {
                     if *index == old_idx {
                         *index = new_idx;
                     }
@@ -255,6 +222,8 @@ impl Instruction {
         }
     }
 }
+
+idx!(InstructionIdx);
 
 #[derive(Debug)]
 pub enum InstructionKind {
@@ -291,7 +260,7 @@ impl InstructionKind {
     }
 }
 
-type Operands = Vec<InstructionIdx>;
+type Operands = Vec<(BasicBlockIdx, InstructionIdx)>;
 
 #[derive(Debug, Clone)]
 pub struct PhiNode {
@@ -433,10 +402,11 @@ pub enum TerminatorKind {
         cases: Vec<(i32, BasicBlockIdx)>,
         default: BasicBlockIdx,
     },
+    /// Marks a basic block as `unresolved`.
+    /// This means that the terminator is known to be of a certain kind, but the precise target is not known.
+    /// 
+    /// This is for example used for an unresolved break statement, because the target of a break is not known until the loop has been built.
     Unresolved,
-    /// Marks a basic block as unreachable.
-    ///
-    /// This is for example used for an unresolved break statement.
-    Unreachable,
+    
 }
 

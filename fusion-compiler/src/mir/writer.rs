@@ -4,24 +4,25 @@ use anyhow::Result;
 
 use fusion_compiler::{Idx, IdxVec};
 
-use crate::mir::{BasicBlock, BasicBlockIdx, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, Terminator, TerminatorKind, Type, Value};
+use crate::mir::{BasicBlockIdx, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, Terminator, TerminatorKind, Type, Value};
+use crate::mir::basic_block::BasicBlock;
 
 pub struct MIRWriter<W> {
     _phantom: std::marker::PhantomData<W>,
 }
 
 impl<W> MIRWriter<W> where W: Write {
-
     pub fn write_graphviz_representation(writer: &mut W, ir: &MIR) -> Result<()> {
         writeln!(writer, "digraph {{")?;
         for function in ir.functions.iter() {
             writeln!(writer, "    subgraph cluster_{} {{", function.name)?;
             writeln!(writer, "        label = \"{}\";", function.name)?;
-            for (bb_idx, bb) in function.basic_blocks.indexed_iter_as_option().flatten() {
+            for bb_idx in function.basic_blocks.iter().copied() {
+                let bb = ir.basic_blocks.get_or_panic(bb_idx);
                 let mut bb_content = String::new();
                 MIRWriter::write_basic_block(&mut bb_content, &ir, function, bb_idx, &bb)?;
                 writeln!(writer, "        {} [label=\"{}\"];", Self::format_bb_idx(bb_idx), bb_content)?;
-                match &bb.terminator.kind {
+                match &bb.terminator.as_ref().unwrap().kind {
                     TerminatorKind::Jump(target) => {
                         writeln!(writer, "        {} -> {};", Self::format_bb_idx(bb_idx), Self::format_bb_idx(*target))?;
                     }
@@ -33,7 +34,6 @@ impl<W> MIRWriter<W> where W: Write {
                     }
                     TerminatorKind::Return { .. } => {}
                     TerminatorKind::Unresolved => {}
-                    TerminatorKind::Unreachable => {}
                 }
             }
             writeln!(writer, "    }}")?;
@@ -44,7 +44,8 @@ impl<W> MIRWriter<W> where W: Write {
     pub fn write_text_representation(writer: &mut W, ir: &MIR) -> Result<()> {
         for function in ir.functions.iter() {
             writeln!(writer, "func {}:", function.name)?;
-            for (bb_idx, bb) in function.basic_blocks.indexed_iter_as_option().flatten() {
+            for bb_idx in function.basic_blocks.iter().copied() {
+                let bb = ir.basic_blocks.get_or_panic(bb_idx);
                 Self::write_basic_block(writer, &ir, function, bb_idx, &bb)?;
             }
         }
@@ -64,7 +65,7 @@ impl<W> MIRWriter<W> where W: Write {
             writeln!(writer)?;
         }
         write!(writer, "{}", indentation)?;
-        Self::write_terminator(writer, &ir.functions, &bb.terminator)?;
+        Self::write_terminator(writer, &ir.functions, bb.terminator.as_ref().unwrap())?;
         writeln!(writer)?;
         Ok(())
     }
@@ -103,8 +104,8 @@ impl<W> MIRWriter<W> where W: Write {
             }
             InstructionKind::Phi(phi) => {
                 write!(writer, "phi {{ ")?;
-                for (idx, instruction_ref) in phi.iter().enumerate() {
-                    write!(writer, "{}", Self::format_instruction_idx(*instruction_ref))?;
+                for (idx, (from, instruction_ref)) in phi.iter().enumerate() {
+                    write!(writer, "{} -> {}", from, Self::format_instruction_idx(*instruction_ref))?;
                     if idx != phi.len() - 1 {
                         write!(writer, ", ")?;
                     }
@@ -128,7 +129,7 @@ impl<W> MIRWriter<W> where W: Write {
             TerminatorKind::Jump(target) => {
                 write!(writer, "jump {}", target)?;
             }
-            TerminatorKind::SwitchInt { value , cases, default } => {
+            TerminatorKind::SwitchInt { value, cases, default } => {
                 write!(writer, "switchInt (")?;
                 Self::write_value(writer, value)?;
                 writeln!(writer, ") {{")?;
@@ -143,13 +144,9 @@ impl<W> MIRWriter<W> where W: Write {
             TerminatorKind::Unresolved => {
                 write!(writer, "unresolved")?;
             }
-            TerminatorKind::Unreachable => {
-                write!(writer, "breakToOuterLoop")?;
-            }
         }
         Ok(())
     }
-
 
 
     fn write_value(writer: &mut W, value: &Value) -> Result<()> {
@@ -162,6 +159,9 @@ impl<W> MIRWriter<W> where W: Write {
             }
             Value::Void => {
                 write!(writer, "()")?;
+            }
+            Value::ParameterRef(parameter_idx) => {
+                write!(writer, "${}", parameter_idx)?;
             }
         }
         Ok(())

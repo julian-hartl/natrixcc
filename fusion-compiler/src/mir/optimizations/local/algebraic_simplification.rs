@@ -47,7 +47,7 @@ impl LocalMIRPass for AlgebraicSimplification {
     fn run_on_basic_block(&mut self, mir: &mut MIR, function_idx: FunctionIdx, bb_idx: BasicBlockIdx) -> u32 {
         let mut changes = 0;
         let function = mir.functions.get_mut(function_idx);
-        let bb = function.basic_blocks.get_mut_or_panic(bb_idx);
+        let bb = mir.basic_blocks.get_mut_or_panic(bb_idx);
         for instruction_idx in bb.instructions.iter().copied() {
             let instruction = function.instructions.get_mut(instruction_idx);
             match &mut instruction.kind {
