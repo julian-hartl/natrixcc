@@ -87,7 +87,7 @@ impl DerefMut for BasicBlocks {
 }
 
 pub type Instructions = IdxVec<InstructionIdx, Instruction>;
-
+pub type LocalAliases = HashMap<InstructionIdx, VariableIdx>;
 #[derive(Debug)]
 pub struct Function {
     pub name: String,
@@ -95,6 +95,7 @@ pub struct Function {
     pub parameters: Vec<VariableIdx>,
     pub basic_blocks: Vec<BasicBlockIdx>,
     pub instructions: Instructions,
+    pub local_aliases: LocalAliases,
 }
 
 idx!(FunctionIdx);
@@ -104,7 +105,7 @@ idx!(FunctionIdx);
 pub enum Value {
     InstructionRef(InstructionIdx),
     ParameterRef(usize),
-    ConstantInt(i64),
+    ConstantInt(i32),
     Void,
 }
 
@@ -120,7 +121,7 @@ impl Value {
         }
     }
 
-    pub fn as_i64(&self) -> Option<i64> {
+    pub fn as_i32(&self) -> Option<i32> {
         match self {
             Self::ConstantInt(value) => Some(*value),
             _ => None,
@@ -139,7 +140,7 @@ impl Value {
         }
     }
 
-    pub fn replace_with_new_reference_from_copies(&mut self, copies: &HashMap<InstructionIdx, InstructionIdx>) -> bool {
+    pub fn replace_copy_with_copied_ref(&mut self, copies: &HashMap<InstructionIdx, InstructionIdx>) -> bool {
         match self {
             Self::InstructionRef(idx) => {
                 if let Some(new_reference) = copies.get(idx) {
@@ -404,9 +405,9 @@ pub enum TerminatorKind {
     },
     /// Marks a basic block as `unresolved`.
     /// This means that the terminator is known to be of a certain kind, but the precise target is not known.
-    /// 
+    ///
     /// This is for example used for an unresolved break statement, because the target of a break is not known until the loop has been built.
     Unresolved,
-    
+
 }
 

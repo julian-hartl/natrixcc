@@ -22,9 +22,9 @@ impl ComputedConstantValues {
         }
     }
 
-    fn get_as_constant_integer(&self, value: &Value) -> Option<i64> {
+    fn get_as_constant_integer(&self, value: &Value) -> Option<i32> {
         let as_constant_value = self.get_as_constant_value(value)?;
-        as_constant_value.as_i64()
+        as_constant_value.as_i32()
     }
 
     fn get_as_constant_value(&self, value: &Value) -> Option<Value> {
@@ -89,12 +89,12 @@ impl LocalMIRPass for ConstantFolding {
                             Binop::Xor => lhs_int ^ rhs_int,
                             Binop::Shl => lhs_int << rhs_int,
                             Binop::Shr => lhs_int >> rhs_int,
-                            Binop::Eq => (lhs_int == rhs_int) as i64,
-                            Binop::Neq => (lhs_int != rhs_int) as i64,
-                            Binop::Lt => (lhs_int < rhs_int) as i64,
-                            Binop::Leq => (lhs_int <= rhs_int) as i64,
-                            Binop::Gt => (lhs_int > rhs_int) as i64,
-                            Binop::Geq => (lhs_int >= rhs_int) as i64,
+                            Binop::Eq => (lhs_int == rhs_int) as i32,
+                            Binop::Neq => (lhs_int != rhs_int) as i32,
+                            Binop::Lt => (lhs_int < rhs_int) as i32,
+                            Binop::Leq => (lhs_int <= rhs_int) as i32,
+                            Binop::Gt => (lhs_int > rhs_int) as i32,
+                            Binop::Geq => (lhs_int >= rhs_int) as i32,
                         };
                         let value = Value::ConstantInt(result);
                         constant_values.insert(instruction_idx, value.clone());

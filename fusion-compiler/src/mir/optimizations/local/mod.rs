@@ -4,6 +4,7 @@ use crate::mir::optimizations::MIRPass;
 mod constants_folding;
 mod algebraic_simplification;
 mod copy_propagation;
+mod trivial_phi_node_elimination;
 
 pub trait LocalMIRPass {
     /// Returns the number of changes made to the BasicBlock
@@ -18,6 +19,7 @@ impl LocalOptimizer {
     pub fn new() -> Self {
         Self {
             passes: vec![
+                Box::new(trivial_phi_node_elimination::TrivialPhiNodeElimination),
                 Box::new(constants_folding::ConstantFolding),
                 Box::new(copy_propagation::CopyPropagation),
                 Box::new(algebraic_simplification::AlgebraicSimplification),

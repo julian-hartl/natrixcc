@@ -8,16 +8,19 @@ use crate::hir::{HIR, HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind};
 use crate::mir::{BasicBlocks, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, PhiNode, TerminatorKind, Value};
 use crate::mir::basic_block::{BasicBlock, BasicBlockIdx};
 
-pub struct MIRBuilder {}
+pub struct MIRBuilder {
+    mir: MIR,
+}
 
 
 impl MIRBuilder {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            mir: MIR::new(),
+        }
     }
 
-    pub fn build(self, hir: &HIR, global_scope: &GlobalScope) -> MIR {
-        let mut mir = MIR::new();
+    pub fn build(mut self, hir: &HIR, global_scope: &GlobalScope) -> MIR {
         let mut calls_to_resolve = Vec::new();
         let mut function_map = HashMap::new();
         for (function_idx, function_body) in hir.functions.iter() {
@@ -29,20 +32,21 @@ impl MIRBuilder {
                     parameters: function.parameters.clone(),
                     basic_blocks: Vec::new(),
                     instructions: IdxVec::new(),
+                    local_aliases: HashMap::new(),
                 }
             );
             let (function, to_be_resolved) = function_builder.build(
-                &mut mir.basic_blocks,
+                &mut self.mir.basic_blocks,
                 global_scope,
                 function_body,
             );
-            let mir_function_idx = mir.functions.push(function);
+            let mir_function_idx = self.mir.functions.push(function);
             calls_to_resolve.extend(to_be_resolved.into_iter().map(|(instruction_idx, function_idx)| (instruction_idx, function_idx, mir_function_idx)));
             function_map.insert(*function_idx, mir_function_idx);
         }
         for (instruction_idx, function_idx, function_that_called) in calls_to_resolve {
             let mir_function_idx = function_map[&function_idx];
-            let instruction = mir.functions[function_that_called].instructions.get_mut(instruction_idx);
+            let instruction = self.mir.functions[function_that_called].instructions.get_mut(instruction_idx);
             match &mut instruction.kind {
                 InstructionKind::Call { function_idx: call_function_idx, .. } => {
                     *call_function_idx = mir_function_idx;
@@ -50,10 +54,11 @@ impl MIRBuilder {
                 _ => bug!("Expected call instruction, found {:?}", instruction.kind)
             }
         }
-        mir
+        self.mir
     }
 }
 
+type LocalDefinitions = HashMap<VariableIdx, HashMap<BasicBlockIdx, InstructionIdx>>;
 
 struct FunctionBuilder {
     function: Function,
@@ -89,7 +94,7 @@ struct FunctionBuilder {
     ///
     /// Definitions:
     /// a: {bb0: %0, bb1: %2}
-    definitions: HashMap<VariableIdx, HashMap<BasicBlockIdx, InstructionIdx>>,
+    definitions: LocalDefinitions,
     incomplete_phis: HashMap<BasicBlockIdx, Vec<(InstructionIdx, VariableIdx)>>,
     sealed_blocks: HashSet<BasicBlockIdx>,
     call_references_to_resolve: Vec<(InstructionIdx, crate::compilation_unit::FunctionIdx)>,
@@ -121,8 +126,24 @@ impl FunctionBuilder {
         for stmt in body.iter() {
             self.build_stmt(basic_blocks, &mut bb_builder, global_scope, stmt)
         }
-        for block in self.function.basic_blocks.iter().copied() {
-            assert!(self.is_sealed(block));
+        let predecessors = self.function.predecessors(basic_blocks);
+        for block in self.function.basic_blocks.clone().into_iter() {
+            if !self.is_sealed(block) {
+                self.seal_block(basic_blocks, block, global_scope);
+            }
+            let immediate_predecessors = predecessors.get_immediate(block);
+            for instr_idx in basic_blocks.get_or_panic(block).instructions.iter().copied() {
+                let instruction = &self.function.instructions[instr_idx];
+                if let InstructionKind::Phi(phi) = &instruction.kind {
+                    let predecessors_len = immediate_predecessors.map(|ip| ip.len()).unwrap_or_default();
+                    assert_eq!(phi.operands.len(), predecessors_len, "Phi node in {} has {} operand(s), but {} predecessor(s)", block,  phi.operands.len(), predecessors_len);
+                    for (pred, _) in phi.operands.iter() {
+                        if let Some(immediate_predecessors) = immediate_predecessors {
+                            assert!(immediate_predecessors.contains(pred), "Phi node {:?} has operand for predecessor {:?}, but that is not an immediate predecessor of {:?}", phi, pred, block);
+                        }
+                    }
+                }
+            }
         }
         assert!(self.incomplete_phis.is_empty());
         assert!(self.loops.is_empty());
@@ -206,10 +227,7 @@ impl FunctionBuilder {
                 //   jump bb1
                 // bb5: <-- loop exit
                 //   return
-                let pred = bb_builder.terminate_and(basic_blocks, &mut self.function, |loop_bb| TerminatorKind::Jump(loop_bb));
-                // We can only seal the block here, because we currently have not introduced labeled continues,
-                // so there is no way new predecessors are added after this loop has been built.
-                self.seal_block(basic_blocks, pred, global_scope);
+                let pred = bb_builder.terminate_and(basic_blocks, &mut self.function, TerminatorKind::Jump);
                 let loop_entry_bb = bb_builder.current_bb;
                 self.push_loop(loop_entry_bb);
                 for stmt in body.iter() {
@@ -235,7 +253,6 @@ impl FunctionBuilder {
                 let bb = bb_builder.terminate(basic_blocks, TerminatorKind::Return {
                     value,
                 });
-                self.seal_block(basic_blocks, bb, global_scope);
             }
             HIRStmtKind::If {
                 condition,
@@ -257,7 +274,8 @@ impl FunctionBuilder {
                     default: then_start_bb,
                 });
                 tracing::debug!("Built condition");
-                // self.seal_block(mir, pred, global_scope);
+                // todo: is this correct?
+                // self.seal_block(basic_blocks, pred, global_scope);
                 self.seal_block(basic_blocks, then_start_bb, global_scope);
                 self.seal_block(basic_blocks, else_start_bb, global_scope);
                 tracing::debug!("Building then body");
@@ -283,7 +301,7 @@ impl FunctionBuilder {
                     TerminatorKind::Jump(if_end_bb)
                 );
                 tracing::debug!("Built if terminator");
-                self.seal_block(basic_blocks, if_end_bb, global_scope);
+                // self.seal_block(basic_blocks, if_end_bb, global_scope);
             }
             HIRStmtKind::Block { body } => {
                 for stmt in body.iter() {
@@ -323,7 +341,8 @@ impl FunctionBuilder {
 
     fn build_expr(&mut self, basics_blocks: &mut BasicBlocks, bb_builder: &mut BasicBlockBuilder, global_scope: &GlobalScope, expr: &HIRExpr) -> Value {
         match &expr.kind {
-            HIRExprKind::Number(value) => Value::ConstantInt(*value),
+            // todo: support other numbers
+            HIRExprKind::Number(value) => Value::ConstantInt(*value as i32),
             HIRExprKind::Bool(value) => Value::ConstantInt(if *value { 1 } else { 0 }),
             HIRExprKind::Binary {
                 lhs,
@@ -408,7 +427,9 @@ impl FunctionBuilder {
     /// Records the definition of a variable in the current basic block.
     #[inline]
     pub fn write_variable(&mut self, variable: VariableIdx, bb_idx: BasicBlockIdx, instruction: InstructionIdx) {
+        tracing::debug!("Writing variable {:?} in {} as {:?}", variable, bb_idx, instruction);
         self.definitions.entry(variable).or_default().insert(bb_idx, instruction);
+        self.function.local_aliases.insert(instruction, variable);
     }
 
     /// Returns the latest definition of a variable above and including the given basic block.
@@ -442,8 +463,9 @@ impl FunctionBuilder {
             tracing::debug!("Inserting operandless phi for variable {:?} in block {:?}", variable, bb_idx);
             let instruction_ref = self.add_operandless_phi_to_bb(basic_blocks, variable, bb_idx, scope);
             self.write_variable(variable, bb_idx, instruction_ref);
+            tracing::debug!("Adding phi operands for {:?} in block {:?}", variable, bb_idx);
 
-            self.add_phi_operands(basic_blocks, instruction_ref, variable, &preceding_bbs, scope);
+            self.add_phi_operands(basic_blocks, instruction_ref, variable, preceding_bbs, scope);
             // todo: remove trivial phi
             // self.try_remove_trivial_phi(phi);
             instruction_ref
@@ -467,8 +489,7 @@ impl FunctionBuilder {
 
     fn seal_block(&mut self, basic_blocks: &mut BasicBlocks, bb_idx: BasicBlockIdx, global_scope: &GlobalScope) {
         if self.is_sealed(bb_idx) {
-            tracing::debug!("Tried to seal block {:?} after it had been sealed", bb_idx);
-            return;
+            bug!("Tried to seal block {} after it had been sealed", bb_idx);
         }
         tracing::debug!("Sealing {:?}", bb_idx);
         // todo: do not clone

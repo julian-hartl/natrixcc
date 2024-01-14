@@ -30,7 +30,7 @@ pub trait Idx: Copy + Clone + Sized{
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct IdxVec<Index, T>
     where
         Index: Idx,

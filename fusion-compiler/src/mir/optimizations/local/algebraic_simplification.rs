@@ -8,8 +8,8 @@ impl AlgebraicSimplification {
         &self,
         operator: Binop,
         op_ty: &Type,
-        known_side: i64,
-    ) -> Option<i64> {
+        known_side: i32,
+    ) -> Option<i32> {
         let computed = if known_side == 0 {
             match operator {
                 Binop::Add | Binop::Sub | Binop::Or | Binop::Shl | Binop::Shr => Some(known_side),
@@ -56,8 +56,8 @@ impl LocalMIRPass for AlgebraicSimplification {
                     rhs,
                     operator
                 } => {
-                    let lhs_int = lhs.as_i64();
-                    let rhs_int = rhs.as_i64();
+                    let lhs_int = lhs.as_i32();
+                    let rhs_int = rhs.as_i32();
                     match (lhs_int, rhs_int) {
                         (None, Some(rhs_int)) => {
                             if let Some(result) = self.simplify_binary_instruction_one_side_known(*operator, &instruction.ty, rhs_int) {

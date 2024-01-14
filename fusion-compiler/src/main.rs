@@ -18,36 +18,32 @@ mod text;
 mod typings;
 mod mir;
 mod hir;
+mod lir;
 
 
 fn main() -> Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     std::env::set_var("RUST_LOG", "debug");
     tracing_subscriber::fmt::init();
+    // todo: investigate why a phi node with a missing operand is generated
     let input = "
 
-        func gcd(a: int, b: int) -> int {
-            while a != b {
-                if a > b {
-                    a = a - b;
-                } else {
-                    b = b - a;
-                }
-            }
-            return a;
-        }
-
         func main() -> int {
-            let i = 0;
-            let d = 0;
-            while i < 10 {
-                let a = i * 2;
-                let b = i * 3;
-                let c = gcd(a, b);
-                d = d + c;
-                i = i + 1;
+            let a = 1;
+            let b = 2;
+            return if a < b {
+                if b > a {
+                    let i = 0;
+                    while i < 3 {
+                        i = i + 1;
+                    }
+                    i
+                } else {
+                    1
+                }
+            } else {
+                2
             }
-            return d;
         }
     ";
     let mut compilation_unit = CompilationUnit::compile(input).map_err(
@@ -75,5 +71,12 @@ fn main() -> Result<()> {
     let mut mir_graphviz = String::new();
     MIRWriter::write_graphviz_representation(&mut mir_graphviz, &ir)?;
     File::create("mir-optimized.dot")?.write_all(mir_graphviz.as_bytes())?;
+    let lir_builder = lir::builder::LIRBuilder::new(&ir, &compilation_unit.global_scope);
+    let lir = lir_builder.build();
+    dbg!(&lir);
+    let mut gen = codegen::x86_64::X86_64Codegen::new();
+    gen.gen(&lir)?;
+    let asm_output = gen.get_asm_output()?;
+    println!("{}", asm_output);
     Ok(())
 }

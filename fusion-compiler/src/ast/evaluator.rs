@@ -133,6 +133,14 @@ impl<'a> ASTEvaluator<'a> {
 }
 
 impl<'a> ASTVisitor for ASTEvaluator<'a> {
+    fn visit_body(&mut self, ast: &mut Ast, body: &Body) {
+        self.push_frame();
+        for statement in body.iter() {
+            self.visit_statement(ast, *statement);
+        }
+        self.pop_frame();
+    }
+
     fn visit_func_decl(&mut self, _ast: &mut Ast, _func_decl: &FunctionDeclaration, _item_id: ItemId) {}
 
     fn visit_while_statement(&mut self, ast: &mut Ast, while_statement: &WhileStmt) {
@@ -141,14 +149,6 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
         while self.expect_last_value().expect_boolean() {
             self.visit_body(ast, &while_statement.body);
             self.visit_expression(ast, while_statement.condition);
-        }
-        self.pop_frame();
-    }
-
-    fn visit_body(&mut self, ast: &mut Ast, body: &Body) {
-        self.push_frame();
-        for statement in body.iter() {
-            self.visit_statement(ast, *statement);
         }
         self.pop_frame();
     }
@@ -194,7 +194,7 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
             .expect(
                 format!(
                     "Function '{}' not found",
-                    call_expression.callee.span.literal
+                    function_name
                 )
                     .as_str(),
             );

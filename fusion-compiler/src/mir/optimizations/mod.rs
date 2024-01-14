@@ -16,9 +16,10 @@ impl Optimizer {
     pub fn new() -> Self {
         Self {
             passes: vec![
+                Box::new(global::unreachable_code_elimination::UnreachableCodeElimination),
                 Box::new(global::branch_elimination::BranchElimination),
-                Box::new(local::LocalOptimizer::new()),
                 Box::new(global::dead_code_elimination::DeadCodeElimination),
+                Box::new(local::LocalOptimizer::new()),
             ]
         }
     }

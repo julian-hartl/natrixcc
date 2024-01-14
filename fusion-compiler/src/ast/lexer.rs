@@ -1,7 +1,7 @@
 use crate::text::span::TextSpan;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
     // Literals
     Number(i64),
@@ -94,10 +94,10 @@ impl Display for TokenKind {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token {
-    pub(crate) kind: TokenKind,
-    pub(crate) span: TextSpan,
+    pub kind: TokenKind,
+    pub span: TextSpan,
 }
 
 impl Token {
