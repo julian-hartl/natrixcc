@@ -448,7 +448,7 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let (alloca_value, alloca_instr) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let (alloca_value, _alloca_instr) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
             let instr = cfg_builder.store(alloca_value, Op::Const(Const::i32(0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 

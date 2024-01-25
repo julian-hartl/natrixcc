@@ -1,15 +1,15 @@
 use crate::cfg::BasicBlock;
 use crate::function::Function;
-use crate::instruction::{InstrKind, Op, OpInstr, PhiInstr};
+use crate::instruction::{InstrKind, Op, OpInstr};
 use crate::module::Module;
 use crate::optimization::basic_block_pass::BasicBlockPass;
-use crate::optimization::function_pass::FunctionPass;
+
 
 #[derive(Default)]
 pub struct Pass {}
 
 impl BasicBlockPass for Pass {
-    fn run_on_basic_block(&mut self, module: &mut Module, function: Function, basic_block: BasicBlock) -> usize {
+    fn run_on_basic_block(&mut self, module: &mut Module, function: Function, _basic_block: BasicBlock) -> usize {
         let function = &mut module.functions[function];
         let mut optimized_phis = 0;
         for bb in function.cfg.basic_blocks.iter().flatten() {

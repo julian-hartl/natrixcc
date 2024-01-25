@@ -1,6 +1,6 @@
 use crate::codegen::x86_64::function_builder::FunctionBuilder;
 use crate::codegen::x86_64::{FunctionData, Module};
-use crate::codegen::x86_64::register_allocator::{FastRegisterAllocator, RegisterAllocator};
+
 
 type MirModule = crate::module::Module;
 

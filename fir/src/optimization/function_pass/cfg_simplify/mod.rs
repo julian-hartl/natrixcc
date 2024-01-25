@@ -25,9 +25,9 @@ impl FunctionPass for Pass {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfg::{BranchTerm, CondBrTerm, RetTerm, TerminatorKind, UnCondBrTerm, ValueId};
+    use crate::cfg::{BranchTerm, CondBrTerm, RetTerm, TerminatorKind, UnCondBrTerm};
     use crate::cfg_builder::CFGBuilder;
-    use crate::instruction::{Const, ICmpCond, Op};
+    use crate::instruction::{Const, Op};
     use crate::optimization::{Pipeline, PipelineConfig};
     use crate::test_utils::create_test_module;
 
@@ -36,7 +36,7 @@ mod tests {
         let (mut module, function) = create_test_module();
         let function_data = &mut module.functions[function];
         let mut cfg_builder = CFGBuilder::new(function_data);
-        let bb = cfg_builder.start_bb();
+        let _bb = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
         let bb3 = cfg_builder.create_bb();

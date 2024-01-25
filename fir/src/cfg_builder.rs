@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::cfg::{BasicBlock, BasicBlockData, RetTerm, Terminator, TerminatorKind};
 use crate::cfg::ValueId;
 use crate::function::FunctionData;
-use crate::instruction::{AllocaInstr, ICmpCond, ICmpInstr, Incoming, Instr, InstrData, InstrKind, LoadInstr, Op, OpInstr, PhiInstr, PlaceKind, StoreInstr, SubInstr, Value, ValueData};
+use crate::instruction::{AllocaInstr, ICmpCond, ICmpInstr, Incoming, Instr, InstrData, InstrKind, LoadInstr, Op, OpInstr, PhiInstr, StoreInstr, SubInstr, Value, ValueData};
 use crate::ty::Type;
 
 #[derive(Debug)]
@@ -121,7 +121,7 @@ impl<'func> CFGBuilder<'func> {
     }
 
     fn push_value_for_next_instr(&mut self, place_id: ValueId, ty: Type) -> Value {
-        let instr = self.func.cfg.instructions.next_idx();
+        let _instr = self.func.cfg.instructions.next_idx();
         let mut current_version = None;
         for place in self.func.cfg.values_ctx.iter_mut().filter(|place| place.id == place_id) {
             match place.version {
@@ -397,7 +397,7 @@ mod tests {
     fn should_add_conditional_branch_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = CFGBuilder::new(&mut function);
-        let bb0 = cfg_builder.start_bb();
+        let _bb0 = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
         let (cmp_value, _) = cfg_builder.icmp(None, ICmpCond::Eq, Op::Const(Const::i32(0)), Op::Const(Const::i32(1))).unwrap();

@@ -16,7 +16,7 @@ pub struct ConstantPropagation {
 impl FunctionPass for ConstantPropagation {
     fn run_on_function(&mut self, module: &mut Module, function: Function) -> usize {
         let function = &mut module.functions[function];
-        self.concrete_value_analysis.run(function, |analysis, function, bb, instr| {
+        self.concrete_value_analysis.run(function, |analysis, function, _bb, instr| {
             let instr = &mut function.cfg.instructions[instr];
             match &mut instr.kind {
                 InstrKind::Alloca(_) => false,
@@ -104,7 +104,7 @@ mod tests {
         let (mut module, function) = create_test_module();
         let function_data = &mut module.functions[function];
         let mut cfg_builder = CFGBuilder::new(function_data);
-        let bb = cfg_builder.start_bb();
+        let _bb = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
         let bb3 = cfg_builder.create_bb();

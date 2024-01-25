@@ -4,7 +4,7 @@ use crate::cfg::{BranchTerm, TerminatorKind};
 use crate::function::Function;
 use crate::instruction::{InstrKind, Op, Value};
 use crate::module::Module;
-use crate::optimization::basic_block_pass::BasicBlockPass;
+
 use crate::optimization::function_pass::FunctionPass;
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -113,11 +113,11 @@ mod tests {
         let (mut module, function) = create_test_module();
         let function_data = &mut module.functions[function];
         let mut cfg_builder = CFGBuilder::new(function_data);
-        let bb0 = cfg_builder.start_bb();
+        let _bb0 = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
         let (value, _) = cfg_builder.op(None, Op::Const(Const::i32(42))).unwrap();
-        let (unused_value, _) = cfg_builder.op(None, Op::Const(Const::i32(90))).unwrap();
+        let (_unused_value, _) = cfg_builder.op(None, Op::Const(Const::i32(90))).unwrap();
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb1))));
         cfg_builder.set_bb(bb1);
         cfg_builder.op(None, Op::Value(value)).unwrap();

@@ -105,7 +105,7 @@ impl<'mir> FunctionBuilder<'mir> {
                                 Const::Int {
                                     width,
                                     value,
-                                    signed,
+                                    signed: _,
                                 } => {
                                     match Size::from_bit_width(*width) {
                                         Size::Byte => unimplemented!(),
@@ -252,7 +252,7 @@ impl<'mir> FunctionBuilder<'mir> {
                                 }
                                 match *constant {
                                     Const::Int {
-                                        width,
+                                        
                                         value,
                                         ..
                                     } => {

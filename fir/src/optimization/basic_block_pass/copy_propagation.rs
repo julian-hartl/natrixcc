@@ -116,7 +116,7 @@ mod tests {
         let (mut module, function) = create_test_module();
         let function_data = &mut module.functions[function];
         let mut cfg_builder = CFGBuilder::new(function_data);
-        let bb = cfg_builder.start_bb();
+        let _bb = cfg_builder.start_bb();
         let (var_instr_value, _) = cfg_builder.op(None, Op::Const(Const::i32(10))).unwrap();
         let (sub1_value, _) = cfg_builder.sub(None, Op::Value(var_instr_value), Op::Const(Const::i32(5))).unwrap();
         let (sub2_value, _) = cfg_builder.op(None, Op::Value(sub1_value)).unwrap();

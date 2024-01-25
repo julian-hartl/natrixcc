@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
-use strum::IntoEnumIterator;
-use crate::codegen::x86_64::{FunctionData, Instr, InstrKind, PhysicalRegister, Register, VirtualRegister, VirtualRegisterData};
+
+use crate::codegen::x86_64::{FunctionData, InstrKind, PhysicalRegister, Register, VirtualRegister, VirtualRegisterData};
 use crate::ty::Type;
 
 pub trait RegisterAllocator {

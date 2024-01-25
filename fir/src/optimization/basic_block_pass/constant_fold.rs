@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 
-use crate::cfg::{BasicBlock, BranchTerm, CondBrTerm, RetTerm, TerminatorKind};
+use crate::cfg::{BasicBlock, BranchTerm, TerminatorKind};
 use crate::function::Function;
 use crate::instruction::{Const, ICmpCond, InstrKind, Op, OpInstr, Value};
 use crate::module::Module;
