@@ -497,7 +497,7 @@ impl FunctionBuilder {
             tracing::debug!("{:?} has incomplete phis {:?}", bb_idx, incomplete_phis);
             let predecessors = self.function.predecessors(basic_blocks);
             for (incomplete_phi, variable_idx) in incomplete_phis.iter().copied() {
-                self.add_phi_operands(basic_blocks, incomplete_phi, variable_idx, &predecessors.get_immediate(bb_idx).unwrap(), global_scope);
+                self.add_phi_operands(basic_blocks, incomplete_phi, variable_idx, predecessors.get_immediate(bb_idx).unwrap(), global_scope);
             }
         }
         self.incomplete_phis.remove(&bb_idx);

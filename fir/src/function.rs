@@ -1,7 +1,7 @@
 use index_vec::IndexVec;
 
-use crate::cfg::CFG;
-use crate::cfg::VarId;
+use crate::cfg::Cfg;
+use crate::cfg::ValueId;
 use crate::ty::Type;
 
 index_vec::define_index_type! {
@@ -17,7 +17,7 @@ pub struct FunctionData {
     pub name: String,
     pub params: IndexVec<Param, ParamData>,
     pub ret_ty: Type,
-    pub cfg: CFG,
+    pub cfg: Cfg,
 }
 
 
@@ -27,13 +27,13 @@ impl FunctionData {
             name,
             params,
             ret_ty,
-            cfg: CFG::default(),
+            cfg: Cfg::new(),
         }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ParamData {
-    pub id: VarId,
+    pub id: ValueId,
     pub ty: Type,
 }

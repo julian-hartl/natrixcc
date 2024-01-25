@@ -3,21 +3,46 @@ use std::fmt::{Display, Formatter};
 use index_vec::IndexVec;
 
 use crate::function::FunctionData;
-use crate::instruction::{Instr, InstrData, Op, Place, PlaceData};
+use crate::instruction::{Instr, InstrData, Op, Value, ValueData};
+use crate::ty::Type;
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-pub struct CFG {
+pub type ValueContext = IndexVec<Value, ValueData>;
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Cfg {
     pub basic_blocks: IndexVec<BasicBlock, Option<BasicBlockData>>,
     pub instructions: IndexVec<Instr, InstrData>,
-    pub places: IndexVec<Place, PlaceData>,
+    pub values_ctx: ValueContext,
+    pub entry_block: BasicBlock,
 }
 
-impl CFG {
+impl Cfg {
+    
+    pub fn new() -> Self {
+        Self {
+            basic_blocks: IndexVec::new(),
+            instructions: IndexVec::new(),
+            values_ctx: IndexVec::new(),
+            entry_block: BasicBlock::new(0),
+        }
+    }
+    
     pub fn write_to<W: std::fmt::Write>(&self, writer: &mut W, function: &FunctionData) -> std::fmt::Result {
         let indent = "    ";
         for (bb, bb_data) in self.basic_blocks.iter_enumerated() {
             if let Some(bb_data) = bb_data {
-                writeln!(writer, "{}:", bb)?;
+                writeln!(writer, "{bb}:")?;
+                let predecessors = bb_data.predecessors(self);
+                if !predecessors.is_empty() {
+                    write!(writer, "{indent}; preds = ")?;
+                    for (i, predecessor) in predecessors.iter().copied().enumerate() {
+                        if i > 0 {
+                            write!(writer, ", ")?;
+                        }
+                        write!(writer, "{predecessor}")?;
+                    }
+                    writeln!(writer)?;
+                }
                 for instr in &bb_data.instructions {
                     write!(writer, "{}", indent)?;
                     self.instructions[*instr].write_to(writer, function)?;
@@ -29,14 +54,24 @@ impl CFG {
         Ok(())
     }
 
-    pub fn target_place(&self, instr: Instr) -> Option<Place> {
+    pub fn target_place(&self, instr: Instr) -> Option<Value> {
         let instr = &self.instructions[instr];
-        instr.target_place()
+        instr.produced_value()
     }
 
-    pub fn target_place_data(&self, instr: Instr) -> Option<&PlaceData> {
+    pub fn target_place_data(&self, instr: Instr) -> Option<&ValueData> {
         let place = self.target_place(instr)?;
-        Some(&self.places[place])
+        Some(&self.values_ctx[place])
+    }
+
+    pub fn value_id_ty(&self, value: &ValueId) -> Option<Type> {
+        for value_data in self.values_ctx.iter() {
+            if value_data.id == *value {
+                return Some(value_data.ty.clone());
+            }
+        }
+        None
+
     }
 }
 
@@ -66,11 +101,11 @@ impl BasicBlockData {
         }
     }
 
-    pub fn declarations(&self, cfg: &CFG) -> Vec<Place> {
+    pub fn declarations(&self, cfg: &Cfg) -> Vec<Value> {
         let mut declarations = Vec::new();
         for instr in self.instructions.iter().copied() {
             let instr = &cfg.instructions[instr];
-            if let Some(place) = instr.target_place() {
+            if let Some(place) = instr.produced_value() {
                 declarations.push(place);
             }
         }
@@ -82,13 +117,20 @@ impl BasicBlockData {
             TerminatorKind::Ret(_) => {
                 Vec::new()
             }
-            TerminatorKind::Jmp(jmp) => {
-                vec![jmp.target]
+            TerminatorKind::Branch(jmp) => {
+                match jmp {
+                    BranchTerm::UnCond(term) => {
+                        vec![term.target]
+                    }
+                    BranchTerm::Cond(term) => {
+                        vec![term.true_target, term.false_target]
+                    }
+                }
             }
         }
     }
 
-    pub fn predecessors(&self, cfg: &CFG) -> Vec<BasicBlock> {
+    pub fn predecessors(&self, cfg: &Cfg) -> Vec<BasicBlock> {
         let mut predecessors = Vec::new();
         for (bb, bb_data) in cfg.basic_blocks.iter_enumerated() {
             if let Some(bb_data) = bb_data {
@@ -103,24 +145,24 @@ impl BasicBlockData {
 
 #[cfg(test)]
 mod bb_tests {
-    use crate::cfg::{BasicBlock, JmpTerm, RetTerm, TerminatorKind};
+    use crate::cfg::{BasicBlock, UnCondBrTerm, RetTerm, TerminatorKind, BranchTerm};
     use crate::cfg_builder::CFGBuilder;
-    use crate::create_test_function;
+    use crate::test_utils::create_test_function;
 
     #[test]
     fn should_return_correct_predecessors_and_successors() {
-        let mut function =create_test_function();
+        let mut function = create_test_function();
         let mut cfg_builder = CFGBuilder::new(&mut function);
         let bb0 = cfg_builder.create_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
         let bb3 = cfg_builder.create_bb();
         cfg_builder.set_bb(bb0);
-        cfg_builder.end_bb(TerminatorKind::Jmp(JmpTerm::new(bb1)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb1))));
         cfg_builder.set_bb(bb1);
-        cfg_builder.end_bb(TerminatorKind::Jmp(JmpTerm::new(bb3)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb3))));
         cfg_builder.set_bb(bb2);
-        cfg_builder.end_bb(TerminatorKind::Jmp(JmpTerm::new(bb3)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb3))));
         cfg_builder.set_bb(bb3);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         drop(cfg_builder);
@@ -153,7 +195,7 @@ pub struct Terminator {
 }
 
 impl Terminator {
-    pub fn new(kind: TerminatorKind) -> Self {
+    pub const fn new(kind: TerminatorKind) -> Self {
         Self { kind }
     }
 
@@ -161,13 +203,25 @@ impl Terminator {
         match &self.kind {
             TerminatorKind::Ret(term) => {
                 write!(writer, "ret")?;
+
                 if let Some(value) = &term.value {
-                    write!(writer, " ")?;
+                    write!(writer, " {} ",value.ty(function))?;
                     value.write_to(writer, function)?;
+                } else {
+                    write!(writer, " void")?;
                 }
             }
-            TerminatorKind::Jmp(term) => {
-                write!(writer, "jmp {}", term.target)?;
+            TerminatorKind::Branch(term) => {
+                match term {
+                    BranchTerm::UnCond(term) => {
+                        write!(writer, "br label {}", term.target)?;
+                    }
+                    BranchTerm::Cond(term) => {
+                        write!(writer, "br {} ", term.cond.ty(function))?;
+                        term.cond.write_to(writer, function)?;
+                        write!(writer, ", label {}, label {}", term.true_target, term.false_target)?;
+                    }
+                }
             }
         }
         writeln!(writer)?;
@@ -178,7 +232,7 @@ impl Terminator {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum TerminatorKind {
     Ret(RetTerm),
-    Jmp(JmpTerm),
+    Branch(BranchTerm),
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -187,33 +241,59 @@ pub struct RetTerm {
 }
 
 impl RetTerm {
-    pub fn empty() -> Self {
+    pub const fn new(value: Op) -> Self {
+        Self { value: Some(value) }
+    }
+    pub const fn empty() -> Self {
         Self { value: None }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct JmpTerm {
+pub enum BranchTerm {
+    UnCond(UnCondBrTerm),
+    Cond(CondBrTerm),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct UnCondBrTerm {
     pub target: BasicBlock,
 }
 
-impl JmpTerm {
-    pub fn new(target: BasicBlock) -> Self {
+impl UnCondBrTerm {
+    pub const fn new(target: BasicBlock) -> Self {
         Self { target }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum VarId {
-    Unnamed(usize),
-    Named(String)
+pub struct CondBrTerm {
+    pub cond: Op,
+    pub true_target: BasicBlock,
+    pub false_target: BasicBlock,
 }
 
-impl Display for VarId {
+impl CondBrTerm {
+    pub const fn new(cond: Op, true_target: BasicBlock, false_target: BasicBlock) -> Self {
+        Self {
+            cond,
+            true_target,
+            false_target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum ValueId {
+    Unnamed(usize),
+    Named(String),
+}
+
+impl Display for ValueId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            VarId::Unnamed(id) => write!(f, "%{}", id),
-            VarId::Named (name) => {
+            ValueId::Unnamed(id) => write!(f, "%{}", id),
+            ValueId::Named(name) => {
                 write!(f, "%{}", name)?;
                 Ok(())
             }

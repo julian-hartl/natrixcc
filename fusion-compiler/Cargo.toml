@@ -1,4 +1,3 @@
-workspace = { members = ["fir"] }
 [package]
 name = "fusion-compiler"
 version = "0.1.0"

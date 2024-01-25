@@ -1,9 +1,8 @@
-use std::any::Any;
 use std::fmt::{Display, Formatter};
 use std::ops::Sub;
 
+use crate::cfg::{BasicBlock, ValueId};
 use crate::function::FunctionData;
-use crate::cfg::{BasicBlock, VarId};
 use crate::ty::Type;
 
 index_vec::define_index_type! {
@@ -15,8 +14,14 @@ pub struct InstrData {
     pub kind: InstrKind,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum InstrIdentifyingKey {
+    Sub(Op, Op),
+}
+
+
 impl InstrData {
-    pub fn new(kind: InstrKind) -> Self {
+    pub const fn new(kind: InstrKind) -> Self {
         Self { kind }
     }
 
@@ -41,7 +46,7 @@ impl InstrData {
             }
             InstrKind::Op(_) => {}
             InstrKind::Store(instr) => {
-                let place_ty = &function.cfg.places[instr.place].ty;
+                let place_ty = &function.cfg.values_ctx[instr.pointer].ty;
                 match place_ty {
                     Type::Ptr(inner_ty) => {
                         if inner_ty.as_ref() != &instr.value.ty(function) {
@@ -52,20 +57,28 @@ impl InstrData {
                 }
             }
             InstrKind::Load(instr) => {
-                let place_ty = &function.cfg.places[instr.source].ty;
+                let place_ty = &function.cfg.values_ctx[instr.source].ty;
                 match place_ty {
                     Type::Ptr(_) => {}
                     _ => return Err(format!("load instructions must load from pointers, found {}", place_ty)),
                 }
             }
             InstrKind::Phi(_) => {}
+            InstrKind::ICmp(_) => {}
         }
         Ok(())
     }
 
+    pub fn identifying_key(&self) -> Option<InstrIdentifyingKey> {
+        match &self.kind {
+            InstrKind::Sub(instr) => Some(InstrIdentifyingKey::Sub(instr.lhs.clone(), instr.rhs.clone())),
+            _ => None,
+        }
+    }
+
     pub fn write_to<W: std::fmt::Write>(&self, writer: &mut W, function: &FunctionData) -> std::fmt::Result {
-        if let Some(place) = self.target_place() {
-            write!(writer, "{} = ", function.cfg.places[place])?;
+        if let Some(place) = self.produced_value() {
+            write!(writer, "{} = ", function.cfg.values_ctx[place])?;
         }
         match &self.kind {
             InstrKind::Alloca(instr) => {
@@ -89,16 +102,16 @@ impl InstrData {
             InstrKind::Store(store_instr) => {
                 write!(writer, "store {} ", store_instr.value.ty(function))?;
                 store_instr.value.write_to(writer, function)?;
-                write!(writer, ", {} ", function.cfg.places[store_instr.place].ty)?;
-                write!(writer, "{}", function.cfg.places[store_instr.place])?;
+                write!(writer, ", {} ", function.cfg.values_ctx[store_instr.pointer].ty)?;
+                write!(writer, "{}", function.cfg.values_ctx[store_instr.pointer])?;
             }
             InstrKind::Load(load_instr) => {
-                write!(writer, "load {}, ", function.cfg.places[load_instr.place].ty)?;
-                let source_place = &function.cfg.places[load_instr.source];
+                write!(writer, "load {}, ", function.cfg.values_ctx[load_instr.value].ty)?;
+                let source_place = &function.cfg.values_ctx[load_instr.source];
                 write!(writer, "{} {}", source_place.ty, source_place)?;
             }
             InstrKind::Phi(phi_instr) => {
-                write!(writer, "phi {}", function.cfg.places[phi_instr.place].ty)?;
+                write!(writer, "phi {}", function.cfg.values_ctx[phi_instr.value].ty)?;
                 for (i, incoming) in phi_instr.incoming.iter().enumerate() {
                     if i > 0 {
                         write!(writer, ",")?;
@@ -108,45 +121,52 @@ impl InstrData {
                     write!(writer, ", {} ]", incoming.source)?;
                 }
             }
+            InstrKind::ICmp(instr) => {
+                write!(writer, "icmp {} {} ", instr.condition, instr.op1.ty(function))?;
+                instr.op1.write_to(writer, function)?;
+                write!(writer, ", ")?;
+                instr.op2.write_to(writer, function)?;
+            }
         }
         writeln!(writer)?;
         Ok(())
     }
 
-    pub fn target_place(&self) -> Option<Place> {
+    pub const fn produced_value(&self) -> Option<Value> {
         match &self.kind {
-            InstrKind::Alloca(instr) => Some(instr.place),
-            InstrKind::Op(op) => Some(op.place),
-            InstrKind::Sub(instr) => Some(instr.place),
-            InstrKind::Load(instr) => Some(instr.place),
+            InstrKind::Alloca(instr) => Some(instr.value),
+            InstrKind::Op(op) => Some(op.value),
+            InstrKind::Sub(instr) => Some(instr.value),
+            InstrKind::Load(instr) => Some(instr.value),
             InstrKind::Store(_) => None,
-            InstrKind::Phi(instr) => Some(instr.place),
+            InstrKind::Phi(instr) => Some(instr.value),
+            InstrKind::ICmp(instr) => Some(instr.value),
         }
     }
 }
 
 index_vec::define_index_type! {
-    pub struct Place = usize;
+    pub struct Value = usize;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct PlaceData {
-    pub id: VarId,
+pub struct ValueData {
+    pub id: ValueId,
     pub ty: Type,
-    pub kind: PlaceKind,
-    /// Versions the [`PlaceData::id`].
+    pub defined_in: BasicBlock,
+    /// Versions the [`ValueData::id`].
     pub version: Option<usize>,
 }
 
-impl PlaceData {
-    pub fn increment_version(&mut self) -> usize{
+impl ValueData {
+    pub fn increment_version(&mut self) -> usize {
         let current_version = self.version.unwrap_or(0);
         self.version = Some(current_version + 1);
         current_version
     }
 }
 
-impl Display for PlaceData {
+impl Display for ValueData {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.id)?;
         if let Some(version) = self.version {
@@ -161,7 +181,7 @@ pub enum PlaceKind {
     Local(Instr)
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, EnumTryAs)]
 pub enum InstrKind {
     Alloca(AllocaInstr),
     Store(StoreInstr),
@@ -169,98 +189,55 @@ pub enum InstrKind {
     Op(OpInstr),
     Sub(SubInstr),
     Phi(PhiInstr),
+    ICmp(ICmpInstr),
 }
 
-
-impl InstrKind {
-    pub fn as_op_instr(&self) -> Option<&OpInstr> {
-        match self {
-            InstrKind::Op(op_instr) => Some(op_instr),
-            _ => None,
-        }
-    }
-
-    pub fn as_sub_instr(&self) -> Option<&SubInstr> {
-        match self {
-            InstrKind::Sub(sub_instr) => Some(sub_instr),
-            _ => None,
-        }
-    }
-
-    pub fn as_alloca_instr(&self) -> Option<&AllocaInstr> {
-        match self {
-            InstrKind::Alloca(alloca_instr) => Some(alloca_instr),
-            _ => None,
-        }
-    }
-
-    pub fn as_store_instr(&self) -> Option<&StoreInstr> {
-        match self {
-            InstrKind::Store(store_instr) => Some(store_instr),
-            _ => None,
-        }
-    }
-
-    pub fn as_load_instr(&self) -> Option<&LoadInstr> {
-        match self {
-            InstrKind::Load(load_instr) => Some(load_instr),
-            _ => None,
-        }
-    }
-
-    pub fn as_phi_instr(&self) -> Option<&PhiInstr> {
-        match self {
-            InstrKind::Phi(phi_instr) => Some(phi_instr),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct AllocaInstr {
-    pub place: Place,
+    pub value: Value,
     pub ty: Type,
-    pub num_elements: usize,
-    pub alignment: usize,
+    pub num_elements: u32,
+    pub alignment: u32,
 }
 
 impl AllocaInstr {
-    pub fn new(place: Place, ty: Type, num_elements: Option<usize>, alignment: Option<usize>) -> Self {
+    pub fn new(value: Value, ty: Type, num_elements: Option<u32>, alignment: Option<u32>) -> Self {
         Self {
-            place,
+            value,
             alignment: alignment.unwrap_or(ty.alignment()),
             ty,
             num_elements: num_elements.unwrap_or(1),
         }
     }
 
-    pub fn total_size(&self) -> usize {
+    pub fn total_size(&self) -> u32 {
         self.ty.size() * self.num_elements
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StoreInstr {
-    pub place: Place,
+    pub pointer: Value,
     pub value: Op,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct LoadInstr {
-    pub place: Place,
-    pub source: Place,
+    pub value: Value,
+    pub source: Value,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SubInstr {
-    pub place: Place,
+    pub value: Value,
     pub lhs: Op,
     pub rhs: Op,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct OpInstr {
-    pub place: Place,
+    pub value: Value,
     pub op: Op,
 }
 
@@ -273,40 +250,89 @@ impl OpInstr {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Op {
     Const(Const),
-    Place(Place),
+    Value(Value),
 }
 
 impl Op {
     pub fn ty(&self, function: &FunctionData) -> Type {
         match self {
             Op::Const(c) => c.ty(),
-            Op::Place(place) => function.cfg.places[*place].ty.clone()
+            Op::Value(place) => function.cfg.values_ctx[*place].ty.clone()
         }
     }
 
     pub fn write_to<W: std::fmt::Write>(&self, writer: &mut W, function: &FunctionData) -> std::fmt::Result {
         match self {
             Op::Const(c) => write!(writer, "{}", c),
-            Op::Place(l) => write!(writer, "{}", function.cfg.places[*l]),
+            Op::Value(l) => write!(writer, "{}", function.cfg.values_ctx[*l]),
         }
     }
 }
 
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Const {
-    I8(i8),
-    I32(i32),
+    Int {
+        value: i64,
+        width: u32,
+        signed: bool,
+    }
 }
 
 impl Const {
+    pub const fn i1(value: bool) -> Self {
+        Self::Int {
+            value: if value { 1 } else { 0 },
+            width: 1,
+            signed: true,
+        }
+    }
+
+    pub fn i8(value: i8) -> Self {
+        Self::Int {
+            value: value as i64,
+            width: 8,
+            signed: true,
+        }
+    }
+
+    pub fn i16(value: i16) -> Self {
+        Self::Int {
+            value: value as i64,
+            width: 16,
+            signed: true,
+        }
+    }
+
+    pub fn i32(value: i32) -> Self {
+        Self::Int {
+            value: value as i64,
+            width: 32,
+            signed: true,
+        }
+    }
+
+    pub fn i64(value: i64) -> Self {
+        Self::Int {
+            value,
+            width: 64,
+            signed: true,
+        }
+    }
+
     pub fn ty(&self) -> Type {
         match self {
-            Const::I32(_) => Type::I32,
-            Const::I8(_) => Type::I8,
+            Self::Int {
+                value: _,
+                width,
+                signed,
+            } => Type::Int {
+                width: *width,
+                signed: *signed,
+            },
         }
     }
 }
@@ -316,8 +342,19 @@ impl Sub for Const {
 
     fn sub(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (Const::I8(l), Const::I8(r)) => Const::I8(l - r),
-            (Const::I32(l), Const::I32(r)) => Const::I32(l - r),
+            (Self::Int {
+                value: lhs,
+                width,
+                signed,
+            }, Self::Int {
+                value: rhs,
+                ..
+            }) => Self::Int {
+                // todo: check for overflow and respect signed or not
+                value: lhs - rhs,
+                width,
+                signed,
+            },
             _ => panic!("invalid sub operands"),
         }
     }
@@ -326,15 +363,17 @@ impl Sub for Const {
 impl Display for Const {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Const::I8(i) => write!(f, "{}", i),
-            Const::I32(i) => write!(f, "{}", i),
+            Self::Int {
+                value,
+                ..
+            } => write!(f, "{}", value),
         }
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct PhiInstr {
-    pub place: Place,
+    pub value: Value,
     pub incoming: Vec<Incoming>,
 }
 
@@ -344,15 +383,34 @@ pub struct Incoming {
     pub source: BasicBlock,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct ICmpInstr {
+    pub value: Value,
+    pub condition: ICmpCond,
+    pub op1: Op,
+    pub op2: Op,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Display)]
+pub enum ICmpCond {
+    #[strum(serialize = "eq")]
+    Eq,
+    // Ne,
+    // Slt,
+    // Sle,
+    // Sgt,
+    // Sge,
+}
+
 
 #[cfg(test)]
 mod tests {
     mod validate {
-        use crate::cfg::{BasicBlockData, RetTerm, TerminatorKind};
+        use crate::cfg::{RetTerm, TerminatorKind};
+        use crate::cfg::ValueId;
         use crate::cfg_builder::CFGBuilder;
-        use crate::create_test_function;
-        use crate::cfg::VarId;
         use crate::instruction::{Const, Op};
+        use crate::test_utils::create_test_function;
         use crate::ty::Type;
 
         #[test]
@@ -360,7 +418,7 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let instr  = cfg_builder.sub(Some(VarId::Named("target".to_string())), Op::Const(Const::I8(0)), Op::Const(Const::I32(1)));
+            let instr = cfg_builder.sub(Some(ValueId::Named("target".to_string())), Op::Const(Const::i8(0)), Op::Const(Const::i32(1)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
             assert_eq!(instr, Err("sub instruction operands must have the same type, found i8 and i32".to_string()));
@@ -372,14 +430,14 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
             assert!(cfg_builder.sub(
-                Some(VarId::Named("target.2".to_string())),
-                Op::Const(Const::I8(0)),
-                Op::Const(Const::I8(1)),
+                Some(ValueId::Named("target.2".to_string())),
+                Op::Const(Const::i8(0)),
+                Op::Const(Const::i8(1)),
             ).is_ok());
             assert!(cfg_builder.sub(
-                Some(VarId::Named("target.2".to_string())),
-                Op::Const(Const::I32(0)),
-                Op::Const(Const::I32(1)),
+                Some(ValueId::Named("target.2".to_string())),
+                Op::Const(Const::i32(0)),
+                Op::Const(Const::i32(1)),
             ).is_ok());
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         }
@@ -390,9 +448,8 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let alloca_instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
-            let alloca_instr = cfg_builder.func.cfg.instructions[alloca_instr].kind.as_alloca_instr().unwrap();
-            let instr = cfg_builder.store(alloca_instr.place, Op::Const(Const::I32(0)));
+            let (alloca_value, alloca_instr) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let instr = cfg_builder.store(alloca_value, Op::Const(Const::i32(0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
             assert_eq!(instr, Err("store instructions must store to pointers of the same type, found i8 and i32".to_string()));
@@ -404,9 +461,8 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let instr = cfg_builder.op(None, Op::Const(Const::I32(0))).unwrap();
-            let place = cfg_builder.func.cfg.target_place(instr).unwrap();
-            let instr = cfg_builder.store(place, Op::Const(Const::I32(0)));
+            let (place, _) = cfg_builder.op(None, Op::Const(Const::i32(0))).unwrap();
+            let instr = cfg_builder.store(place, Op::Const(Const::i32(0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
             assert_eq!(instr, Err("store instructions must store to pointers, found i32".to_string()));
@@ -418,9 +474,8 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let alloca_instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
-            let alloca_instr = cfg_builder.func.cfg.instructions[alloca_instr].kind.as_alloca_instr().unwrap();
-            let instr = cfg_builder.store(alloca_instr.place, Op::Const(Const::I8(0)));
+            let (alloca_value, _) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let instr = cfg_builder.store(alloca_value, Op::Const(Const::i8(0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
             assert!(instr.is_ok());
@@ -432,8 +487,7 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let instr = cfg_builder.op(None, Op::Const(Const::I32(0))).unwrap();
-            let place = cfg_builder.func.cfg.target_place(instr).unwrap();
+            let (place, _)= cfg_builder.op(None, Op::Const(Const::i32(0))).unwrap();
             let instr = cfg_builder.load(None, place);
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
@@ -446,9 +500,8 @@ mod tests {
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
 
-            let alloca_instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
-            let alloca_instr = cfg_builder.func.cfg.instructions[alloca_instr].kind.as_alloca_instr().unwrap();
-            let instr = cfg_builder.load(None, alloca_instr.place);
+             let (alloca_value, _) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let instr = cfg_builder.load(None, alloca_value);
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
 
             assert!(instr.is_ok());
@@ -456,10 +509,10 @@ mod tests {
     }
 
     mod instruction_type {
-        use crate::cfg::{BasicBlockData, RetTerm, TerminatorKind};
+        use crate::cfg::{RetTerm, TerminatorKind};
         use crate::cfg_builder::CFGBuilder;
-        use crate::create_test_function;
         use crate::instruction::{Const, Op};
+        use crate::test_utils::create_test_function;
         use crate::ty::Type;
 
         #[test]
@@ -467,10 +520,10 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let instr = cfg_builder.sub(None, Op::Const(Const::I8(0)), Op::Const(Const::I8(1))).unwrap();
+            let (value, _) = cfg_builder.sub(None, Op::Const(Const::i8(0)), Op::Const(Const::i8(1))).unwrap();
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             drop(cfg_builder);
-            assert_eq!(function.cfg.target_place_data(instr).unwrap().ty, Type::I8);
+            assert_eq!(function.cfg.values_ctx[value].ty, Type::I8);
         }
 
         #[test]
@@ -478,11 +531,10 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let (alloca_value, _) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             drop(cfg_builder);
-            assert_eq!(function.cfg.target_place_data(instr).unwrap().ty, Type::Ptr(Box::new(Type::I8)));
-            assert_eq!(function.cfg.instructions[instr].kind.as_alloca_instr().unwrap().ty, Type::I8);
+            assert_eq!(function.cfg.values_ctx[alloca_value].ty, Type::Ptr(Box::new(Type::I8)));
         }
 
         #[test]
@@ -490,10 +542,10 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let instr = cfg_builder.op(None, Op::Const(Const::I8(0))).unwrap();
+            let (place, _) = cfg_builder.op(None, Op::Const(Const::i8(0))).unwrap();
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             drop(cfg_builder);
-            assert_eq!(function.cfg.target_place_data(instr).unwrap().ty, Type::I8);
+            assert_eq!(function.cfg.values_ctx[place].ty, Type::I8);
         }
 
         #[test]
@@ -501,9 +553,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let alloca_instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
-            let alloca_instr = cfg_builder.func.cfg.instructions[alloca_instr].kind.as_alloca_instr().unwrap();
-            let instr = cfg_builder.store(alloca_instr.place, Op::Const(Const::I8(0))).unwrap();
+            let (alloca_value, _) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let instr = cfg_builder.store(alloca_value, Op::Const(Const::i8(0))).unwrap();
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             drop(cfg_builder);
             assert_eq!(function.cfg.target_place_data(instr), None);
@@ -514,9 +565,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = CFGBuilder::new(&mut function);
             cfg_builder.start_bb();
-            let alloca_instr = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
-            let alloca_instr = cfg_builder.func.cfg.instructions[alloca_instr].kind.as_alloca_instr().unwrap();
-            let instr = cfg_builder.load(None, alloca_instr.place).unwrap();
+            let (alloca_value, _) = cfg_builder.alloca(None, Type::I8, None, None).unwrap();
+            let instr = cfg_builder.load(None, alloca_value).unwrap();
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             drop(cfg_builder);
             assert_eq!(function.cfg.target_place_data(instr).unwrap().ty, Type::I8);
