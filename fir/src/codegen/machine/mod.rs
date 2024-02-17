@@ -32,11 +32,11 @@ pub struct VirtualRegisterData {
 
 pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn name(&self) -> &'static str;
-    
+
     fn all() -> &'static [Self];
-    
-    fn is_gp() -> bool;
-    
+
+    fn is_gp(&self) -> bool;
+
     /// Returns the size of the register in bytes
     fn size(&self) -> u32;
 }
@@ -236,11 +236,7 @@ impl<A: Abi> Display for Function<A> {
         for (bb_id, bb) in self.basic_blocks.iter_enumerated() {
             writeln!(f, "{}: ", bb_id)?;
             for (instr_id, instr) in bb.instructions.iter_enumerated() {
-                write!(f, "  ")?;
-                if let Some(output) = instr.output() {
-                    write!(f, "{} = ", output)?;
-                }
-                write!(f, "{}", instr.name())?;
+                write!(f, "  {}",instr.name())?;
                 for (i, operand) in instr.operands().into_iter().enumerate() {
                     if i == 0 {
                         write!(f, " ")?;
@@ -399,6 +395,7 @@ impl<B: Backend> FunctionBuilder<B> {
 
     fn alloc_vreg(&mut self, index: NodeIndex, ty: Type) -> VirtualRegister {
         let vreg = self.function.alloc_vreg(ty);
+        debug!("Allocated vreg {} for node {}", vreg, index.index());
         assert!(self.node_to_vreg.insert(index, vreg).is_none(), "Overwrote vreg for node index {}", index.index());
         vreg
     }

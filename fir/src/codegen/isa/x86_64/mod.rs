@@ -1,5 +1,3 @@
-mod asm;
-
 use iced_x86::code_asm::CodeAssembler;
 use smallvec::{SmallVec, smallvec};
 use strum::VariantArray;
@@ -8,6 +6,8 @@ use crate::codegen::machine;
 use crate::codegen::machine::{InstrOperand, MatchedPatternIn, PatternOut};
 use crate::codegen::selection_dag::Op;
 use crate::ty::Type;
+
+mod asm;
 
 pub type Register = machine::Register<Abi>;
 
@@ -421,7 +421,7 @@ pub enum Pattern {
     RET_OP,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, VariantArray)]
 pub enum PhysicalRegister {
     EAX,
     ECX,
@@ -436,6 +436,22 @@ pub enum PhysicalRegister {
 impl machine::PhysicalRegister for PhysicalRegister {
     fn name(&self) -> &'static str {
         self.into()
+    }
+
+    fn all() -> &'static [Self] {
+        Self::VARIANTS
+    }
+
+    fn is_gp(&self) -> bool {
+        match self {
+            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI => true,
+        }
+    }
+
+    fn size(&self) -> u32 {
+        match self {
+            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI => 4,
+        }
     }
 }
 
@@ -459,10 +475,10 @@ impl machine::Instr for Instr {
 
     fn operands(&self) -> SmallVec<[InstrOperand<Self::Abi>; 2]> {
         match self {
-            Self::MOV32RI { immediate, .. } => smallvec![InstrOperand::Imm(*immediate as i64)],
-            Self::MOV32RR { src, .. } => smallvec![InstrOperand::Reg(*src)],
-            Self::SUB32RI { dest, .. } => smallvec![InstrOperand::Reg(*dest), InstrOperand::Imm(0)],
-            Self::SUB32RR { src, .. } => smallvec![InstrOperand::Reg(*src), InstrOperand::Reg(*src)],
+            Self::MOV32RI { immediate, dest } => smallvec![InstrOperand::Reg(*dest), InstrOperand::Imm(*immediate as i64)],
+            Self::MOV32RR { src, dest } => smallvec![InstrOperand::Reg(*dest), InstrOperand::Reg(*src)],
+            Self::SUB32RI { dest, immediate } => smallvec![InstrOperand::Reg(*dest), InstrOperand::Imm(*immediate as i64)],
+            Self::SUB32RR { src, dest } => smallvec![InstrOperand::Reg(*dest), InstrOperand::Reg(*src)],
             Self::RET => smallvec![],
         }
     }
@@ -556,11 +572,18 @@ impl machine::Pattern for Pattern {
                 ]
             }
             Self::SUB32RR => {
+                let dest = in_.out.try_as_reg().unwrap();
+                let op1 = in_.operands[0].try_as_reg().unwrap();
+                let op2 = in_.operands[1].try_as_reg().unwrap();
                 smallvec![
+                    Instr::MOV32RR {
+                        dest: dest,
+                        src: op1,
+                    },
                     Instr::SUB32RR {
-                    dest: in_.out.try_as_reg().unwrap(),
-                    src: in_.operands[1].try_as_reg().unwrap(),
-                }
+                        dest,
+                        src: op2,
+                    }
                 ]
             }
             Self::RET_VOID => {

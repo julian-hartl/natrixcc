@@ -9,11 +9,11 @@ pub struct GreedyRegisterAllocator<A: Abi> {
     available: Vec<A::REG>,
 }
 
-impl<A: Abi> RegisterAllocator<A> for GreedyRegisterAllocator<A> {
+impl<A: Abi> RegisterAllocator<A> for GreedyRegisterAllocator<A> where <A as Abi>::REG: 'static{
     fn new() -> Self {
         Self {
             map: FxHashMap::default(),
-            available: A::REG::all().into_iter().filter(
+            available: A::REG::all().to_vec().into_iter().filter(
                 |reg| reg.is_gp()
             ).collect(),
         }
@@ -28,10 +28,10 @@ impl<A: Abi> RegisterAllocator<A> for GreedyRegisterAllocator<A> {
                 break;
             }
         }
-        let reg = reg.expect("No available registers");
-        self.map.insert(vreg, *reg);
-        self.live(*reg);
-        *reg
+        let reg = reg.copied().expect("No available registers");
+        self.map.insert(vreg, reg);
+        self.live(reg);
+        reg
     }
 
     fn get(&self, vreg: VirtualRegister) -> A::REG {
@@ -39,7 +39,7 @@ impl<A: Abi> RegisterAllocator<A> for GreedyRegisterAllocator<A> {
     }
 
     fn live(&mut self, reg: A::REG) {
-        self.available.retain(|r| r != reg);
+        self.available.retain(|r| *r != reg);
     }
 
     fn kill(&mut self, reg: A::REG) {
