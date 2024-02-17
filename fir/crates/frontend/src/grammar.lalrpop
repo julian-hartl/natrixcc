@@ -1,12 +1,79 @@
 use std::str::FromStr;
-
+use crate::module::{Instruction, Operand, Literal, BasicBlock, Function, Type, Arg, Module};
 grammar;
 
-//pub Instruction;
-
-pub Term: i32 = {
-    <n:Num> => n,
-    "(" <t:Term> ")" => t,
+pub Module: Module = {
+    <functions:Function+> => Module {
+        functions,
+    }
 }
 
-Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+pub Function: Function = {
+    "fun" <ret_ty: Type> <name:FunId> "(" <args:Comma<Arg>> ")" ":" <blocks:BasicBlock*> => Function {
+        name,
+        ret_ty,
+        args,
+        basic_blocks: blocks,
+    }
+}
+
+Arg: Arg = {
+    <ty:Type> <name:RegId> => Arg {
+        ty,
+        name,
+    }
+}
+
+pub BasicBlock: BasicBlock = {
+    <name:BasicBlockId> ":" <instructions: Instruction*> => BasicBlock {
+        name,
+        instructions,
+    }
+}
+
+pub Instruction: Instruction = {
+    <instr:InstructionInner> ";" => instr,
+}
+
+pub InstructionInner: Instruction = {
+    <decl:RegId> "=" "add" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Add(decl, ty, op1, op2),
+    <decl:RegId> "=""sub" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Sub(decl, ty, op1, op2),
+    "ret" <op: Operand> => Instruction::Ret(Some(op)),
+    "ret" => Instruction::Ret(None),
+}
+
+
+pub Operand: Operand = {
+    Type Literal => Operand::Literal(<>),
+    RegId => Operand::Register(<>)
+}
+
+Literal: Literal = {
+    Num => Literal::Int(<>),
+}
+
+Type: Type = {
+    "u8" => Type::U8,
+    "u16" => Type::U16,
+    "u32" => Type::U32,
+    "u64" => Type::U64,
+    "i8" => Type::I8,
+    "i16" => Type::I16,
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+}
+
+FunId: String = <s:r"@[a-zA-Z_][a-zA-Z0-9_]*"> => s.to_string().split_off(1);
+RegId: String = <s:r"%[a-zA-Z0-9_]+"> => s.to_string().split_off(1);
+BasicBlockId: String = <s:r"\.[a-zA-Z0-9_]+"> => s.to_string().split_off(1);
+Num: i64 = <s:r"[0-9]+"> => i64::from_str(s).unwrap();
+
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 lalrpop-util = { version = "0.20.0" , features = ["lexer", "unicode"] }
-
+firc_middle = { path = "../middle" }
+index_vec = "0.1.3"
 [build-dependencies]
 lalrpop = { version = "0.20.0", features = ["lexer", "unicode"] }

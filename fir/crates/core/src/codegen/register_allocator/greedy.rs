@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 
 use crate::codegen::machine::{Abi, PhysicalRegister, VirtualRegister};
 use crate::codegen::register_allocator::RegisterAllocator;
-use crate::ty::Type;
+use firc_middle::ty::Type;
 
 pub struct GreedyRegisterAllocator<A: Abi> {
     map: FxHashMap<VirtualRegister, A::REG>,

@@ -9,8 +9,7 @@ pub use builder::Builder;
 
 use crate::codegen::machine;
 use crate::codegen::machine::{Instr, Pattern};
-use crate::middle;
-use crate::ty::Type;
+use firc_middle::ty::Type;
 
 pub mod builder;
 
@@ -20,12 +19,12 @@ type Dag<A> = daggy::Dag<Node<A>, Edge>;
 pub struct BasicBlockDAG<A: machine::Abi> {
     dag: Dag<A>,
     term_node: Option<daggy::NodeIndex>,
-    bb: middle::cfg::BasicBlockId,
+    bb: firc_middle::cfg::BasicBlockId,
 }
 
 impl<A: machine::Abi> BasicBlockDAG<A> {
 
-    pub fn new(bb: middle::cfg::BasicBlockId) -> Self {
+    pub fn new(bb: firc_middle::cfg::BasicBlockId) -> Self {
         Self {
             dag: Dag::new(),
             term_node: None,
@@ -67,11 +66,11 @@ impl<A: machine::Abi> DerefMut for BasicBlockDAG<A> {
 
 #[derive(Default, Debug)]
 pub struct SelectionDAG<A: machine::Abi> {
-    pub basic_blocks: FxHashMap<middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
+    pub basic_blocks: FxHashMap<firc_middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
 }
 
 impl<A: machine::Abi> SelectionDAG<A> {
-    pub fn get_bb_dag(&mut self, basic_block: middle::cfg::BasicBlockId) -> &mut BasicBlockDAG<A> {
+    pub fn get_bb_dag(&mut self, basic_block: firc_middle::cfg::BasicBlockId) -> &mut BasicBlockDAG<A> {
         self.basic_blocks.entry(basic_block).or_insert_with(|| BasicBlockDAG::new(basic_block))
     }
 }

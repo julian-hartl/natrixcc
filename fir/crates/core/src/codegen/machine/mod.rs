@@ -13,8 +13,8 @@ pub use abi::Abi;
 use crate::codegen::{machine, selection_dag};
 use crate::codegen::machine::asm::Assembler;
 use crate::codegen::selection_dag::{Const, Node, NodeKind, Op};
-use crate::middle;
-use crate::ty::Type;
+use firc_middle;
+use firc_middle::ty::Type;
 
 pub mod abi;
 pub mod asm;
@@ -287,7 +287,7 @@ impl<B: Backend> FunctionBuilder<B> {
         }
     }
 
-    pub fn build(mut self, function: &middle::Function) -> Function<B::ABI> {
+    pub fn build(mut self, function: &firc_middle::Function) -> Function<B::ABI> {
         self.function.name = function.name.clone();
         debug!("Building machine function for function {}", function.name);
         let mut sel_dag_builder = selection_dag::Builder::<B::ABI>::default();
@@ -425,9 +425,9 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::codegen::isa;
-    use crate::middle::cfg;
-    use crate::middle::cfg::{RetTerm, TerminatorKind};
-    use crate::middle::instruction::{Const, Op};
+    use crate::firc_middle::cfg;
+    use crate::firc_middle::cfg::{RetTerm, TerminatorKind};
+    use crate::firc_middle::instruction::{Const, Op};
     use crate::test_utils::create_test_function;
 
     #[test]

@@ -5,7 +5,7 @@ use strum::VariantArray;
 use crate::codegen::machine;
 use crate::codegen::machine::{InstrOperand, MatchedPatternIn, PatternOut};
 use crate::codegen::selection_dag::Op;
-use crate::ty::Type;
+use firc_middle::ty::Type;
 
 mod asm;
 
@@ -16,7 +16,7 @@ pub type Register = machine::Register<Abi>;
 // use index_vec::IndexVec;
 //
 // use crate::cfg::ValueId;
-// use crate::ty::Type;
+// use firc_middle::ty::Type;
 //
 // #[derive(Debug, Clone, PartialEq, Eq, Default)]
 // pub struct Module {

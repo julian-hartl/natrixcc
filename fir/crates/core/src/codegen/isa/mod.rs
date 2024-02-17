@@ -1,6 +1,6 @@
 use crate::codegen::machine;
 use crate::codegen::machine::{Abi, PhysicalRegister};
-use crate::ty::Type;
+use firc_middle::ty::Type;
 
 pub mod x86_64;
 
