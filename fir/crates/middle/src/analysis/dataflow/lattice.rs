@@ -7,6 +7,12 @@ pub enum Element<V: Value> {
     Value(V),
 }
 
+impl<V> From<V> for Element<V> where V: Value {
+    fn from(value: V) -> Self {
+        Self::Value(value)
+    }
+}
+
 impl<V: Value> Default for Element<V> {
     fn default() -> Self {
         Self::Bottom
@@ -36,6 +42,6 @@ impl<V: Value> Element<V> {
     }
 }
 
-pub trait Value: Sized + Clone + Debug {
+pub trait Value: Sized + Clone + Debug + Default {
     fn join(&mut self, other: Self) -> bool;
 }

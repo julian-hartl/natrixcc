@@ -1,7 +1,9 @@
-use rustc_hash::FxHashSet;
-use crate::analysis::dataflow::{ForwardAnalysis, lattice};
+use rustc_hash::{FxHashMap, FxHashSet};
+use crate::analysis::dataflow::{ForwardAnalysis, ForwardAnalysisRunner, lattice};
+use crate::{Instr, InstrKind, Value};
+use crate::cfg::TerminatorKind;
 
-use crate::instruction::Const;
+use crate::instruction::{Const, Op};
 
 #[derive(Debug, Default, Clone)]
 pub struct ConcreteValues {
@@ -41,4 +43,24 @@ impl lattice::Value for ConcreteValues {
 }
 
 
-pub type Analysis = ForwardAnalysis<ConcreteValues>;
+pub struct Analysis;
+pub type AnalysisRunner<'a> = ForwardAnalysisRunner<'a, Analysis>;
+
+impl ForwardAnalysis for Analysis {
+    type V = FxHashMap<Value, ConcreteValues>;
+
+    fn eval_instr(instr: &Instr) -> Option<Self::V> {
+        if let InstrKind::Op(instr) = &instr.kind {
+            if let Op::Const(const_val) = &instr.op {
+                let mut map = FxHashMap::default();
+                map.insert(instr.value, ConcreteValues::from_single_value(const_val.clone()));
+                return Some(map);
+            }
+        };
+        None
+    }
+
+    fn eval_term(_: &TerminatorKind) -> Option<Self::V> {
+        None
+    }
+}

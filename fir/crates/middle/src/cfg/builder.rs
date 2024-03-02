@@ -1,38 +1,18 @@
-use std::collections::HashSet;
-use std::ops::Deref;
-
-use rustc_hash::{FxHashMap, FxHashSet};
-
-use crate::function::Function;
-use crate::cfg::{BasicBlockId, BasicBlock, RetTerm, Terminator, TerminatorKind, ValueId};
-use crate::{InstrId, Value};
-use crate::instruction::{AllocaInstr, ICmpCond, ICmpInstr, Incoming, Instr, InstrKind, LoadInstr, Op, OpInstr, PhiInstr, StoreInstr, SubInstr, ValueData};
+use crate::cfg::{BasicBlockId, Terminator, TerminatorKind};
+use crate::function::{Function, Symbol};
+use crate::instruction::{AllocaInstr, ICmpCond, ICmpInstr, Instr, InstrKind, LoadInstr, Op, OpInstr, StoreInstr, SubInstr, ValueData};
 use crate::ty::Type;
+use crate::Value;
 
 #[derive(Debug)]
 pub struct Builder<'func> {
-    pub func: &'func mut Function,
+    func: &'func mut Function,
     current_bb: Option<BasicBlockId>,
-    next_unnamed_id: usize,
-    current_instr: Option<InstrId>,
-    incomplete_phi_nodes: FxHashMap<BasicBlockId, Vec<(InstrId, ValueId)>>,
-    sealed_blocks: FxHashSet<BasicBlockId>,
 }
 
-impl Drop for Builder<'_> {
-    fn drop(&mut self) {
-        assert!(self.current_bb.is_none(), "current_bb should be None");
-        assert!(self.current_instr.is_none(), "current_instr should be None");
-        for bb in self.func.cfg.basic_blocks.indices() {
-            if !self.is_block_sealed(bb) {
-                self.seal_block(bb);
-            }
-        }
-    }
-}
 impl<'func> Builder<'func> {
     pub fn new(func: &'func mut Function) -> Self {
-        Self { func, current_bb: None, next_unnamed_id: 0, current_instr: None, incomplete_phi_nodes: FxHashMap::default() , sealed_blocks: FxHashSet::default() }
+        Self { func, current_bb: None }
     }
 
     pub fn start_bb(&mut self) -> BasicBlockId {
@@ -42,11 +22,7 @@ impl<'func> Builder<'func> {
     }
 
     pub fn create_bb(&mut self) -> BasicBlockId {
-        self.func.cfg.basic_blocks.push(Some(BasicBlock {
-            id: self.func.cfg.basic_blocks.next_idx(),
-            instructions: Vec::new(),
-            terminator: Terminator::new(TerminatorKind::Ret(RetTerm::empty())),
-        }))
+        self.func.cfg.new_basic_block()
     }
 
     pub fn set_bb(&mut self, bb: BasicBlockId) {
@@ -54,207 +30,93 @@ impl<'func> Builder<'func> {
     }
 
     pub fn end_bb(&mut self, terminator: TerminatorKind) {
-        let bb = self.func.cfg.basic_blocks[self.current_bb.unwrap()].as_mut().unwrap();
-        bb.terminator = Terminator::new(terminator);
+        let current_bb = self.current_bb();
+        self.func.cfg.set_terminator(current_bb, Terminator::new(terminator));
         self.current_bb = None;
     }
 
-    pub fn alloca(&mut self, place_id: Option<ValueId>, ty: Type, num_elements: Option<u32>, alignment: Option<u32>) -> Result<(Value, InstrId), String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let place = self.push_value_for_next_instr(place_id, Type::Ptr(Box::new(ty.clone())));
+    pub fn alloca(&mut self, value_sym: Option<Symbol>, ty: Type, num_elements: Option<u32>, alignment: Option<u32>) -> Value {
+        let value = self.push_value_for_next_instr(Type::Ptr(Box::new(ty.clone())));
         let alloca = AllocaInstr::new(
-            place,
+            value,
             ty,
             num_elements,
             alignment,
         );
-        self.add_instr(Instr::new(InstrKind::Alloca(alloca))).map(|instr| (place, instr))
+        self.add_instr(Instr::new(InstrKind::Alloca(alloca)));
+        value
     }
 
-    pub fn sub(&mut self, place_id: Option<ValueId>, lhs: Op, rhs: Op) -> Result<(Value, InstrId), String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let value = self.push_value_for_next_instr(place_id, lhs.ty(&self.func));
+    pub fn sub(&mut self, value_sym: Option<Symbol>, lhs: Op, rhs: Op) -> Value {
+        let value = self.push_value_for_next_instr(lhs.ty(&self.func));
         let sub = SubInstr {
             value,
             lhs,
             rhs,
         };
-        self.add_instr(Instr::new(InstrKind::Sub(sub))).map(|instr| (value, instr))
+        self.add_instr(Instr::new(InstrKind::Sub(sub)));
+        value
     }
 
-    pub fn store(&mut self, place: Value, value: Op) -> Result<InstrId, String> {
-        let store = Instr::new(InstrKind::Store(StoreInstr { value, pointer: place }));
-        self.add_instr(store)
+    pub fn store(&mut self, dest: Value, value: Op) {
+        let store = Instr::new(InstrKind::Store(StoreInstr { value, dest }));
+        self.add_instr(store);
     }
 
-    pub fn load(&mut self, place_id: Option<ValueId>, source: Value) -> Result<InstrId, String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let place = self.push_value_for_next_instr(place_id, self.func.cfg.values_ctx[source].ty.deref().clone());
+    pub fn load(&mut self, value_sym: Option<Symbol>, source: Value) -> Value {
+        let value = self.push_value_for_next_instr(self.func.values_ctx[source].ty.deref().clone());
         let load = Instr::new(InstrKind::Load(LoadInstr {
-            value: place,
+            dest: value,
             source,
         }));
-        self.add_instr(load)
+        self.add_instr(load);
+        value
     }
 
-    pub fn op(&mut self, place_id: Option<ValueId>, op: Op) -> Result<(Value, InstrId), String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let place = self.push_value_for_next_instr(place_id, op.ty(self.func));
+    pub fn op(&mut self, value_sym: Option<Symbol>, op: Op) -> Value {
+        let value = self.push_value_for_next_instr(op.ty(self.func));
         let op_instr = OpInstr {
-            value: place,
+            value,
             op,
         };
-        self.add_instr(Instr::new(InstrKind::Op(op_instr))).map(|instr| (place, instr))
+        self.add_instr(Instr::new(InstrKind::Op(op_instr)));
+        value
     }
 
-    pub fn phi(&mut self, place_id: Option<ValueId>, incoming: Vec<Incoming>, ty: Type) -> Result<(Value, InstrId), String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let place = self.push_value_for_next_instr(place_id, ty);
-        self.add_instr(Instr::new(InstrKind::Phi(
-            PhiInstr {
-                value: place,
-                incoming,
-            }
-        ))).map(|instr| (place, instr))
-    }
-
-    pub fn icmp(&mut self, place_id: Option<ValueId>, condition: ICmpCond, op1: Op, op2: Op) -> Result<(Value, InstrId), String> {
-        let place_id = place_id.unwrap_or_else(|| self.next_unnamed_id());
-        let place = self.push_value_for_next_instr(place_id, Type::Bool);
+    pub fn icmp(&mut self, value_sym: Option<Symbol>, condition: ICmpCond, op1: Op, op2: Op) -> Value {
+        let value = self.push_value_for_next_instr(Type::Bool);
         self.add_instr(Instr::new(InstrKind::ICmp(
             ICmpInstr {
-                value: place,
+                value,
                 condition,
                 op1,
                 op2,
             }
-        ))).map(|instr| (place, instr))
+        )));
+        value
     }
 
-    fn push_value_for_next_instr(&mut self, place_id: ValueId, ty: Type) -> Value {
-        let _instr = self.func.cfg.instructions.next_idx();
-        let mut current_version = None;
-        for place in self.func.cfg.values_ctx.iter_mut().filter(|place| place.id == place_id) {
-            match place.version {
-                None => {
-                    place.version = Some(0);
-                    current_version = Some(0);
-                }
-                Some(version) => {
-                    current_version = current_version.map_or(Some(version), |current_version_value| if current_version_value < version {
-                        Some(version)
-                    } else {
-                        current_version
-                    });
-                }
-            }
-        }
-         self.func.cfg.values_ctx.push(ValueData {
-            id: place_id,
+    pub fn add_argument(&mut self, ty: Type) -> Value {
+        let value = self.func.values_ctx.push(ValueData {
+            id: self.func.values_ctx.next_idx(),
+            ty,
+            defined_in: self.current_bb.unwrap(),
+        });
+        let current_bb = self.current_bb();
+        self.func.cfg.basic_blocks[current_bb].arguments.push(value);
+        value
+    }
+
+    pub fn add_instr(&mut self, instr: Instr) {
+        self.func.cfg.add_instruction(self.current_bb(), instr);
+    }
+
+    fn push_value_for_next_instr(&mut self, ty: Type) -> Value {
+        self.func.values_ctx.push(ValueData {
+            id: self.func.values_ctx.next_idx(),
             ty,
             defined_in: self.current_bb(),
-            version: current_version.map(|version| version + 1),
         })
-    }
-
-    pub fn add_instr(&mut self, instr: Instr) -> Result<InstrId, String> {
-        assert!(self.current_instr.is_none(), "current_instr should be None");
-        assert!(self.current_bb.is_some(), "current_bb should be Some");
-        instr.validate(self.func)?;
-        let instr_id = self.func.cfg.instructions.push(instr);
-        self.func.cfg.basic_blocks[self.current_bb.unwrap()].as_mut().unwrap().instructions.push(instr_id);
-        Ok(instr_id)
-    }
-
-    pub fn next_unnamed_id(&mut self) -> ValueId {
-        let id = self.next_unnamed_id;
-        self.next_unnamed_id += 1;
-        ValueId::Unnamed(id)
-    }
-
-    fn revert_unnamed_id(&mut self) {
-        self.next_unnamed_id -= 1;
-    }
-
-    pub fn find_or_insert_reaching_value(&mut self, id: &ValueId) -> Option<Value> {
-        let current_bb = self.current_bb();
-        if self.is_block_sealed(current_bb) {
-            let reaching_definitions = self.find_reaching_definitions(id, current_bb);
-            match reaching_definitions.len() {
-                0 => None,
-                1 => Some(reaching_definitions[0].1),
-                _ => {
-                    let (phi_value, _) = self.phi(Some(id.clone()), reaching_definitions.into_incoming(), self.func.cfg.value_id_ty(id).unwrap()).unwrap();
-                    Some(phi_value)
-                }
-            }
-        } else {
-            let (phi_value, phi_instr) = self.phi(Some(id.clone()), vec![], self.func.cfg.value_id_ty(id).unwrap()).unwrap();
-            self.incomplete_phi_nodes.entry(current_bb).or_default().push((phi_instr, id.clone()));
-            Some(phi_value)
-        }
-    }
-
-    pub fn seal_block(&mut self, bb: BasicBlockId) -> bool{
-        if self.is_block_sealed(bb) {
-            return false;
-        }
-        self.sealed_blocks.insert(bb);
-        let incomplete_phis = self.incomplete_phi_nodes.remove(&bb);
-        if let Some(incomplete_phis) = incomplete_phis {
-            for (phi_instr, id) in incomplete_phis {
-                let reaching_definitions = self.find_reaching_definitions_in_preds(&id, bb);
-                let phi_instr = self.func.cfg.instructions[phi_instr].kind.try_as_phi_mut().unwrap();
-                phi_instr.incoming = reaching_definitions.into_incoming();
-            }
-        }
-        true
-    }
-
-    pub fn is_block_sealed(&self, bb: BasicBlockId) -> bool {
-        self.sealed_blocks.contains(&bb)
-    }
-
-    pub fn find_current_reaching_definitions(&self, id: &ValueId) -> ReachingDefinitions {
-        let mut visited = HashSet::new();
-        self.find_reaching_definitions_recursively(id, self.current_bb(), &mut visited)
-    }
-
-
-    pub fn find_reaching_definitions(&self, id: &ValueId, bb: BasicBlockId) -> ReachingDefinitions {
-        let mut visited = HashSet::new();
-        self.find_reaching_definitions_recursively(id, bb, &mut visited)
-    }
-
-    fn find_reaching_definitions_recursively(&self, id: &ValueId, bb: BasicBlockId, visited: &mut HashSet<BasicBlockId>) -> ReachingDefinitions {
-        let current_bb = self.func.cfg.basic_blocks[bb].as_ref().unwrap();
-        for declaration in current_bb.declarations(&self.func.cfg).iter().copied() {
-            let value = &self.func.cfg.values_ctx[declaration];
-            if &value.id == id {
-                return ReachingDefinitions(vec![(bb, declaration)]);
-            }
-        }
-        self.find_reaching_definitions_in_preds_recursive(id, bb, visited)
-    }
-
-    pub fn find_reaching_definitions_in_preds(&self, id: &ValueId, bb: BasicBlockId) -> ReachingDefinitions {
-        let mut visited = HashSet::new();
-        self.find_reaching_definitions_in_preds_recursive(id, bb, &mut visited)
-    }
-
-    fn find_reaching_definitions_in_preds_recursive(&self, id: &ValueId, bb: BasicBlockId, visited: &mut HashSet<BasicBlockId>) -> ReachingDefinitions {
-        visited.insert(bb);
-        let current_bb = self.func.cfg.basic_blocks[bb].as_ref().unwrap();
-        let predecessors = current_bb.predecessors(&self.func.cfg);
-        let mut reaching_values = Vec::new();
-        for predecessor in predecessors {
-            if visited.contains(&predecessor) {
-                continue;
-            }
-            let predecessor_dominating_places = self.find_reaching_definitions_recursively(id, predecessor, visited);
-            reaching_values.extend(predecessor_dominating_places.0.into_iter());
-        }
-        ReachingDefinitions(reaching_values)
     }
 
     pub fn current_bb(&self) -> BasicBlockId {
@@ -262,46 +124,13 @@ impl<'func> Builder<'func> {
     }
 }
 
-pub struct ReachingDefinitions(Vec<(BasicBlockId, Value)>);
-
-impl ReachingDefinitions {
-    pub fn into_incoming(self) -> Vec<Incoming> {
-        self.0.into_iter().map(|(bb, place)| Incoming { source: bb, op: Op::Value(place) }).collect()
-    }
-}
-
-impl Deref for ReachingDefinitions {
-    type Target = Vec<(BasicBlockId, Value)>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{cfg, Value};
-    use crate::cfg::{BranchTerm, CondBrTerm, RetTerm, TerminatorKind, UnCondBrTerm};
-    use crate::cfg::ValueId;
+    use crate::cfg;
+    use crate::cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
     use crate::instruction::{Const, ICmpCond, Op};
-    use crate::test_utils::create_test_function;
+    use crate::test::create_test_function;
     use crate::ty::Type;
-
-    #[test]
-    fn should_use_unnamed_id_counter_by_default() {
-        let mut function = create_test_function();
-        let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
-        assert_eq!(cfg_builder.next_unnamed_id, 0);
-        let (op_instr_value, _) = cfg_builder.op(None, Op::Const(Const::i32(0))).unwrap();
-        assert_eq!(cfg_builder.next_unnamed_id, 1);
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
-        let expected_place = Value::new(0);
-        assert_eq!(op_instr_value, expected_place);
-        let place_data = &function.cfg.values_ctx[expected_place];
-        assert_eq!(place_data.id, ValueId::Unnamed(0));
-    }
 
     #[test]
     fn should_add_allocas_to_entry_block() {
@@ -309,9 +138,8 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
 
-        cfg_builder.alloca(None, Type::I32, None, None).unwrap();
+        cfg_builder.alloca(None, Type::I32, None, None);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!(cfg_out, "bb0:
@@ -326,16 +154,15 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
         cfg_builder.sub(
-            Some(ValueId::Named("result".to_string())),
+            None,
             Op::Const(Const::i32(0)),
             Op::Const(Const::i32(1)),
-        ).unwrap();
+        );
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!(cfg_out, "bb0:
-    %result = sub i32 0, 1
+    %0 = sub i32 0, 1
     ret void
 ");
     }
@@ -345,13 +172,12 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        cfg_builder.op(Some(ValueId::Named("result".to_string())), Op::Const(Const::i32(0))).unwrap();
+        cfg_builder.op(None, Op::Const(Const::i32(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!(cfg_out, "bb0:
-    %result = i32 0
+    %0 = i32 0
     ret void
 ");
     }
@@ -361,17 +187,16 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        let (alloca_value, _) = cfg_builder.alloca(None, Type::I32, None, None).unwrap();
-        cfg_builder.store(alloca_value, Op::Const(Const::i32(0))).unwrap();
+        let alloca_value = cfg_builder.alloca(None, Type::I32, None, None);
+        cfg_builder.store(alloca_value, Op::Const(Const::i32(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
+        assert_eq!("bb0:
     %0 = alloca i32
     store i32 0, ptr %0
     ret void
-");
+", cfg_out);
     }
 
     #[test]
@@ -379,17 +204,16 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        let (alloca_value, _) = cfg_builder.alloca(None, Type::I32, None, None).unwrap();
-        cfg_builder.load(Some(ValueId::Named("result".to_string())), alloca_value).unwrap();
+        let alloca_value = cfg_builder.alloca(None, Type::I32, None, None);
+        cfg_builder.load(None, alloca_value);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
+        assert_eq!("bb0:
     %0 = alloca i32
-    %result = load i32, ptr %0
+    %1 = load i32 ptr %0
     ret void
-");
+", cfg_out);
     }
 
     #[test]
@@ -399,54 +223,32 @@ mod tests {
         let _bb0 = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
-        let (cmp_value, _) = cfg_builder.icmp(None, ICmpCond::Eq, Op::Const(Const::i32(0)), Op::Const(Const::i32(1))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(
-            BranchTerm::Cond(
-                CondBrTerm {
-                    cond: Op::Value(cmp_value),
-                    true_target: bb1,
-                    false_target: bb2,
-                }
-            )));
+        let cmp_value = cfg_builder.icmp(None, ICmpCond::Eq, Op::Const(Const::i32(0)), Op::Const(Const::i32(1)));
+        cfg_builder.end_bb(TerminatorKind::CondBranch(
+            CondBranchTerm {
+                cond: Op::Value(cmp_value),
+                true_target: JumpTarget::no_args(bb1),
+                false_target: JumpTarget::no_args(bb2),
+            }
+        ));
         cfg_builder.set_bb(bb1);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         cfg_builder.set_bb(bb2);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
         let mut out = String::new();
         function.cfg.write_to(&mut out, &function).unwrap();
-        assert_eq!(out, "bb0:
-    %0 = icmp eq i32 0, 1
-    br i1 %0, label bb1, label bb2
+        assert_eq!("bb0:
+    %0 = icmp bool eq 0, 1
+    condbr bool %0, bb1, bb2
 bb1:
-    ; preds = bb0
     ret void
 bb2:
-    ; preds = bb0
     ret void
-");
+", out);
     }
-
+    
     #[test]
-    fn should_version_assignments_to_named_variables() {
-        let mut function = create_test_function();
-        let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
-        cfg_builder.op(Some(ValueId::Named("result".to_string())), Op::Const(Const::i32(0))).unwrap();
-        cfg_builder.op(Some(ValueId::Named("result".to_string())), Op::Const(Const::i32(1))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        drop(cfg_builder);
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
-    %result.0 = i32 0
-    %result.1 = i32 1
-    ret void
-");
-    }
-
-    #[test]
-    fn should_add_phi_node_when_different_usages_dominate_usage() {
+    fn should_add_basic_block_arguments() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         let _bb0 = cfg_builder.start_bb();
@@ -454,41 +256,34 @@ bb2:
         let bb2 = cfg_builder.create_bb();
         let bb3 = cfg_builder.create_bb();
         let bb4 = cfg_builder.create_bb();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb1))));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(bb1))));
         cfg_builder.set_bb(bb1);
-        let result_var_id = ValueId::Named("result".to_string());
-        cfg_builder.op(Some(result_var_id.clone()), Op::Const(Const::i32(0))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb3))));
+        let var_0 = cfg_builder.op(None, Op::Const(Const::i32(0)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_0.into()]))));
         cfg_builder.set_bb(bb2);
-        cfg_builder.op(Some(result_var_id.clone()), Op::Const(Const::i32(1))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb3))));
+        let var_1 = cfg_builder.op(None, Op::Const(Const::i32(1)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_1.into()]))));
         cfg_builder.set_bb(bb3);
-        let value = cfg_builder.find_or_insert_reaching_value(&result_var_id).unwrap();
-        cfg_builder.op(Some(result_var_id.clone()), Op::Value(value)).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
+        let var_2 = cfg_builder.add_argument(Type::I32);
+        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(var_2.into())));
         cfg_builder.set_bb(bb4);
-        cfg_builder.op(Some(result_var_id.clone()), Op::Const(Const::i32(2))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb3))));
-        drop(cfg_builder);
+        let var_3 = cfg_builder.op(None, Op::Const(Const::i32(2)));
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_3.into()]))));
         let mut cfg_out = String::new();
         function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
-    br label bb1
+        assert_eq!("bb0:
+    br bb1
 bb1:
-    ; preds = bb0
-    %result.0 = i32 0
-    br label bb3
+    %0 = i32 0
+    br bb3(%0)
 bb2:
-    %result.1 = i32 1
-    br label bb3
-bb3:
-    ; preds = bb1, bb2, bb4
-    %result.2 = phi i32 [ %result.0, bb1 ], [ %result.1, bb2 ], [ %result.4, bb4 ]
-    %result.3 = i32 %result.2
-    ret void
+    %1 = i32 1
+    br bb3(%0)
+bb3(i32 %2):
+    ret i32 %2
 bb4:
-    %result.4 = i32 2
-    br label bb3
-");
+    %3 = i32 2
+    br bb3(%3)
+", cfg_out);
     }
 }

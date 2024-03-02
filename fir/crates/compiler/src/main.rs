@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use clap::Parser;
 use firc_core;
 use anyhow::Result;
+use firc_middle::FrontBridge;
+
 #[derive(Parser, Debug)]
 #[clap(name = "firc")]
 #[command(version, about)]
@@ -27,6 +29,8 @@ fn main() -> Result<()>{
     let module = firc_front::module::parse(&file_contents).map_err(
         |e| anyhow::anyhow!("Failed to parse module: {}", e)
     )?;
+    println!("{:?}", module);
+    let module = FrontBridge::new(module).bridge();
     println!("{:?}", module);
     Ok(())
 }

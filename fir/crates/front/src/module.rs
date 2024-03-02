@@ -1,7 +1,3 @@
-use index_vec::IndexVec;
-
-use firc_middle::cfg;
-
 use crate::grammar;
 
 pub fn parse(input: &str) -> Result<Module, lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, &str>> {
@@ -13,16 +9,6 @@ pub struct Module {
     pub functions: Vec<Function>,
 }
 
-impl Module {
-    pub fn to_fir_module(self) -> firc_middle::Module {
-        let mut module = firc_middle::Module::default();
-        for function in self.functions {
-            module.functions.push(function.to_fir_function());
-        }
-        module
-    }
-}
-
 #[derive(Debug, PartialEq, Eq)]
 pub struct Function {
     pub name: String,
@@ -31,24 +17,6 @@ pub struct Function {
     pub basic_blocks: Vec<BasicBlock>,
 }
 
-impl Function {
-    pub fn to_fir_function(self) -> firc_middle::Function {
-        let mut params = IndexVec::new();
-        for arg in self.args {
-            unimplemented!()
-        }
-        let mut function = firc_middle::Function::new(self.name.clone(), params, self.ret_ty.clone().into());
-        let mut cfg_builder = cfg::Builder::new(&mut function);
-        for basic_block in self.basic_blocks {
-            let bb_id = cfg_builder.start_bb();
-            for instruction in basic_block.instructions {
-                unimplemented!()
-            }
-        }
-        drop(cfg_builder);
-        function
-    }
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Arg {
@@ -86,21 +54,6 @@ pub enum Type {
     I16,
     I32,
     I64,
-}
-
-impl From<Type> for firc_middle::Type {
-    fn from(value: Type) -> Self {
-        match value {
-            Type::U8 => firc_middle::Type::U8,
-            Type::U16 => firc_middle::Type::U16,
-            Type::U32 => firc_middle::Type::U32,
-            Type::U64 => firc_middle::Type::U64,
-            Type::I8 => firc_middle::Type::I8,
-            Type::I16 => firc_middle::Type::I16,
-            Type::I32 => firc_middle::Type::I32,
-            Type::I64 => firc_middle::Type::I64,
-        }
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

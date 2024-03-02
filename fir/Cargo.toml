@@ -1,10 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/core",
+    "crates/back",
     "crates/compiler",
-    "crates/frontend"
-, "crates/middle"]
+    "crates/front",
+    "crates/middle"]
 
 [profile.release]
 opt-level = 3

@@ -6,8 +6,8 @@ use crate::optimization::basic_block_pass::cse::CSEPass;
 use crate::optimization::function_pass::dead_code_elimination::DeadCodeEliminationPass;
 use crate::optimization::function_pass::FunctionPass;
 
-mod basic_block_pass;
-mod function_pass;
+pub mod basic_block_pass;
+pub mod function_pass;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(clippy::struct_excessive_bools)]
@@ -16,9 +16,51 @@ pub struct PipelineConfig {
     pub copy_propagation: bool,
     pub dead_code_elimination: bool,
     pub global_constant_propagation: bool,
-    pub cfg_simplify: bool,
+    pub cfg_simplify: CFGSimplifyPipelineConfig,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub struct CFGSimplifyPipelineConfig {
+    pub bb_merge: bool,
+    pub unreachable_bb_elim: bool,
+    pub jump_threading: bool,
+}
+
+impl CFGSimplifyPipelineConfig {
+    pub const fn all_disabled() -> Self {
+        Self {
+            bb_merge: false,
+            jump_threading: false,
+            unreachable_bb_elim: false,
+        }
+    }
+
+    pub const fn o1() -> Self {
+        Self {
+            bb_merge: true,
+            jump_threading: true,
+            unreachable_bb_elim: true,
+        }
+    }
+
+    pub const fn o2() -> Self {
+        Self::o1()
+    }
+
+    pub const fn o3() -> Self {
+        Self::o1()
+    }
+}
+
+#[cfg(test)]
+impl CFGSimplifyPipelineConfig {
+    pub const fn unreachable_bb_elim_only() -> Self {
+        Self {
+            unreachable_bb_elim: true,
+            ..Self::all_disabled()
+        }
+    }
+}
 
 impl PipelineConfig {
     pub const fn all_disabled() -> Self {
@@ -27,7 +69,7 @@ impl PipelineConfig {
             copy_propagation: false,
             dead_code_elimination: false,
             global_constant_propagation: false,
-            cfg_simplify: false,
+            cfg_simplify: CFGSimplifyPipelineConfig::all_disabled(),
         }
     }
     pub const fn o0() -> Self {
@@ -36,7 +78,7 @@ impl PipelineConfig {
             copy_propagation: false,
             dead_code_elimination: false,
             global_constant_propagation: false,
-            cfg_simplify: false,
+            cfg_simplify: CFGSimplifyPipelineConfig::all_disabled(),
         }
     }
 
@@ -46,7 +88,7 @@ impl PipelineConfig {
             copy_propagation: true,
             dead_code_elimination: true,
             global_constant_propagation: true,
-            cfg_simplify: true,
+            cfg_simplify: CFGSimplifyPipelineConfig::o1(),
         }
     }
 
@@ -69,7 +111,6 @@ impl PipelineConfig {
 
 #[cfg(test)]
 impl PipelineConfig {
-
     pub const fn cse_only() -> Self {
         Self {
             cse: true,
@@ -94,6 +135,13 @@ impl PipelineConfig {
     pub const fn global_constant_propagation_only() -> Self {
         Self {
             global_constant_propagation: true,
+            ..Self::all_disabled()
+        }
+    }
+
+    pub const fn cfg_simplify_only(config: CFGSimplifyPipelineConfig) -> Self {
+        Self {
+            cfg_simplify: config,
             ..Self::all_disabled()
         }
     }
@@ -134,7 +182,6 @@ impl<'a> Pipeline<'a> {
     fn get_passes(&mut self) -> Vec<Box<dyn FunctionPass>> {
         let mut passes: Vec<Box<dyn FunctionPass>> = Vec::new();
         passes.push(Box::new(ConstantFoldPass {}));
-        passes.push(Box::<basic_block_pass::trivial_phi_elim::Pass>::default());
         if self.config.cse {
             passes.push(Box::new(CSEPass {}));
         }
@@ -147,49 +194,8 @@ impl<'a> Pipeline<'a> {
         if self.config.global_constant_propagation {
             passes.push(Box::<function_pass::constant_propagation::ConstantPropagation>::default());
         }
-        if self.config.cfg_simplify {
-            passes.push(Box::<function_pass::cfg_simplify::Pass>::default());
-        }
+        passes.push(Box::new(function_pass::cfg_simplify::Pass::new(self.config.cfg_simplify)));
         passes
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::optimization::PipelineConfig;
-use crate::optimization::Pipeline;
-use crate::cfg;
-    use crate::cfg::{BranchTerm, RetTerm, TerminatorKind, UnCondBrTerm};
-    use crate::instruction::{Const, Op};
-    use crate::test_utils::create_test_module;
-
-    #[test]
-    fn should_do_control_flow_ops() {
-        let (mut module, function) = create_test_module();
-        let function_data = &mut module.functions[function];
-        let mut cfg_builder = cfg::Builder::new(function_data);
-        let _bb0 = cfg_builder.start_bb();
-        let bb1 = cfg_builder.create_bb();
-        let bb2 = cfg_builder.create_bb();
-        let (value, _) = cfg_builder.op(None, Op::Const(Const::i32(42))).unwrap();
-        let (_unused_value, _) = cfg_builder.op(None, Op::Const(Const::i32(90))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb1))));
-        cfg_builder.set_bb(bb1);
-        cfg_builder.op(None, Op::Value(value)).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::UnCond(UnCondBrTerm::new(bb2))));
-        cfg_builder.set_bb(bb2);
-        let (return_value, _) = cfg_builder.op(None, Op::Value(value)).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(return_value))));
-        drop(cfg_builder);
-        let mut optimization_pipeline = Pipeline::new(&mut module, PipelineConfig::o1());
-        optimization_pipeline.run();
-        let function_data = &module.functions[function];
-        let cfg = &function_data.cfg;
-        let mut out = String::new();
-        cfg.write_to(&mut out, function_data).unwrap();
-        assert_eq!(out, "bb0:
-    ret i32 42
-");
     }
 }
 
