@@ -1,7 +1,10 @@
 use std::path::PathBuf;
-use clap::Parser;
-use firc_core;
+
 use anyhow::Result;
+use clap::Parser;
+use tracing::debug;
+
+use firc_back::codegen::register_allocator;
 use firc_middle::FrontBridge;
 
 #[derive(Parser, Debug)]
@@ -10,7 +13,7 @@ use firc_middle::FrontBridge;
 struct Args {
     /// The file to compile
     #[arg(value_parser = valid_source_file_extension)]
-    source_file: PathBuf
+    source_file: PathBuf,
 }
 
 fn valid_source_file_extension(file_path: &str) -> Result<PathBuf, String> {
@@ -22,7 +25,8 @@ fn valid_source_file_extension(file_path: &str) -> Result<PathBuf, String> {
     Ok(file_path)
 }
 
-fn main() -> Result<()>{
+fn main() -> Result<()> {
+    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
     let args = Args::parse();
     let file_path = args.source_file;
     let file_contents = std::fs::read_to_string(file_path)?;
@@ -30,7 +34,15 @@ fn main() -> Result<()>{
         |e| anyhow::anyhow!("Failed to parse module: {}", e)
     )?;
     println!("{:?}", module);
-    let module = FrontBridge::new(module).bridge();
+    let mut module = FrontBridge::new().bridge(module);
     println!("{:?}", module);
+    // module.optimize(optimization::PipelineConfig::o1());
+    println!("{module}");
+    let mut x86_mod = firc_back::codegen::machine::module::Builder::<firc_back::codegen::isa::x86_64::Backend>::new(&mut module).build();
+    x86_mod.run_register_allocator();
+    x86_mod.run_register_coalescer();
+    x86_mod.expand_pseudo_instructions::<firc_back::codegen::isa::x86_64::Backend>();
+    debug!("{x86_mod}");
+    x86_mod.assemble();
     Ok(())
 }

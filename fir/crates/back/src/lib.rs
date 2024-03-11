@@ -8,7 +8,9 @@
 #![forbid(unsafe_code)]
 #![allow(clippy::too_many_lines)]
 
-mod codegen;
+pub mod codegen;
+mod emu;
+
 #[macro_use]
 extern crate strum;
 

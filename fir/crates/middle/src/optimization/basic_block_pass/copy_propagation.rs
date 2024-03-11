@@ -1,22 +1,23 @@
 use rustc_hash::FxHashMap;
 
-use crate::{FunctionId, Value};
+use crate::{FunctionId, VReg};
 use crate::cfg::{BasicBlockId, TerminatorKind};
 use crate::instruction::{InstrKind, Op};
 use crate::module::Module;
 use crate::optimization::basic_block_pass::BasicBlockPass;
+use crate::optimization::Pass;
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 struct CopyGraph {
-    edges: FxHashMap<Value, Value>
+    edges: FxHashMap<VReg, VReg>
 }
 
 impl CopyGraph {
-    pub fn insert_copy(&mut self, original_value: Value, copy: Value) {
+    pub fn insert_copy(&mut self, original_value: VReg, copy: VReg) {
         self.edges.insert(copy, original_value);
     }
 
-    pub fn find_original_value(&self, value: Value) -> Value {
+    pub fn find_original_value(&self, value: VReg) -> VReg {
         let mut value = value;
         while let Some(original_value) = self.edges.get(&value).copied() {
             value = original_value;
@@ -27,6 +28,12 @@ impl CopyGraph {
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct CopyPropagationPass {}
+
+impl Pass for CopyPropagationPass {
+    fn name(&self) -> &'static str {
+        "copy_propagation"
+    }
+}
 
 impl BasicBlockPass for CopyPropagationPass {
     fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block: BasicBlockId) -> usize {
@@ -53,9 +60,13 @@ impl BasicBlockPass for CopyPropagationPass {
                     changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut sub_instr.lhs));
                     changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut sub_instr.rhs));
                 }
-                InstrKind::ICmp(instr) => {
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.op1));
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.op2));
+                InstrKind::Add(add_instr) => {
+                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut add_instr.lhs));
+                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut add_instr.rhs));
+                }
+                InstrKind::Cmp(instr) => {
+                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.lhs));
+                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.rhs));
                 }
             }
         }
@@ -73,7 +84,7 @@ impl BasicBlockPass for CopyPropagationPass {
                TerminatorKind::Branch(_) => {
 
                }
-           } 
+           }
         });
         changes
     }
@@ -106,28 +117,28 @@ mod tests {
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 %0):
-                    %1 = i32 %0
-                    %2 = add i32 %1, %0
-                    %3 = i32 %1
-                    %4 = sub i32 %2, %3
-                    ret i32 %4    
+                bb0(i32 v0):
+                    v1 = i32 v0;
+                    v2 = add i32 v1, v0;
+                    v3 = i32 v1;
+                    v4 = sub i32 v2, v3;
+                    ret i32 v4;
                 }
             "
         );
         module.optimize(PipelineConfig::copy_propagation_only());
         let function = module.find_function_by_name("test").unwrap();
         assert_eq!(
-            function.write_to_string().unwrap(),
+            function.to_string(),
             "fun i32 @test(i32) {
-             bb(i32 %0):
-                 %1 = i32 %0
-                 %2 = add i32 %0, %0
-                 %3 = i32 %1
-                 %4 = sub i32 %2, %0 
-                 ret i32 %4   
-             }
-             "
+bb0(i32 v0):
+    v1 = i32 v0;
+    v2 = add i32 v0, v0;
+    v3 = i32 v1;
+    v4 = sub i32 v2, v0;
+    ret i32 v4;
+}
+"
         )
     }
 }

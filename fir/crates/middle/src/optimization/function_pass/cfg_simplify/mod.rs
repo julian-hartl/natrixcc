@@ -24,6 +24,12 @@ impl Pass {
     }
 }
 
+impl crate::optimization::Pass for Pass {
+    fn name(&self) -> &'static str {
+        "cfg_simplify"
+    }
+}
+
 impl FunctionPass for Pass {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
         let mut changed = 0;
@@ -43,31 +49,32 @@ impl FunctionPass for Pass {
 
 #[cfg(test)]
 mod tests {
+    use tracing_test::traced_test;
     use crate::cfg;
     use crate::optimization::{CFGSimplifyPipelineConfig, PipelineConfig};
-    use crate::test::create_test_module_from_source;
+    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
 
     #[test]
+    #[traced_test]
     fn should_merge_jump_chain() {
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 %0):
-                   condbr i1 true, bb1, bb2
+                bb0(i32 v0):
+                   condbr bool 1, bb1, bb2;
                 bb1:
-                   br bb2
+                   br bb2;
                 bb2:
-                   ret i32 %0          
+                   ret i32 v0;
                 }
             "
         );
         module.optimize(PipelineConfig::cfg_simplify_only(CFGSimplifyPipelineConfig::o3()));
-        let function = module.find_function_by_name("test").unwrap();
-        assert_eq!(
-            function.write_to_string().unwrap(),
+        assert_module_is_equal_to_src(
+            &module,
             "fun i32 @test(i32) {
-             bb(i32 %0):
-                ret i32 %0
+             bb0(i32 v0):
+                ret i32 v0;
              }
              "
         )

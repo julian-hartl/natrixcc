@@ -1,21 +1,21 @@
 use rustc_hash::FxHashSet;
 
-use crate::{Instr, InstrKind, Value};
+use crate::{Instr, InstrKind, VReg};
 use crate::analysis::dataflow::{ForwardAnalysis, ForwardAnalysisRunner, lattice};
 use crate::cfg::TerminatorKind;
 use crate::instruction::Op;
 
 #[derive(Debug, Default, Clone)]
-pub struct UsedValues(FxHashSet<Value>);
+pub struct UsedValues(FxHashSet<VReg>);
 
 impl UsedValues {
-    pub fn contains(&self, value: &Value) -> bool {
+    pub fn contains(&self, value: &VReg) -> bool {
         self.0.contains(value)
     }
 }
 
-impl From<&[Value]> for UsedValues {
-    fn from(values: &[Value]) -> Self {
+impl From<&[VReg]> for UsedValues {
+    fn from(values: &[VReg]) -> Self {
         Self(FxHashSet::from_iter(values.iter().copied()))
     }
 }
@@ -57,16 +57,16 @@ impl ForwardAnalysis for Analysis {
                 return Some(UsedValues::from([&store_instr.value].as_slice()));
             }
             InstrKind::Load(load_instr) => {
-                return Some(UsedValues::from([load_instr.source].as_slice()));
+                return Some(UsedValues::from([&load_instr.source].as_slice()));
             }
             InstrKind::Op(op_instr) => {
                 return Some(UsedValues::from([&op_instr.op].as_slice()));
             }
-            InstrKind::Sub(sub_instr) => {
-                return Some(UsedValues::from([&sub_instr.lhs, &sub_instr.rhs].as_slice()));
+            InstrKind::Sub(bin_instr) | InstrKind::Add(bin_instr) => {
+                return Some(UsedValues::from([&bin_instr.lhs, &bin_instr.rhs].as_slice()));
             }
-            InstrKind::ICmp(icmp_instr) => {
-                return Some(UsedValues::from([&icmp_instr.op1, &icmp_instr.op2].as_slice()));
+            InstrKind::Cmp(icmp_instr) => {
+                return Some(UsedValues::from([&icmp_instr.lhs, &icmp_instr.rhs].as_slice()));
             }
         }
         None

@@ -1,5 +1,5 @@
 [package]
-name = "firc_core"
+name = "firc_back"
 version = "0.1.0"
 edition = "2021"
 
@@ -16,4 +16,7 @@ iter_tools = "0.4.0"
 daggy = "0.8.0"
 log = "0.4.20"
 firc_middle = { path = "../middle" }
+unicorn-engine = "2.0.1"
+cranelift-entity = "0.105.2"
+slotmap = "1.0.7"
 

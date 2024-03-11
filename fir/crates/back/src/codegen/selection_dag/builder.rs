@@ -1,128 +1,286 @@
+use std::collections::VecDeque;
+
+use cranelift_entity::{EntityRef, SecondaryMap};
 use daggy::{NodeIndex, Walker};
-use rustc_hash::FxHashMap;
+use daggy::petgraph::visit::IntoNodeIdentifiers;
+use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
 use codegen::selection_dag;
+use firc_middle::cfg::{BasicBlockId, BranchTerm, JumpTarget, Terminator, TerminatorKind};
+use firc_middle::InstrKind;
+use firc_middle::instruction::{Const, OpInstr, VRegData};
+use firc_middle::ty::Type;
 use selection_dag::SelectionDAG;
 
-use crate::codegen::{machine};
-use crate::codegen::machine::VirtualRegister;
-use firc_middle::ty::Type;
 use crate::codegen;
-use crate::codegen::selection_dag::Op;
+use crate::codegen::machine;
+use crate::codegen::machine::{Abi, Function, Register, VReg};
+use crate::codegen::machine::abi::calling_convention::ParameterSlot;
+use crate::codegen::machine::abi::CallingConvention;
+use crate::codegen::selection_dag::{Byte, Immediate, MachineOp, Op, Operand, PseudoOp, Word};
 
-#[derive(Default)]
-pub struct Builder<A: machine::Abi> {
+#[derive(Debug)]
+pub struct Builder<'func, A: machine::Abi> {
+    function: &'func mut Function<A>,
     sel_dag: SelectionDAG<A>,
-    value_id_to_vreg: FxHashMap<firc_middle::ValueId, VirtualRegister>,
-    value_to_defining_node: FxHashMap<firc_middle::Value, NodeIndex>,
+    reg_mapping: SecondaryMap<firc_middle::VReg, Option<VReg>>,
+    defining_nodes: FxHashMap<(VReg, BasicBlockId), NodeIndex>,
 }
 
-impl <A: machine::Abi> Builder<A> {
-    pub fn build(mut self, func: &firc_middle::Function) -> SelectionDAG<A> {
-        debug!("Building SelectionDAGs for function {}", func.name);
-        for (bb_id, bb) in func.cfg.basic_blocks.iter_enumerated() {
-            if let Some(bb) = bb {
-                debug!("Building SelectionDAG for basic block {}", bb_id);
-                for  instr_id in bb.instructions.iter().copied() {
-                    let instr = &func.cfg.instructions[instr_id];
-                    debug!("Building SelectionDAG for instruction {:?}", instr);
+impl<'func, A: machine::Abi> Builder<'func, A> {
+    pub fn new(function: &'func mut Function<A>) -> Self {
+        Self {
+            function,
+            reg_mapping: SecondaryMap::new(),
+            sel_dag: SelectionDAG::default(),
+            defining_nodes: FxHashMap::default(),
+        }
+    }
 
-                    match &instr.kind {
-                        firc_middle::InstrKind::Alloca(_) => unimplemented!(),
-                        firc_middle::InstrKind::Store(_) => unimplemented!(),
-                        firc_middle::InstrKind::Load(_) => unimplemented!(),
-                        firc_middle::InstrKind::Op(op_instr) => {
-                            let ty = func.get_value_type(op_instr.value).clone();
-                            let node = self.define_op_node(bb_id, Op::Mov, Some(ty));
-                            self.add_op_to_node(&op_instr.op, bb_id, node);
-                            self.define_out_val(node, op_instr.value);
+    pub fn build(mut self, func: &mut firc_middle::Function) -> SelectionDAG<A> {
+        debug!("Building SelectionDAGs for function {}", func.name);
+        let basic_blocks = func.cfg.basic_block_ids().filter(
+            |bb_id| *bb_id != func.cfg.entry_block()
+        ).collect::<Vec<_>>();
+        for bb_id in basic_blocks {
+            // Eliminate basic block arguments
+            debug!("Eliminating basic block arguments for {}", bb_id);
+            let arg_types = func.cfg.basic_block(bb_id).arguments()
+                .map(|vreg| func.cfg.vreg_ty_cloned(vreg)).collect::<Vec<_>>();
+            let preds = func.cfg.predecessors(bb_id).collect::<Vec<_>>();
+            for pred_id in preds {
+                let args = func.cfg.basic_block(pred_id).terminator().branch_args(bb_id).unwrap().cloned().collect::<Vec<_>>();
+                if args.is_empty() {
+                    continue;
+                }
+                // Create new basic block for copying the argument ops to temp regs
+                let critical_edge_split_bb = func.cfg.new_basic_block();
+                func.cfg.basic_block_mut(critical_edge_split_bb).set_terminator(
+                    Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(
+                        bb_id
+                    ))))
+                );
+                func.cfg.recompute_successors(critical_edge_split_bb);
+                func.cfg.basic_block_mut(pred_id).update_terminator(|term|
+                    {
+                        term.clear_args(bb_id);
+                        term.update_references_to_bb(bb_id, critical_edge_split_bb);
+                    });
+
+                func.cfg.recompute_successors(pred_id);
+                let mut temp_regs = Vec::new();
+                for (arg, ty) in args.into_iter().zip(
+                    arg_types.iter()
+                ) {
+                    // Create a temp reg and copy the jump arg to it
+                    let (instr, temp_reg) = func.cfg.copy_op_to_temp_instr(
+                        critical_edge_split_bb,
+                        arg,
+                        ty.clone(),
+                    );
+                    func.cfg.add_instruction(critical_edge_split_bb, instr);
+                    temp_regs.push(temp_reg);
+                }
+                let arguments = func.cfg.basic_block(bb_id).arguments().collect::<Vec<_>>();
+                let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
+                for (arg, temp_reg) in arguments.into_iter().zip(
+                    temp_regs.into_iter()
+                ) {
+                    // Copy the temp reg to the basic block arg reg
+                    let instr = func.cfg.copy_reg_instr(
+                        arg,
+                        temp_reg,
+                    );
+                    func.cfg.basic_block_mut(bb_id).insert_instruction_at(0, instr);
+                }
+            }
+            debug!("Eliminated basic block arguments for {}", bb_id);
+            debug!("{}", func);
+        }
+        for (bb_id, bb) in func.cfg.basic_blocks() {
+            debug!("Building SelectionDAG for basic block {}", bb_id);
+            if bb_id == func.cfg.entry_block() {
+                let param_slots = A::CallingConvention::parameter_slots(
+                    bb.arguments().map(|arg| func.cfg.vreg_ty_cloned(arg))
+                );
+                for (slot, arg) in param_slots.into_iter().zip(bb.arguments()) {
+                    match slot {
+                        ParameterSlot::Register(reg) => {
+                            let phys_reg = Register::Physical(reg);
+                            let mapped_reg = self.map_vreg(arg, func);
+                            self.define_node(bb_id, Op::Pseudo(PseudoOp::Copy(
+                                Register::Virtual(mapped_reg),
+                                phys_reg,
+                            )));
                         }
-                        firc_middle::InstrKind::Sub(sub_instr) => {
-                            let ty = func.get_value_type(sub_instr.value).clone();
-                            let node = self.define_op_node(bb_id, Op::Sub, Some(ty));
-                            self.add_op_to_node(&sub_instr.lhs, bb_id, node);
-                            self.add_op_to_node(&sub_instr.rhs, bb_id, node);
-                            self.define_out_val(node, sub_instr.value);
-                        }
-                        firc_middle::InstrKind::Phi(phi_instr) => {
-                            unimplemented!()
-                        }
-                        firc_middle::InstrKind::ICmp(icmp_instr) => unimplemented!(),
+                        ParameterSlot::Stack => unimplemented!()
                     };
                 }
+            }
+            for instr in bb.instructions() {
+                debug!("Add instruction to SelectionDAG: {:?}", instr);
 
-                match &bb.terminator.kind {
-                    firc_middle::cfg::TerminatorKind::Ret(ret_term) => {
-                        let node = self.define_term_node(bb_id, Op::Ret);
-                        if let Some(return_op) = ret_term.value.as_ref() {
-                            self.add_op_to_node(return_op, bb_id, node);
-                        }
+                match &instr.kind {
+                    firc_middle::InstrKind::Alloca(_) => unimplemented!(),
+                    firc_middle::InstrKind::Store(_) => unimplemented!(),
+                    firc_middle::InstrKind::Load(_) => unimplemented!(),
+                    firc_middle::InstrKind::Op(op_instr) => {
+                        let out_reg = self.map_vreg(op_instr.value, func);
+                        let op = match self.map_op(&op_instr.op, &instr.ty, func) {
+                            Operand::Reg(reg) => Op::Pseudo(PseudoOp::Copy(
+                                Register::Virtual(out_reg),
+                                reg,
+                            )),
+                            Operand::Imm(imm) => Op::Machine(MachineOp::Mov(
+                                Register::Virtual(out_reg),
+                                Operand::Imm(imm),
+                            )),
+                        };
+                        self.define_node(bb_id, op);
                     }
-                    firc_middle::cfg::TerminatorKind::Branch(branch_term) => {
-                        unimplemented!()
+                    firc_middle::InstrKind::Sub(sub_instr) => {
+                        let out_reg = self.map_vreg(sub_instr.value, func);
+                        let lhs = self.map_op(&sub_instr.lhs, &instr.ty, func);
+                        let rhs = self.map_op(&sub_instr.rhs, &instr.ty, func);
+                        self.define_node(bb_id, Op::Machine(MachineOp::Sub(
+                            Register::Virtual(out_reg),
+                            lhs,
+                            rhs,
+                        )));
                     }
+                    firc_middle::InstrKind::Add(add_instr) => {
+                        let out_reg = self.map_vreg(add_instr.value, func);
+                        let lhs = self.map_op(&add_instr.lhs, &instr.ty, func);
+                        let rhs = self.map_op(&add_instr.rhs, &instr.ty, func);
+                        self.define_node(bb_id, Op::Machine(MachineOp::Add(
+                            Register::Virtual(out_reg),
+                            lhs,
+                            rhs,
+                        )));
+                    }
+                    firc_middle::InstrKind::Cmp(cmp_instr) => {
+                        let out_reg = self.map_vreg(cmp_instr.value, func);
+                        let lhs = self.map_op(&cmp_instr.lhs, &instr.ty, func);
+                        let rhs = self.map_op(&cmp_instr.rhs, &instr.ty, func);
+                        self.define_node(bb_id, Op::Machine(MachineOp::Cmp(
+                            Register::Virtual(out_reg),
+                            cmp_instr.op,
+                            lhs,
+                            rhs,
+                        )));
+                    }
+                };
+            }
+
+            match &bb.terminator().kind {
+                firc_middle::cfg::TerminatorKind::Ret(ret_term) => {
+                    let value = ret_term.value.as_ref().map(|value| self.map_op(value, &func.ret_ty, func));
+                    self.define_term_node(bb_id, MachineOp::Ret(
+                        value
+                    ));
+                }
+                firc_middle::cfg::TerminatorKind::Branch(branch_term) => {
+                    self.define_term_node(bb_id, MachineOp::Br(
+                        branch_term.target.id
+                    ));
+                }
+                firc_middle::cfg::TerminatorKind::CondBranch(branch_term) => {
+                    let op = self.map_op(&branch_term.cond, &Type::Bool, func);
+                    self.define_term_node(bb_id, MachineOp::CondBr(
+                        op,
+                        branch_term.true_target.id.into(),
+                        branch_term.false_target.id.into(),
+                    ));
                 }
             }
         }
         self.sel_dag
     }
 
-
-    fn define_op_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op, ty: Option<Type>) -> NodeIndex {
-        let node = self.sel_dag.get_bb_dag(bb_id).add_node(selection_dag::Node {
-            kind: selection_dag::NodeKind::Op(op),
-            ty,
-        });
-        node
-    }
-
-    fn define_out_val(&mut self, node: NodeIndex, value: firc_middle::Value) {
-        self.value_to_defining_node.insert(value, node);
-    }
-
-    fn define_term_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op) -> NodeIndex {
-        let node = self.define_op_node(bb_id, op, None);
-        let dag = self.sel_dag.get_bb_dag(bb_id);
-        dag.set_term_node(node);
-        node
-    }
-
-    fn add_op_to_node(&mut self, op: &firc_middle::instruction::Op, current_bb_id: firc_middle::cfg::BasicBlockId, node: NodeIndex) {
+    fn map_op(&mut self, op: &firc_middle::instruction::Op, ty: &Type, func: &firc_middle::Function) -> Operand<A> {
         match op {
-            firc_middle::instruction::Op::Const(const_value) => {
-                let const_node = self.sel_dag.get_bb_dag(current_bb_id).add_node(
-                    selection_dag::Node {
-                        ty: Some(const_value.ty()),
-                        kind: selection_dag::NodeKind::Const(match const_value {
-                            firc_middle::instruction::Const::Int { value, .. } => selection_dag::Const::Int(*value),
-                        }),
+            firc_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
+            firc_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
+                Const::Int(value) => {
+                    let value = *value;
+                    match ty {
+                        Type::U8 => Immediate::Byte((value as u8).into()),
+                        Type::U16 => Immediate::Word((value as u16).into()),
+                        Type::U32 => Immediate::DWord((value as u32).into()),
+                        Type::U64 => Immediate::QWord((value as u64).into()),
+                        Type::I8 => Immediate::Byte((value as i8).into()),
+                        Type::I16 => Immediate::Word((value as i16).into()),
+                        Type::I32 => Immediate::DWord((value as i32).into()),
+                        Type::I64 => Immediate::QWord((value as i64).into()),
+                        Type::Bool => Immediate::Byte((value as u8).into()),
+                        Type::Void => unreachable!("Cannot have a constant of type void"),
+                        Type::Ptr(_) => unimplemented!(),
                     }
-                );
-                self.sel_dag.get_bb_dag(current_bb_id).add_edge(
-                    node,
-                    const_node,
-                    selection_dag::Edge,
-                ).unwrap();
-            }
-            firc_middle::instruction::Op::Value(op_value) => {
-                let def_node = self.get_defining_node(*op_value);
-                match def_node {
-                    Some(def_node) => {
-                        self.sel_dag.get_bb_dag(current_bb_id).add_edge(
-                            node,
-                            def_node,
-                            selection_dag::Edge,
-                        ).unwrap();
-                    }
-                    None => unimplemented!("Could not find defining node for value {:?}", op_value),
                 }
+            })
+        }
+    }
+
+    fn add_dependency(&mut self, bb_id: BasicBlockId, depending_node: NodeIndex, producing_node: NodeIndex) {
+        debug!("{:?} depends on {:?}", depending_node, producing_node);
+        self.sel_dag.get_bb_dag(bb_id).add_edge(
+            depending_node,
+            producing_node,
+            selection_dag::Edge,
+        ).unwrap();
+    }
+
+    fn define_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
+        let used_regs = op.consumed_regs();
+        let out_reg = op.out().and_then(|reg| reg.try_as_virtual());
+        debug!("Defining op {:?}. Out reg: {:?}, used regs: {:?}", op, out_reg, used_regs);
+        let node = self.sel_dag.get_bb_dag(bb_id).add_node(op);
+        debug!("Defined op as node {:?}", node);
+        if let Some(out_reg) = out_reg {
+            self.define_out_val(node, out_reg, bb_id);
+        }
+        for reg in used_regs {
+            if let Some(defining_node) = reg.try_as_virtual().and_then(|reg| self.get_defining_node(reg, bb_id)) {
+                self.add_dependency(bb_id, node, defining_node);
+            }
+        }
+        node
+    }
+
+    fn define_term_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: MachineOp<A>) -> NodeIndex {
+        let term_node = self.define_node(bb_id, Op::Machine(op));
+        let dag = self.sel_dag.get_bb_dag(bb_id);
+        dag.set_term_node(term_node);
+        debug!("Adding dependency on term node for every node");
+        for node in dag.node_identifiers().filter(
+            |node| *node != term_node
+        ) {
+            self.add_dependency(bb_id, term_node, node);
+        }
+        term_node
+    }
+
+
+    fn map_vreg(&mut self, vreg: firc_middle::VReg, func: &firc_middle::Function) -> VReg {
+        let mapped = self.reg_mapping[vreg];
+        match mapped {
+            Some(reg) => reg,
+            None => {
+                let vreg_ty = func.cfg.vreg_ty(vreg);
+                let mapped_vreg = self.function.alloc_vreg(vreg_ty.into());
+                self.reg_mapping[vreg] = Some(mapped_vreg);
+                mapped_vreg
             }
         }
     }
 
-    fn get_defining_node(&self, op_value: firc_middle::Value) -> Option<NodeIndex> {
-        self.value_to_defining_node.get(&op_value).copied()
+    fn define_out_val(&mut self, node: NodeIndex, reg: VReg, bb_id: BasicBlockId) {
+        self.defining_nodes.insert((reg, bb_id), node);
+    }
+
+    fn get_defining_node(&self, vreg: VReg, bb_id: BasicBlockId) -> Option<NodeIndex> {
+        self.defining_nodes.get(&(vreg, bb_id)).copied()
     }
 }
 
@@ -132,6 +290,7 @@ mod tests {
     use firc_middle::cfg::{RetTerm, TerminatorKind};
     use firc_middle::instruction::{Const, Op};
     use firc_middle::test::create_test_module;
+
     use crate::codegen::isa::x86_64;
 
     #[test]

@@ -10,13 +10,13 @@ pub struct DomTree<'a> {
 impl <'a> DomTree<'a> {
     pub fn compute(cfg: &'a Cfg) -> Self {
         Self {
-            dominators: petgraph::algo::dominators::simple_fast(&cfg.graph, cfg.root_idx()),
+            dominators: petgraph::algo::dominators::simple_fast(&cfg.graph, cfg.entry_block().into()),
             cfg
         }
     }
 
     pub fn idom(&self, basic_block: BasicBlockId) -> Option<BasicBlockId> {
-        self.dominators.immediate_dominator(self.cfg.node_idx(basic_block)).map(|node_idx| self.cfg.bb_id_from_node(node_idx))
+        self.dominators.immediate_dominator(basic_block.into()).map(|node_idx| node_idx.into())
     }
     
     /// Returns true if `a` dominates `b`.
@@ -25,7 +25,7 @@ impl <'a> DomTree<'a> {
     /// 
     /// **Note** that false is returned if `a` is not reachable from the entry block.
     pub fn dominates(&self, a: BasicBlockId, b: BasicBlockId) -> bool {
-        let Some(dominators) = self.dominators.dominators(self.cfg.node_idx(a)) else { return false; };
-        dominators.into_iter().find(|node_idx| *node_idx == self.cfg.node_idx(b)).is_some()
+        let Some(dominators) = self.dominators.dominators(b.into()) else { return false; };
+        dominators.into_iter().any(|node_idx| node_idx == a.into())
     }
 }

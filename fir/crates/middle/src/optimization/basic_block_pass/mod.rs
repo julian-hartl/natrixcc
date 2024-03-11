@@ -1,4 +1,4 @@
-use crate::optimization::FunctionPass;
+use crate::optimization::{FunctionPass, Pass};
 use crate::cfg::BasicBlockId;
 use crate::FunctionId;
 use crate::module::Module;
@@ -7,7 +7,7 @@ pub mod constant_fold;
 pub mod cse;
 pub mod copy_propagation;
 
-pub trait BasicBlockPass {
+pub trait BasicBlockPass: Pass {
     fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block: BasicBlockId) -> usize;
 }
 

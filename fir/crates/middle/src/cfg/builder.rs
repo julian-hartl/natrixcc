@@ -1,18 +1,21 @@
+use cranelift_entity::EntityRef;
+
 use crate::cfg::{BasicBlockId, Terminator, TerminatorKind};
-use crate::function::{Function, Symbol};
-use crate::instruction::{AllocaInstr, ICmpCond, ICmpInstr, Instr, InstrKind, LoadInstr, Op, OpInstr, StoreInstr, SubInstr, ValueData};
+use crate::function::Function;
+use crate::instruction::{AllocaInstr, BinOpInstr, CmpOp, CmpInstr, Instr, InstrKind, LoadInstr, Op, OpInstr, StoreInstr, VRegData};
 use crate::ty::Type;
-use crate::Value;
+use crate::VReg;
 
 #[derive(Debug)]
 pub struct Builder<'func> {
     func: &'func mut Function,
     current_bb: Option<BasicBlockId>,
+    next_vreg: Option<VReg>,
 }
 
 impl<'func> Builder<'func> {
     pub fn new(func: &'func mut Function) -> Self {
-        Self { func, current_bb: None }
+        Self { func, current_bb: None, next_vreg: None }
     }
 
     pub fn start_bb(&mut self) -> BasicBlockId {
@@ -20,6 +23,7 @@ impl<'func> Builder<'func> {
         self.current_bb = Some(bb);
         bb
     }
+
 
     pub fn create_bb(&mut self) -> BasicBlockId {
         self.func.cfg.new_basic_block()
@@ -35,37 +39,46 @@ impl<'func> Builder<'func> {
         self.current_bb = None;
     }
 
-    pub fn alloca(&mut self, value_sym: Option<Symbol>, ty: Type, num_elements: Option<u32>, alignment: Option<u32>) -> Value {
-        let value = self.push_value_for_next_instr(Type::Ptr(Box::new(ty.clone())));
+    pub fn alloca(&mut self, ty: Type, num_elements: Option<u32>) -> VReg {
+        let value = self.next_vreg(Type::Ptr(Box::new(ty.clone())));
         let alloca = AllocaInstr::new(
             value,
-            ty,
             num_elements,
-            alignment,
         );
-        self.add_instr(Instr::new(InstrKind::Alloca(alloca)));
+        self.add_instr(Instr::new(ty, InstrKind::Alloca(alloca)));
         value
     }
 
-    pub fn sub(&mut self, value_sym: Option<Symbol>, lhs: Op, rhs: Op) -> Value {
-        let value = self.push_value_for_next_instr(lhs.ty(&self.func));
-        let sub = SubInstr {
+    pub fn add(&mut self, ty: Type, lhs: Op, rhs: Op) -> VReg {
+        let value = self.next_vreg(ty.clone());
+        let instr = BinOpInstr {
             value,
             lhs,
             rhs,
         };
-        self.add_instr(Instr::new(InstrKind::Sub(sub)));
+        self.add_instr(Instr::new(ty, InstrKind::Add(instr)));
         value
     }
 
-    pub fn store(&mut self, dest: Value, value: Op) {
-        let store = Instr::new(InstrKind::Store(StoreInstr { value, dest }));
+    pub fn sub(&mut self, ty: Type, lhs: Op, rhs: Op) -> VReg {
+        let value = self.next_vreg(ty.clone());
+        let sub = BinOpInstr {
+            value,
+            lhs,
+            rhs,
+        };
+        self.add_instr(Instr::new(ty, InstrKind::Sub(sub)));
+        value
+    }
+
+    pub fn store(&mut self, ty: Type, dest: VReg, value: Op) {
+        let store = Instr::new(ty, InstrKind::Store(StoreInstr { value, dest }));
         self.add_instr(store);
     }
 
-    pub fn load(&mut self, value_sym: Option<Symbol>, source: Value) -> Value {
-        let value = self.push_value_for_next_instr(self.func.values_ctx[source].ty.deref().clone());
-        let load = Instr::new(InstrKind::Load(LoadInstr {
+    pub fn load(&mut self, ty: Type, source: Op) -> VReg {
+        let value = self.next_vreg(ty.clone());
+        let load = Instr::new(ty, InstrKind::Load(LoadInstr {
             dest: value,
             source,
         }));
@@ -73,37 +86,33 @@ impl<'func> Builder<'func> {
         value
     }
 
-    pub fn op(&mut self, value_sym: Option<Symbol>, op: Op) -> Value {
-        let value = self.push_value_for_next_instr(op.ty(self.func));
+    pub fn op(&mut self, ty: Type, op: Op) -> VReg {
+        let value = self.next_vreg(ty.clone());
         let op_instr = OpInstr {
             value,
             op,
         };
-        self.add_instr(Instr::new(InstrKind::Op(op_instr)));
+        self.add_instr(Instr::new(ty, InstrKind::Op(op_instr)));
         value
     }
 
-    pub fn icmp(&mut self, value_sym: Option<Symbol>, condition: ICmpCond, op1: Op, op2: Op) -> Value {
-        let value = self.push_value_for_next_instr(Type::Bool);
-        self.add_instr(Instr::new(InstrKind::ICmp(
-            ICmpInstr {
+    pub fn icmp(&mut self, ty: Type, condition: CmpOp, op1: Op, op2: Op) -> VReg {
+        let value = self.next_vreg(ty.clone());
+        self.add_instr(Instr::new(ty, InstrKind::Cmp(
+            CmpInstr {
                 value,
-                condition,
-                op1,
-                op2,
+                op: condition,
+                lhs: op1,
+                rhs: op2,
             }
         )));
         value
     }
 
-    pub fn add_argument(&mut self, ty: Type) -> Value {
-        let value = self.func.values_ctx.push(ValueData {
-            id: self.func.values_ctx.next_idx(),
-            ty,
-            defined_in: self.current_bb.unwrap(),
-        });
+    pub fn add_argument(&mut self, ty: Type) -> VReg {
+        let value = self.next_vreg(ty);
         let current_bb = self.current_bb();
-        self.func.cfg.basic_blocks[current_bb].arguments.push(value);
+        self.func.cfg.basic_block_mut(current_bb).add_argument(value);
         value
     }
 
@@ -111,12 +120,44 @@ impl<'func> Builder<'func> {
         self.func.cfg.add_instruction(self.current_bb(), instr);
     }
 
-    fn push_value_for_next_instr(&mut self, ty: Type) -> Value {
-        self.func.values_ctx.push(ValueData {
-            id: self.func.values_ctx.next_idx(),
-            ty,
-            defined_in: self.current_bb(),
-        })
+    /// Tells the builder to use this vreg for the next instruction
+    /// instead of continuing serially. 
+    pub(crate) fn set_next_vreg(&mut self, vreg: VReg) {
+        self.next_vreg = Some(vreg);
+    }
+
+    fn next_vreg(&mut self, ty: Type) -> VReg {
+        match self.next_vreg.take() {
+            Some(vreg) => {
+                let vreg_idx = vreg.0 as usize;
+                if vreg_idx < self.func.cfg.vregs.len() {
+                    let current_bb = self.current_bb();
+                    let vreg = &mut self.func.cfg.vregs[vreg];
+                    vreg.ty = ty;
+                    vreg.defined_in = current_bb;
+                } else {
+                    for _ in self.func.cfg.vregs.len()..vreg_idx {
+                        self.func.cfg.new_vreg(VRegData {
+                            ty: Type::Void,
+                            defined_in: self.current_bb(),
+                        });
+                    }
+                    self.func.cfg.new_vreg(VRegData {
+                        ty,
+                        defined_in: self.current_bb(),
+                    });
+                }
+                vreg
+            }
+            None => self.func.cfg.new_vreg(VRegData {
+                ty,
+                defined_in: self.current_bb(),
+            })
+        }
+    }
+
+    pub(crate) fn max_bb_id(&self) -> Option<BasicBlockId> {
+        Some(BasicBlockId::new(self.func.cfg.basic_blocks.len().checked_sub(1)?))
     }
 
     pub fn current_bb(&self) -> BasicBlockId {
@@ -128,7 +169,7 @@ impl<'func> Builder<'func> {
 mod tests {
     use crate::cfg;
     use crate::cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
-    use crate::instruction::{Const, ICmpCond, Op};
+    use crate::instruction::{Const, CmpOp, Op};
     use crate::test::create_test_function;
     use crate::ty::Type;
 
@@ -138,13 +179,11 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
 
-        cfg_builder.alloca(None, Type::I32, None, None);
+        cfg_builder.alloca(Type::I32, None);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
-    %0 = alloca i32
-    ret void
+        assert_eq!(function.cfg.to_string(), "bb0:
+    v0 = alloca i32;
+    ret void;
 ");
     }
 
@@ -154,16 +193,14 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
         cfg_builder.sub(
-            None,
-            Op::Const(Const::i32(0)),
-            Op::Const(Const::i32(1)),
+            Type::I32,
+            Op::Const(Const::Int(0)),
+            Op::Const(Const::Int(1)),
         );
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
-    %0 = sub i32 0, 1
-    ret void
+        assert_eq!(function.cfg.to_string(), "bb0:
+    v0 = sub i32 0, 1;
+    ret void;
 ");
     }
 
@@ -172,13 +209,11 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        cfg_builder.op(None, Op::Const(Const::i32(0)));
+        cfg_builder.op(Type::I32, Op::Const(Const::Int(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
-        assert_eq!(cfg_out, "bb0:
-    %0 = i32 0
-    ret void
+        assert_eq!(function.cfg.to_string(), "bb0:
+    v0 = i32 0;
+    ret void;
 ");
     }
 
@@ -187,16 +222,14 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        let alloca_value = cfg_builder.alloca(None, Type::I32, None, None);
-        cfg_builder.store(alloca_value, Op::Const(Const::i32(0)));
+        let alloca_value = cfg_builder.alloca(Type::I32, None);
+        cfg_builder.store(Type::I32, alloca_value, Op::Const(Const::Int(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!("bb0:
-    %0 = alloca i32
-    store i32 0, ptr %0
-    ret void
-", cfg_out);
+    v0 = alloca i32;
+    store i32 0, ptr v0;
+    ret void;
+", function.cfg.to_string());
     }
 
     #[test]
@@ -204,16 +237,14 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
-        let alloca_value = cfg_builder.alloca(None, Type::I32, None, None);
-        cfg_builder.load(None, alloca_value);
+        let alloca_value = cfg_builder.alloca(Type::I32, None);
+        cfg_builder.load(Type::I32, Op::Value(alloca_value));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!("bb0:
-    %0 = alloca i32
-    %1 = load i32 ptr %0
-    ret void
-", cfg_out);
+    v0 = alloca i32;
+    v1 = load i32 ptr v0;
+    ret void;
+", function.cfg.to_string());
     }
 
     #[test]
@@ -223,7 +254,7 @@ mod tests {
         let _bb0 = cfg_builder.start_bb();
         let bb1 = cfg_builder.create_bb();
         let bb2 = cfg_builder.create_bb();
-        let cmp_value = cfg_builder.icmp(None, ICmpCond::Eq, Op::Const(Const::i32(0)), Op::Const(Const::i32(1)));
+        let cmp_value = cfg_builder.icmp(Type::Bool, CmpOp::Eq, Op::Const(Const::Int(0)), Op::Const(Const::Int(1)));
         cfg_builder.end_bb(TerminatorKind::CondBranch(
             CondBranchTerm {
                 cond: Op::Value(cmp_value),
@@ -235,18 +266,16 @@ mod tests {
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         cfg_builder.set_bb(bb2);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-        let mut out = String::new();
-        function.cfg.write_to(&mut out, &function).unwrap();
         assert_eq!("bb0:
-    %0 = icmp bool eq 0, 1
-    condbr bool %0, bb1, bb2
+    v0 = icmp bool eq 0, 1;
+    condbr v0, bb1, bb2;
 bb1:
-    ret void
+    ret void;
 bb2:
-    ret void
-", out);
+    ret void;
+", function.cfg.to_string());
     }
-    
+
     #[test]
     fn should_add_basic_block_arguments() {
         let mut function = create_test_function();
@@ -258,32 +287,30 @@ bb2:
         let bb4 = cfg_builder.create_bb();
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(bb1))));
         cfg_builder.set_bb(bb1);
-        let var_0 = cfg_builder.op(None, Op::Const(Const::i32(0)));
+        let var_0 = cfg_builder.op(Type::I32, Op::Const(Const::Int(0)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_0.into()]))));
         cfg_builder.set_bb(bb2);
-        let var_1 = cfg_builder.op(None, Op::Const(Const::i32(1)));
+        let var_1 = cfg_builder.op(Type::I32, Op::Const(Const::Int(1)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_1.into()]))));
         cfg_builder.set_bb(bb3);
         let var_2 = cfg_builder.add_argument(Type::I32);
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(var_2.into())));
+        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Type::I32, var_2.into())));
         cfg_builder.set_bb(bb4);
-        let var_3 = cfg_builder.op(None, Op::Const(Const::i32(2)));
+        let var_3 = cfg_builder.op(Type::I32, Op::Const(Const::Int(2)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![var_3.into()]))));
-        let mut cfg_out = String::new();
-        function.cfg.write_to(&mut cfg_out, &function).unwrap();
         assert_eq!("bb0:
-    br bb1
+    br bb1;
 bb1:
-    %0 = i32 0
-    br bb3(%0)
+    v0 = i32 0;
+    br bb3(v0);
 bb2:
-    %1 = i32 1
-    br bb3(%0)
-bb3(i32 %2):
-    ret i32 %2
+    v1 = i32 1;
+    br bb3(v0);
+bb3(i32 v2):
+    ret i32 v2;
 bb4:
-    %3 = i32 2
-    br bb3(%3)
-", cfg_out);
+    v3 = i32 2;
+    br bb3(v3);
+", function.cfg.to_string());
     }
 }

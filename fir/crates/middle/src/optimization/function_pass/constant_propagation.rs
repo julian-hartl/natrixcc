@@ -1,13 +1,21 @@
+use tracing::{debug, debug_span};
+
 use crate::analysis::dataflow::{concrete_value, DFValueState};
 use crate::analysis::dataflow::concrete_value::ConcreteValues;
 use crate::cfg::TerminatorKind;
 use crate::FunctionId;
-use crate::instruction::{InstrKind, Op};
+use crate::instruction::{Const, InstrKind, Op};
 use crate::module::Module;
-use crate::optimization::FunctionPass;
+use crate::optimization::{FunctionPass, Pass};
 
 #[derive(Default)]
 pub struct ConstantPropagation;
+
+impl Pass for ConstantPropagation {
+    fn name(&self) -> &'static str {
+        "constant_propagation"
+    }
+}
 
 impl FunctionPass for ConstantPropagation {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
@@ -74,7 +82,7 @@ impl FunctionPass for ConstantPropagation {
             //                    }
             //                }
             //                TerminatorKind::Ret(_) => unreachable!(),
-            //            } 
+            //            }
             //         });
             //     }
             // }
@@ -83,11 +91,8 @@ impl FunctionPass for ConstantPropagation {
             instr_walker.walk(|instr, state| {
                 match &mut instr.kind {
                     InstrKind::Op(op) => {
-                        if let Op::Value(value) = &mut op.op {
-                            if let Some(const_value) = state.get(value).unwrap().as_single_value() {
-                                op.op = Op::Const(const_value.clone());
-                                changes += 1;
-                            }
+                        if Self::maybe_replace_op(&mut op.op, state) {
+                            changes += 1;
                         }
                     }
                     InstrKind::Sub(instr) => {
@@ -98,11 +103,19 @@ impl FunctionPass for ConstantPropagation {
                             changes += 1;
                         }
                     }
-                    InstrKind::ICmp(icmp) => {
-                        if Self::maybe_replace_op(&mut icmp.op1, state) {
+                    InstrKind::Add(instr) => {
+                        if Self::maybe_replace_op(&mut instr.lhs, state) {
                             changes += 1;
                         }
-                        if Self::maybe_replace_op(&mut icmp.op2, state) {
+                        if Self::maybe_replace_op(&mut instr.rhs, state) {
+                            changes += 1;
+                        }
+                    }
+                    InstrKind::Cmp(icmp) => {
+                        if Self::maybe_replace_op(&mut icmp.lhs, state) {
+                            changes += 1;
+                        }
+                        if Self::maybe_replace_op(&mut icmp.rhs, state) {
                             changes += 1;
                         }
                     }
@@ -156,10 +169,16 @@ impl ConstantPropagation {
             Op::Const(_) =>
                 false,
             Op::Value(value) => {
-                state.get(value).unwrap().as_single_value().map_or(false, |const_value| {
-                    *op = Op::Const(const_value.clone());
-                    true
-                })
+                match state.get(value).and_then(|s| s.as_single_value()) {
+                    None => {
+                        false
+                    }
+                    Some(const_value) => {
+                        debug!("Replaced {value} with {const_value}");
+                        *op = Op::Const(*const_value);
+                        true
+                    }
+                }
             }
         }
     }
@@ -167,65 +186,47 @@ impl ConstantPropagation {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfg;
-    use crate::cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
-    use crate::instruction::{Const, ICmpCond, Op};
-    use crate::optimization::Pipeline;
+    use tracing_test::traced_test;
+
     use crate::optimization::PipelineConfig;
-    use crate::test::create_test_module;
+    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
 
     #[test]
+    #[traced_test]
     fn should_replace_const_variable() {
-        let (mut module, function) = create_test_module();
-        let function_data = &mut module.functions[function];
-        let mut cfg_builder = cfg::Builder::new(function_data);
-        let _bb = cfg_builder.start_bb();
-        let bb1 = cfg_builder.create_bb();
-        let bb2 = cfg_builder.create_bb();
-        let bb3 = cfg_builder.create_bb();
-        let x_value = cfg_builder.op(None, Op::Const(Const::i32(10)));
-        let cond_value = cfg_builder.icmp(None, ICmpCond::Eq, Op::Value(x_value), Op::Const(Const::i32(10)));
-        cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm::new(
-            Op::Value(cond_value),
-            JumpTarget::new(bb1, vec![]),
-            JumpTarget::new(bb2, vec![]),
-        )));
-        cfg_builder.set_bb(bb1);
-        let new_val = cfg_builder.sub(None, Op::Value(x_value), Op::Const(Const::i32(5)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb3, vec![
-            Op::Value(new_val),
-        ]))));
-        cfg_builder.set_bb(bb2);
-        let new_val = cfg_builder.sub(None, Op::Value(x_value), Op::Const(Const::i32(5)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
-            bb3, vec![Op::Value(new_val)],
-        ))));
-        cfg_builder.set_bb(bb3);
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Const(Const::i32(5)))));
-        drop(cfg_builder);
-        let mut optimization_pipeline = Pipeline::new(&mut module, PipelineConfig::global_constant_propagation_only());
-        optimization_pipeline.run();
-        let function_data = &module.functions[function];
-        let cfg = &function_data.cfg;
-        let mut out = String::new();
-        cfg.write_to(&mut out, function_data).unwrap();
-        assert_eq!(out, "bb0:
-    %0 = i32 10
-    %1 = i1 1
-    br i1 1, bb1, bb2
+        let mut module = create_test_module_from_source(
+            "
+fun i32 @test() {
+bb0:
+    v0 = i32 7;
+    br bb1;
 bb1:
-    ; preds = bb0
-    %2 = i32 5
-    br label bb3
+    v1 = add i32 v0, 8;
+    br bb2;
 bb2:
-    ; preds = bb0
-    %3 = i32 5
-    br label bb3
-bb3:
-    ; preds = bb1, bb2
-    ret i32 5
-");
-        println!("{}", out);
+    v2 = i32 9;
+    v3 = add i32 v2, v0;
+    ret i32 v3;
+}
+            "
+        );
+        module.optimize(PipelineConfig::global_constant_propagation_only());
+        assert_module_is_equal_to_src(
+            &module,
+            "
+        fun i32 @test() {
+bb0:
+    v0 = i32 7;
+    br bb1;
+bb1:
+    v1 = i32 15;
+    br bb2;
+bb2:
+    v2 = i32 9;
+    v3 = i32 16;
+    ret i32 16;
+}
+ ");
     }
 }
 

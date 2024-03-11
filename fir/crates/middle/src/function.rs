@@ -1,18 +1,17 @@
-use index_vec::IndexVec;
-use rustc_hash::FxHashMap;
+use std::fmt::{Display, Formatter};
+
+use cranelift_entity::{entity_impl, PrimaryMap};
 
 use crate::cfg::Cfg;
-use crate::instruction::ValueData;
+use crate::instruction::VRegData;
 use crate::ty::Type;
-use crate::Value;
+use crate::VReg;
 
-index_vec::define_index_type! {
-    pub struct FunctionId = usize;
-}
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub struct FunctionId(u32);
 
+entity_impl!(FunctionId, "fun");
 pub type Symbol = String;
-
-pub type SymbolTable = FxHashMap<Value, Symbol>;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -20,8 +19,6 @@ pub struct Function {
     pub params: Vec<Type>,
     pub ret_ty: Type,
     pub cfg: Cfg,
-    pub symbol_table: SymbolTable,
-    pub values_ctx: IndexVec<Value, ValueData>,
 }
 
 
@@ -32,32 +29,24 @@ impl Function {
             params,
             ret_ty,
             cfg: Cfg::new(),
-            symbol_table: SymbolTable::default(),
-            values_ctx: IndexVec::new(),
         }
     }
 
-    pub fn get_value_type(&self, value: Value) -> &Type {
-        &self.values_ctx[value].ty
-    }
-    
-    pub fn write_to(&self, w: &mut impl std::fmt::Write) -> std::fmt::Result {
-        write!(w, "fun {} @{} (", self.ret_ty, self.name)?;
+}
+
+impl Display for Function {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "fun {} @{}(", self.ret_ty, self.name)?;
         for (index, param) in self.params.iter().enumerate() {
-            write!(w, "{param}")?;
-            if index < self.params.len() - 1{
-                write!(w, ", ")?;
+            write!(f, "{param}")?;
+            if index < self.params.len() - 1 {
+                write!(f, ", ")?;
             }
         }
-        writeln!(w, " {{")?;
-        self.cfg.write_to(w, self)?;
-        writeln!(w, " }}")?;
+        write!(f, ")")?;
+        writeln!(f, " {{")?;
+        write!(f, "{}", self.cfg)?;
+        writeln!(f, "}}")?;
         Ok(())
-    }
-    
-    pub fn write_to_string(&self) -> Result<String, std::fmt::Error> {
-        let mut buf = String::new();
-        self.write_to(&mut buf)?;
-        Ok(buf)
     }
 }

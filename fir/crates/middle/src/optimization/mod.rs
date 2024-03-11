@@ -1,3 +1,5 @@
+use tracing::{debug, trace, trace_span};
+
 use crate::FunctionId;
 use crate::module::Module;
 use crate::optimization::basic_block_pass::constant_fold::ConstantFoldPass;
@@ -8,6 +10,10 @@ use crate::optimization::function_pass::FunctionPass;
 
 pub mod basic_block_pass;
 pub mod function_pass;
+
+pub trait Pass {
+    fn name(&self) -> &'static str;
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(clippy::struct_excessive_bools)]
@@ -57,6 +63,13 @@ impl CFGSimplifyPipelineConfig {
     pub const fn unreachable_bb_elim_only() -> Self {
         Self {
             unreachable_bb_elim: true,
+            ..Self::all_disabled()
+        }
+    }
+
+    pub const fn bb_merge_only() -> Self {
+        Self {
+            bb_merge: true,
             ..Self::all_disabled()
         }
     }
@@ -161,22 +174,34 @@ impl<'a> Pipeline<'a> {
     }
 
     pub fn run(&mut self) {
-        for function in self.module.functions.indices() {
+        for function in self.module.functions.keys() {
+            trace!("Optimizing {function}");
             self.run_on_function(function);
+            trace!("Optimized {function}");
         }
     }
 
     fn run_on_function(&mut self, function: FunctionId) {
-        let mut passes = self.get_passes();
-        loop {
-            let mut changes = 0;
-            for pass in &mut passes {
-                changes += pass.run_on_function(self.module, function);
+        let span = trace_span!("func_opt", %function);
+        span.in_scope(|| {
+            let mut passes = self.get_passes();
+            debug!("Running {} passes", passes.len());
+            loop {
+                let mut changes = 0;
+                for pass in &mut passes {
+                    let name = pass.name();
+                    let span = trace_span!("pass", %name);
+                    span.in_scope(|| {
+                        changes += pass.run_on_function(self.module, function);
+                    });
+                }
+                debug!("{changes} changes");
+                if changes == 0 {
+                    debug!("Reached fixpoint. Stopping optimization");
+                    break;
+                }
             }
-            if changes == 0 {
-                break;
-            }
-        }
+        });
     }
 
     fn get_passes(&mut self) -> Vec<Box<dyn FunctionPass>> {
@@ -196,6 +221,10 @@ impl<'a> Pipeline<'a> {
         }
         passes.push(Box::new(function_pass::cfg_simplify::Pass::new(self.config.cfg_simplify)));
         passes
+    }
+
+    pub fn config(&self) -> &PipelineConfig {
+        &self.config
     }
 }
 

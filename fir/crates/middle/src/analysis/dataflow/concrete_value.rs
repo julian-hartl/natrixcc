@@ -1,6 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use crate::analysis::dataflow::{ForwardAnalysis, ForwardAnalysisRunner, lattice};
-use crate::{Instr, InstrKind, Value};
+use crate::{Instr, InstrKind, VReg};
 use crate::cfg::TerminatorKind;
 
 use crate::instruction::{Const, Op};
@@ -47,7 +47,7 @@ pub struct Analysis;
 pub type AnalysisRunner<'a> = ForwardAnalysisRunner<'a, Analysis>;
 
 impl ForwardAnalysis for Analysis {
-    type V = FxHashMap<Value, ConcreteValues>;
+    type V = FxHashMap<VReg, ConcreteValues>;
 
     fn eval_instr(instr: &Instr) -> Option<Self::V> {
         if let InstrKind::Op(instr) = &instr.kind {

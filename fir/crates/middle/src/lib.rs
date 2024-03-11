@@ -1,26 +1,27 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(type_alias_impl_trait)]
+
+use cranelift_entity::entity_impl;
+pub use front_bridge::FrontBridge;
+pub use function::{Function, FunctionId};
+pub use instruction::{Instr, InstrKind};
+pub use module::Module;
+pub use ty::Type;
+
 pub mod cfg;
 pub mod function;
 
-pub use function::{Function, FunctionId};
-
-index_vec::define_index_type! {
-    pub struct Value = usize;
-    
-    DISPLAY_FORMAT = "%{}";
-}
-
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
+pub struct VReg(u32);
+entity_impl!(VReg, "v");
 pub mod instruction;
-pub use instruction::{ InstrKind, Instr};
+
 pub mod optimization;
 pub mod module;
-pub use module::{Module};
+
 mod analysis;
 #[cfg(test)]
 pub mod test;
 pub mod ty;
 mod front_bridge;
-pub use front_bridge::FrontBridge;
 
-pub use ty::{Type};

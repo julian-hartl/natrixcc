@@ -1,22 +1,23 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
+use cranelift_entity::{EntitySet, SecondaryMap};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use lattice::Value;
 
 use crate::{Function, Instr};
-use crate::cfg::{BasicBlockId, Predecessors, TerminatorKind};
+use crate::cfg::{BasicBlockId, TerminatorKind};
 
 pub mod lattice;
 pub mod concrete_value;
 pub mod dead_code;
 
-type InstrValue = crate::Value;
+type InstrValue = crate::VReg;
 
 #[derive(Default)]
-pub struct DFState<V> {
-    state: FxHashMap<BasicBlockId, V>,
+pub struct DFState<V> where V: Clone {
+    state: SecondaryMap<BasicBlockId, V>,
 }
 
 impl<V> DFState<V> where V: Value {
@@ -25,27 +26,26 @@ impl<V> DFState<V> where V: Value {
     }
 
     pub fn get_mut(&mut self, bb: BasicBlockId) -> &mut V {
-        self.state.get_mut(&bb).unwrap()
+        &mut self.state[bb]
     }
 
     pub fn get(&self, bb: BasicBlockId) -> &V {
-        self.state.get(&bb).unwrap()
+        &self.state[bb]
     }
 
-    pub fn create(&mut self, bb: BasicBlockId, preds: Predecessors) -> &mut V {
-        self.state.entry(bb).or_default();
+    pub fn create(&mut self, bb: BasicBlockId, preds: impl IntoIterator<Item=BasicBlockId>) -> &mut V {
         for pred in preds {
-            let pred_state = self.state[&pred].clone();
-            let entry = self.state.get_mut(&bb).unwrap();
+            let pred_state = self.get(pred).clone();
+            let entry = self.get_mut(bb);
             entry.join(pred_state);
         }
-        self.state.get_mut(&bb).unwrap()
+        self.get_mut(bb)
     }
 }
 
 pub struct ForwardAnalysisRunner<'a, A: ForwardAnalysis> {
     pub state: DFState<A::V>,
-    visited: FxHashSet<BasicBlockId>,
+    visited: EntitySet<BasicBlockId>,
     worklist: Vec<BasicBlockId>,
     pub function: &'a mut Function,
     _analysis: std::marker::PhantomData<A>,
@@ -56,19 +56,20 @@ impl<'a, A: ForwardAnalysis> ForwardAnalysisRunner<'a, A> {
     pub fn new(function: &'a mut Function) -> Self {
         Self {
             worklist: vec![function.cfg.entry_block()],
-            visited: FxHashSet::default(),
+            visited: EntitySet::default(),
             state: DFState::new(),
             function,
-            _analysis: std::marker::PhantomData::default(),
+            _analysis: std::marker::PhantomData,
         }
     }
 
     pub fn next_bb(&mut self) -> Option<(BasicBlockId, InstrWalker<A>)> {
         let bb_id = self.worklist.pop()?;
         let bb_state = self.state.create(bb_id, self.function.cfg.predecessors(bb_id));
+        assert!(self.visited.insert(bb_id), "Block has already been visited");
         for successor in self.function.cfg.successors(bb_id) {
-            let predecessors = self.function.cfg.predecessors(successor);
-            let all_preds_visited = predecessors.iter().all(|predecessor| {
+            let mut predecessors = self.function.cfg.predecessors(successor);
+            let all_preds_visited = predecessors.all(|predecessor| {
                 self.visited.contains(predecessor)
             });
             if !all_preds_visited {
@@ -76,10 +77,9 @@ impl<'a, A: ForwardAnalysis> ForwardAnalysisRunner<'a, A> {
             }
             self.worklist.push(successor);
         }
-        assert!(!self.visited.insert(bb_id), "Block has already been visited");
         Some((bb_id, InstrWalker {
             basic_block: bb_id,
-            function: &mut self.function,
+            function: self.function,
             bb_state,
         }))
     }
@@ -94,14 +94,15 @@ pub struct InstrWalker<'a, 'b, A: ForwardAnalysis> {
 }
 
 impl<'a, 'b, A: ForwardAnalysis> InstrWalker<'a, 'b, A> {
-    pub fn walk<H>(self, mut h: H) where H: FnMut(&'b mut Instr, &A::V) {
+    pub fn walk<H>(self, mut h: H) where H: FnMut(&mut Instr, &A::V) {
         let bb = self.function.cfg.basic_block_mut(self.basic_block);
-        for instr in &mut bb.instructions {
+        for instr in bb.instructions_mut() {
+            h(instr, &*self.bb_state);
             if let Some(val) = A::eval_instr(instr) {
                 self.bb_state.join(val);
             }
-            h(instr, &*self.bb_state);
         }
+        A::eval_term(&bb.terminator().kind);
     }
 
     pub fn drain(self) {

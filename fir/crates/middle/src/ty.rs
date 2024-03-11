@@ -11,6 +11,7 @@ pub enum Type {
     I32,
     I64,
     Bool,
+    Void,
     Ptr(Box<Type>),
 }
 
@@ -28,6 +29,7 @@ impl Type {
             Self::I64 => 8,
             Self::Bool => 1,
             Self::Ptr(_) => 8,
+            Self::Void => 0,
         }
     }
 
@@ -56,6 +58,7 @@ impl Display for Type {
             Type::I64 => write!(f, "i64"),
             Type::Bool => write!(f, "bool"),
             Type::Ptr(_ty) => write!(f, "ptr"),
+            Type::Void => write!(f, "void"),
         }
     }
 }

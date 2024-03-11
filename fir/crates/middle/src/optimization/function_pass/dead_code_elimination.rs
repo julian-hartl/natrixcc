@@ -1,10 +1,16 @@
 use crate::analysis::dataflow;
 use crate::FunctionId;
 use crate::module::Module;
-use crate::optimization::FunctionPass;
+use crate::optimization::{FunctionPass, Pass};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct DeadCodeEliminationPass {}
+
+impl Pass for DeadCodeEliminationPass {
+    fn name(&self) -> &'static str {
+        "dead_code_elim"
+    }
+}
 
 impl FunctionPass for DeadCodeEliminationPass {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
@@ -36,47 +42,34 @@ impl FunctionPass for DeadCodeEliminationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfg;
-    use crate::cfg::{BranchTerm, JumpTarget, RetTerm, TerminatorKind};
-    use crate::instruction::{Const, Op};
-    use crate::optimization::Pipeline;
     use crate::optimization::PipelineConfig;
-    use crate::test::create_test_module;
+    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
 
     #[test]
     fn should_eliminate_unused_values() {
-        let (mut module, function) = create_test_module();
-        let function_data = &mut module.functions[function];
-        let mut cfg_builder = cfg::Builder::new(function_data);
-        let _bb0 = cfg_builder.start_bb();
-        let bb1 = cfg_builder.create_bb();
-        let bb2 = cfg_builder.create_bb();
-        let value = cfg_builder.op(None, Op::Const(Const::i32(42)));
-        let _ = cfg_builder.op(None, Op::Const(Const::i32(90)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1, vec![]))));
-        cfg_builder.set_bb(bb1);
-        cfg_builder.op(None, Op::Value(value));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb2, vec![]))));
-        cfg_builder.set_bb(bb2);
-        let return_value = cfg_builder.op(None, Op::Value(value));
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(return_value))));
-        drop(cfg_builder);
-        let mut optimization_pipeline = Pipeline::new(&mut module, PipelineConfig::dead_code_elimination_only());
-        optimization_pipeline.run();
-        let function_data = &module.functions[function];
-        let cfg = &function_data.cfg;
-        let mut out = String::new();
-        cfg.write_to(&mut out, function_data).unwrap();
-        assert_eq!(out, "bb0:
-    %0 = i32 42
-    br bb1
-bb1:
-    ; preds = bb0
-    br bb2
-bb2:
-    ; preds = bb1
-    %3 = i32 %0
-    ret i32 %3
-");
+        let mut module = create_test_module_from_source("
+            fun i32 @test() {
+            bb0:
+                v0 = i32 20;
+                v1 = add i32 v0, 8;
+                v2 = sub i32 v0, 9;
+                br bb1;
+            bb1:
+                ret i32 v0;
+            }
+        ");
+        module.optimize(PipelineConfig::dead_code_elimination_only());
+        assert_module_is_equal_to_src(
+            &module,
+            "
+            fun i32 @test() {
+            bb0:
+                v0 = i32 20;
+                br bb1;
+            bb1:
+                ret i32 v0;
+            }
+        "
+        );
     }
 }

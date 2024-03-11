@@ -1,93 +1,83 @@
 #![doc = include_str!("cfg.md")]
 
-use std::fmt::{Display, Formatter};
-use std::ops::Not;
+use std::fmt::{Debug, Display, Formatter};
 
+use cranelift_entity::{entity_impl, EntityRef, PrimaryMap};
 use petgraph::prelude::*;
-use slotmap::{HopSlotMap, Key};
-use smallvec::SmallVec;
+use petgraph::visit::Walker;
 
 #[allow(unused_imports)]
 pub use builder::Builder;
 pub use domtree::DomTree;
 
-use crate::function::Function;
-use crate::instruction::{Instr, Op};
-use crate::Value;
+use crate::{InstrKind, Type, VReg};
+use crate::instruction::{Instr, Op, OpInstr, VRegData};
 
 mod builder;
 mod domtree;
 
-slotmap::new_key_type! {
-    pub struct BasicBlockId;
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct BasicBlockId(u32);
+entity_impl!(BasicBlockId, "bb");
+
+impl From<BasicBlockId> for NodeIndex<u32> {
+    fn from(value: BasicBlockId) -> Self {
+        Self::new(value.0 as usize)
+    }
 }
 
-pub type Successors = SmallVec<[BasicBlockId; 2]>;
+impl From<NodeIndex<u32>> for BasicBlockId {
+    fn from(value: NodeIndex<u32>) -> Self {
+        Self::new(value.index())
+    }
+}
 
-pub type Predecessors = SmallVec<[BasicBlockId; 4]>;
+pub type Graph = StableGraph<(), (), Directed>;
 
-pub type Graph = StableGraph<BasicBlockId, ()>;
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Cfg {
     graph: Graph,
-    pub(crate) basic_blocks: HopSlotMap<BasicBlockId, BasicBlock>,
-    entry_block: BasicBlockId,
+    basic_blocks: PrimaryMap<BasicBlockId, BasicBlock>,
+    entry_block: Option<BasicBlockId>,
+    vregs: PrimaryMap<VReg, VRegData>,
 }
 
 impl Cfg {
     pub fn new() -> Self {
-        Self {
-            graph: StableGraph::new(),
-            basic_blocks: HopSlotMap::with_key(),
-            entry_block: BasicBlockId::null(),
-        }
+        Self::default()
     }
 
     pub fn new_basic_block(&mut self) -> BasicBlockId {
-        let id = self.basic_blocks.insert_with_key(|id| {
-            let idx = self.graph.add_node(id);
-            BasicBlock::new(id, idx)
-        });
-        if self.entry_block.is_null() {
-            self.entry_block = id;
+        let bb = {
+            self.graph.add_node(());
+            self.basic_blocks.push(BasicBlock::new())
+        };
+        if self.entry_block.is_none() {
+            self.entry_block = Some(bb);
         }
-        id
-    }
-
-    pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> BasicBlock {
-        let bb = self.basic_blocks.remove(bb_id).unwrap();
-        self.graph.remove_node(bb.node_idx);
         bb
     }
 
+    pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> (Option<Vec<Instr>>, Terminator) {
+        self.graph.remove_node(bb_id.into());
+        let instructions = self.basic_block_mut(bb_id).instructions.take();
+        let terminator = self.basic_block_mut(bb_id).terminator.take().unwrap();
+        (instructions, terminator)
+    }
+
     /// Returns an iterator visiting all basics blocks in arbitrary order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use firc_middle::cfg::Cfg;
-    /// let mut cfg = Cfg::new();
-    /// let bb_id = cfg.new_basic_block();
-    /// let bb = cfg.basic_block(bb_id);
-    /// assert_eq!(vec![bb].iter(), cfg.basic_blocks());
-    /// ```
-    pub fn basic_blocks(&self) -> impl Iterator<Item=&BasicBlock> {
-        self.basic_blocks.values()
+    pub fn basic_blocks(&self) -> impl Iterator<Item=(BasicBlockId, &BasicBlock)> {
+        self.basic_blocks.iter().filter(|(id, bb)| bb.has_terminator())
     }
 
     /// Returns an iterator visiting all basics block ids in arbitrary order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use firc_middle::cfg::Cfg;
-    /// let mut cfg = Cfg::new();
-    /// let bb_id = cfg.new_basic_block();
-    /// assert_eq!(vec![bb_id].iter(), cfg.basic_block_ids());
-    /// ```
     pub fn basic_block_ids(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
-        self.basic_blocks.keys()
+        self.basic_blocks().map(|(id, _)| id)
+    }
+
+    pub fn basic_block_ids_ordered(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+        Bfs::new(&self.graph, self.entry_block().into()).iter(&self.graph)
+            .map(|node| node.into())
     }
 
     /// The basic block associated with `id`.
@@ -99,41 +89,54 @@ impl Cfg {
         &mut self.basic_blocks[id]
     }
 
-    fn node_idx(&self, id: BasicBlockId) -> NodeIndex {
-        self.basic_block(id).node_idx
-    }
-
-    fn root_idx(&self) -> NodeIndex {
-        self.node_idx(self.entry_block)
-    }
 
     pub fn entry_block(&self) -> BasicBlockId {
-        self.entry_block
+        self.entry_block.expect("Entry block has not been created")
     }
 
-    fn bb_id_from_node(&self, node_idx: NodeIndex) -> BasicBlockId {
-        self.graph[node_idx]
-    }
-
-    pub fn add_bb_argument(&mut self, id: BasicBlockId, arg: Value) {
-        self.basic_blocks[id].arguments.push(arg)
+    pub fn add_bb_argument(&mut self, id: BasicBlockId, arg: VReg) {
+        self.basic_block_mut(id).arguments.push(arg)
     }
 
     pub fn add_instruction(&mut self, id: BasicBlockId, instr: Instr) {
-        self.basic_blocks[id].instructions.push(instr)
+        self.basic_block_mut(id).append_instruction(instr)
+    }
+    pub fn copy_reg_instr(&self, dest: VReg, reg: VReg) -> Instr {
+        self.copy_op_instr(
+            dest,
+            Op::Value(reg),
+            self.vreg_ty_cloned(reg),
+        )
+    }
+
+    pub fn copy_op_to_temp_instr(&mut self, id: BasicBlockId, src_op: Op, src_ty: Type) -> (Instr, VReg) {
+        let dest = self.new_vreg(VRegData {
+            defined_in: id,
+            ty: src_ty.clone(),
+        });
+        let instr = self.copy_op_instr(dest, src_op, src_ty);
+        (instr, dest)
+    }
+
+
+    pub fn copy_op_instr(&self, dest: VReg, src_op: Op, src_ty: Type) -> Instr {
+        Instr::new(src_ty, InstrKind::Op(
+            OpInstr {
+                op: src_op,
+                value: dest,
+            }
+        ))
     }
 
     pub fn set_terminator(&mut self, id: BasicBlockId, terminator: Terminator) {
         self.set_edges_from_terminator(id, &terminator);
-        self.basic_blocks[id].terminator = Some(terminator);
+        self.basic_block_mut(id).terminator = Some(terminator);
     }
 
     fn set_edges_from_terminator(&mut self, id: BasicBlockId, terminator: &Terminator) {
-        let basic_block = &self.basic_blocks[id];
-        let source_node_idx = basic_block.node_idx;
         self.graph.retain_edges(
             |graph, edge| {
-                graph.edge_endpoints(edge).unwrap().0 != source_node_idx
+                graph.edge_endpoints(edge).unwrap().0 != id.into()
             }
         );
         match &terminator.kind {
@@ -157,17 +160,15 @@ impl Cfg {
     }
 
     fn add_edge(&mut self, source: BasicBlockId, target: BasicBlockId) {
-        self.graph.add_edge(self.basic_block(source).node_idx, self.basic_block(target).node_idx, ());
+        self.graph.add_edge(source.into(), target.into(), ());
     }
 
-    pub fn predecessors(&self, basic_block: BasicBlockId) -> Predecessors {
-        let neighbors = self.graph.neighbors_directed(self.basic_block(basic_block).node_idx, Incoming);
-        neighbors.map(|node_idx| self.graph[node_idx]).collect()
+    pub fn predecessors(&self, basic_block: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+        self.graph.neighbors_directed(basic_block.into(), Incoming).map(|n| n.into())
     }
 
-    pub fn successors(&self, basic_block: BasicBlockId) -> Successors {
-        let neighbors = self.graph.neighbors(self.basic_block(basic_block).node_idx);
-        neighbors.map(|node_idx| self.graph[node_idx]).collect()
+    pub fn successors(&self, basic_block: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+        self.graph.neighbors(basic_block.into()).map(|n| n.into())
     }
 
     /// Recomputes the [BasicBlock]'s successors.
@@ -180,78 +181,94 @@ impl Cfg {
         DomTree::compute(self)
     }
 
-    pub fn write_to<W: std::fmt::Write>(&self, w: &mut W, function: &Function) -> std::fmt::Result {
+    pub fn new_vreg(&mut self, vreg: VRegData) -> VReg {
+        self.vregs.push(vreg)
+    }
+
+    pub fn vreg_ty(&self, vreg: VReg) -> &Type {
+        &self.vreg(vreg).ty
+    }
+
+    pub fn vreg_ty_cloned(&self, vreg: VReg) -> Type {
+        self.vreg(vreg).ty.clone()
+    }
+
+    pub fn vreg(&self, vreg: VReg) -> &VRegData {
+        &self.vregs[vreg]
+    }
+}
+
+
+impl Display for Cfg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let indent = "    ";
-        for bb in self.basic_blocks.values() {
-            write!(w, "{}", bb)?;
+        for (bb_id, bb) in self.basic_blocks() {
+            write!(f, "{}", bb_id)?;
             if !bb.arguments.is_empty() {
-                write!(w, "(")?;
+                write!(f, "(")?;
                 for (index, arg) in bb.arguments.iter().copied().enumerate() {
-                    let arg_ty = &function.values_ctx[arg].ty;
-                    write!(w, "{arg_ty} {arg}")?;
+                    let arg_ty = self.vreg_ty(arg);
+                    write!(f, "{arg_ty} {arg}")?;
                     if index < bb.arguments.len() - 1 {
-                        write!(w, ", ")?;
+                        write!(f, ", ")?;
                     }
                 }
-                write!(w, ")")?;
+                write!(f, ")")?;
             }
-            writeln!(w, ":")?;
-            for instr in &bb.instructions {
-                write!(w, "{}", indent)?;
-                instr.write_to(w, function)?;
+            writeln!(f, ":")?;
+            for instr in bb.instructions() {
+                writeln!(f, "{}{};", indent, instr.display(self))?;
             }
-            write!(w, "{}", indent)?;
-            bb.terminator().write_to(w, function)?;
+            writeln!(f, "{}{};", indent, bb.terminator())?;
         }
         Ok(())
     }
 }
 
-impl Display for BasicBlockId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "bb{:?}", self)
+#[cfg(test)]
+mod cfg_tests {
+    use super::*;
+
+    #[test]
+    fn should_not_return_removed_basic_block() {
+        let mut cfg = Cfg::new();
+        let bb0 = cfg.new_basic_block();
+        cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
+        let bb1 = cfg.new_basic_block();
+        cfg.set_terminator(bb1, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
+        cfg.remove_basic_block(bb0);
+        assert_eq!(
+            cfg.basic_block_ids().collect::<Vec<_>>(),
+            vec![bb1],
+        );
+        assert_eq!(
+            cfg.basic_blocks().map(|(id, _)| id).collect::<Vec<_>>(),
+            vec![bb1],
+        )
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct BasicBlock {
-    id: BasicBlockId,
-    node_idx: NodeIndex,
-    arguments: Vec<Value>,
-    pub(crate) instructions: Vec<Instr>,
+    arguments: Vec<VReg>,
+    pub(crate) instructions: Option<Vec<Instr>>,
     pub(crate) terminator: Option<Terminator>,
 }
 
 impl BasicBlock {
-    pub fn new(idx: BasicBlockId, node_idx: NodeIndex) -> Self {
-        Self {
-            id: idx,
-            node_idx,
-            arguments: Vec::new(),
-            instructions: Vec::new(),
-            terminator: None,
-        }
-    }
-
-    /// Returns the successors of the [`BasicBlock`].
-    ///
-    /// See [`Cfg::successors`] for the implementation.
-    pub fn successors(&self, cfg: &Cfg) -> Successors {
-        cfg.successors(self.id)
-    }
-
-    /// Returns the predecessors of the [`BasicBlock`].
-    ///
-    /// See [`Cfg::predecessors`] for the implementation.
-    pub fn predecessors(&self, cfg: &Cfg) -> Predecessors {
-        cfg.predecessors(self.id)
+    pub fn new() -> Self {
+        Self::default()
     }
 
     /// Returns the [`Terminator`] of the [`BasicBlock`].
     ///
     /// Panics if the terminators is not set.
     pub fn terminator(&self) -> &Terminator {
-        self.terminator.as_ref().expect("Expected basic block to have terminator")
+        self.terminator.as_ref().expect("Basic blocks must have a terminator")
+    }
+    
+    pub fn set_terminator(&mut self, term: Terminator) {
+        self.terminator = Some(term);
     }
 
     pub fn replace_terminator(&mut self, new_term: Terminator) -> Terminator {
@@ -275,65 +292,82 @@ impl BasicBlock {
         self.terminator.is_some()
     }
 
-    pub fn arguments(&self) -> impl Iterator<Item=Value> + '_ {
+    pub fn arguments(&self) -> impl Iterator<Item=VReg> + '_ {
         self.arguments.iter().copied()
     }
 
-    pub fn clear_arguments(&mut self) -> impl Iterator<Item=Value> + '_ {
+    pub fn clear_arguments(&mut self) -> impl Iterator<Item=VReg> + '_ {
         self.arguments.drain(..)
     }
 
-    pub fn add_argument(&mut self, arg: Value) {
+    pub fn add_argument(&mut self, arg: VReg) {
         self.arguments.push(arg);
     }
 
-    pub fn remove_argument(&mut self, idx: usize) -> Value {
+    pub fn remove_argument(&mut self, idx: usize) -> VReg {
         self.arguments.remove(idx)
     }
 
     /// Returns an iterator over the [`BasicBlock`]'s [`Instructions`][`Instr`].
     pub fn instructions(&self) -> impl Iterator<Item=&Instr> {
-        self.instructions.iter()
+        match &self.instructions {
+            Some(instructions) => instructions.iter(),
+            None => [].iter()
+        }
     }
 
     /// Returns a mutable iterator over the [`BasicBlock`]'s [`Instructions`][`Instr`].
     pub fn instructions_mut(&mut self) -> impl Iterator<Item=&mut Instr> {
-        self.instructions.iter_mut()
+        match &mut self.instructions {
+            Some(instructions) => instructions.iter_mut(),
+            None => [].iter_mut()
+        }
     }
 
     pub fn remove_instructions_by_pred<P>(&mut self, p: P) where P: FnMut(&Instr) -> bool {
-        self.instructions.retain(p)
+        if let Some(instructions) = &mut self.instructions {
+            instructions.retain(p)
+        }
     }
 
-    pub fn append_instructions(&mut self, instructions: impl Iterator<Item=Instr>) {
-        self.instructions.extend(instructions)
+    pub fn append_instructions(&mut self, e_instructions: impl Iterator<Item=Instr>) {
+        if let Some(instructions) = &mut self.instructions {
+            instructions.extend(e_instructions)
+        }
     }
 
     /// Appends an [instruction][`Instr`] to the end of the basic block
     pub fn append_instruction(&mut self, instr: Instr) {
-        self.instructions.push(instr);
+        self.ensure_instructions_exists().push(instr);
     }
-}
 
-impl Display for BasicBlock {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "bb{}", self.node_idx.index())
+    pub fn insert_instruction_at(&mut self, idx: usize, instr: Instr) {
+        self.ensure_instructions_exists().insert(idx, instr);
+    }
+
+    fn ensure_instructions_exists(&mut self) -> &mut Vec<Instr> {
+        if self.instructions.is_none() {
+            self.instructions = Some(Vec::new());
+        };
+        self.instructions.as_mut().unwrap()
     }
 }
 
 #[cfg(test)]
 mod bb_tests {
-    use crate::{Instr, InstrKind, Value};
+    use cranelift_entity::EntityRef;
+
+    use crate::{Instr, InstrKind, Type, VReg};
     use crate::instruction::{Const, Op, OpInstr};
 
-    use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, Successors, Terminator, TerminatorKind};
+    use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, Terminator, TerminatorKind};
 
     #[test]
     fn should_set_entry_block() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
         let bb1 = cfg.new_basic_block();
-        assert_eq!(cfg.entry_block, bb0);
+        assert_eq!(cfg.entry_block, Some(bb0));
     }
 
     #[test]
@@ -343,16 +377,14 @@ mod bb_tests {
         let bb1 = cfg.new_basic_block();
         let bb2 = cfg.new_basic_block();
         cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
-        assert_eq!(cfg.successors(bb0), Successors::new());
+        assert!(cfg.successors(bb0).eq(vec![].into_iter()));
         cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb1,
             vec![],
         )))));
-        assert_eq!(cfg.successors(bb0), Successors::from(
-            vec![bb1]
-        ));
+        assert!(cfg.successors(bb0).eq(vec![bb1].into_iter()));
         cfg.set_terminator(bb0, Terminator::new(TerminatorKind::CondBranch(CondBranchTerm::new(
-            Op::Const(Const::bool(true)),
+            Op::Const(Const::Int(1)),
             JumpTarget::new(
                 bb1,
                 vec![],
@@ -362,18 +394,16 @@ mod bb_tests {
                 vec![],
             ),
         ))));
-        assert_eq!(cfg.successors(bb0), Successors::from(
-            vec![bb2, bb1]
-        ));
+        assert!(cfg.successors(bb0).eq(vec![bb2, bb1].into_iter()));
     }
 
     #[test]
     fn should_add_instruction() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let instr = Instr::new(InstrKind::Op(OpInstr { op: Op::Const(Const::i32(3)), value: Value::new(2) }));
+        let instr = Instr::new(Type::I32, InstrKind::Op(OpInstr { op: Op::Const(Const::Int(3)), value: VReg::new(2) }));
         cfg.add_instruction(bb0, instr.clone());
-        assert_eq!(cfg.basic_block(bb0).instructions, vec![instr]);
+        assert_eq!(cfg.basic_block(bb0).instructions, Some(vec![instr]));
     }
 }
 
@@ -429,31 +459,42 @@ impl Terminator {
         }
     }
 
-    pub fn write_to(&self, w: &mut impl std::fmt::Write, function: &Function) -> std::fmt::Result {
+    pub fn update_references_to_bb(&mut self, old: BasicBlockId, new: BasicBlockId) {
+        match &mut self.kind {
+            TerminatorKind::Ret(_) => {}
+            TerminatorKind::Branch(br) => {
+                if old == br.target.id {
+                    br.target.id = new;
+                }
+            }
+            TerminatorKind::CondBranch(br) => {
+                for target in br.targets_mut() {
+                    if old == target.id {
+                        target.id = new;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl Display for Terminator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match &self.kind {
             TerminatorKind::Ret(term) => {
-                write!(w, "ret")?;
+                write!(f, "ret")?;
+                write!(f, " {}", term.ty)?;
                 if let Some(value) = &term.value {
-                    write!(w, " {} ", value.ty(function))?;
-                    value.write_to(w, function)?;
-                } else {
-                    write!(w, " void")?;
+                    write!(f, " {value}")?;
                 }
             }
             TerminatorKind::Branch(branch) => {
-                write!(w, "br ")?;
-                branch.target.write_to(w, function)?;
+                write!(f, "br {}", branch.target)?;
             }
             TerminatorKind::CondBranch(branch) => {
-                write!(w, "condbr {} ", branch.cond.ty(function))?;
-                branch.cond.write_to(w, function)?;
-                write!(w, ", ")?;
-                branch.true_target.write_to(w, function)?;
-                write!(w, ", ")?;
-                branch.false_target.write_to(w, function)?;
+                write!(f, "condbr {}, {}, {}", branch.cond, branch.true_target, branch.false_target)?;
             }
         }
-        writeln!(w)?;
         Ok(())
     }
 }
@@ -467,15 +508,16 @@ pub enum TerminatorKind {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct RetTerm {
+    pub ty: Type,
     pub value: Option<Op>,
 }
 
 impl RetTerm {
-    pub const fn new(value: Op) -> Self {
-        Self { value: Some(value) }
+    pub const fn new(ty: Type, value: Op) -> Self {
+        Self { value: Some(value), ty }
     }
     pub const fn empty() -> Self {
-        Self { value: None }
+        Self { value: None, ty: Type::Void }
     }
 }
 
@@ -496,18 +538,20 @@ impl JumpTarget {
     pub fn no_args(id: BasicBlockId) -> Self {
         Self::new(id, vec![])
     }
+}
 
-    pub fn write_to(&self, w: &mut impl std::fmt::Write, func: &Function) -> std::fmt::Result {
-        write!(w, "{}", func.cfg.basic_block(self.id))?;
+impl Display for JumpTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.id)?;
         if !self.arguments.is_empty() {
-            write!(w, "(")?;
+            write!(f, "(")?;
             for (index, arg) in self.arguments.iter().enumerate() {
-                arg.write_to(w, func)?;
+                write!(f, "{arg}")?;
                 if index != self.arguments.len() - 1 {
-                    write!(w, ", ")?;
+                    write!(f, ", ")?;
                 }
             }
-            write!(w, ")")?;
+            write!(f, ")")?;
         }
         Ok(())
     }

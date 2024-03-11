@@ -1,21 +1,22 @@
-use std::fmt::Display;
-use std::fs::OpenOptions;
+use std::fmt::{Display, Formatter};
 use std::ops::{Deref, DerefMut};
-use daggy::petgraph::dot::{Config, Dot};
 
+use daggy::petgraph::dot::{Config, Dot};
 use rustc_hash::FxHashMap;
+use smallvec::{SmallVec, smallvec};
 
 pub use builder::Builder;
+use firc_middle::cfg::BasicBlockId;
+use firc_middle::instruction::CmpOp;
 
 use crate::codegen::machine;
-use crate::codegen::machine::{Instr, Pattern};
-use firc_middle::ty::Type;
+use crate::codegen::machine::{Abi,  MachineInstr, Pattern, Register};
 
 pub mod builder;
 
-type Dag<A> = daggy::Dag<Node<A>, Edge>;
+type Dag<A> = daggy::Dag<Op<A>, Edge>;
 
-#[derive( Debug)]
+#[derive(Debug, Clone)]
 pub struct BasicBlockDAG<A: machine::Abi> {
     dag: Dag<A>,
     term_node: Option<daggy::NodeIndex>,
@@ -23,12 +24,11 @@ pub struct BasicBlockDAG<A: machine::Abi> {
 }
 
 impl<A: machine::Abi> BasicBlockDAG<A> {
-
     pub fn new(bb: firc_middle::cfg::BasicBlockId) -> Self {
         Self {
             dag: Dag::new(),
             term_node: None,
-            bb
+            bb,
         }
     }
     pub fn term_node(&self) -> daggy::NodeIndex {
@@ -44,9 +44,8 @@ impl<A: machine::Abi> BasicBlockDAG<A> {
     }
 
     pub fn save_graphviz<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
-        use std::fs::File;
         std::fs::create_dir_all(&path)?;
-        std::fs::write(format!("{}/{}.dot", path.as_ref().display(),self.bb), self.graphviz())
+        std::fs::write(format!("{}/{}.dot", path.as_ref().display(), self.bb), self.graphviz())
     }
 }
 
@@ -64,7 +63,7 @@ impl<A: machine::Abi> DerefMut for BasicBlockDAG<A> {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug, Default)]
 pub struct SelectionDAG<A: machine::Abi> {
     pub basic_blocks: FxHashMap<firc_middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
 }
@@ -75,23 +74,121 @@ impl<A: machine::Abi> SelectionDAG<A> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Node<A: machine::Abi> {
-    pub kind: NodeKind<A>,
-    pub ty: Option<Type>,
+
+#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq, EnumTryAs)]
+pub enum Immediate {
+    Byte(Byte),
+    Word(Word),
+    DWord(DWord),
+    QWord(QWord),
 }
 
-#[derive(Debug, Clone)]
-pub enum NodeKind<A: machine::Abi> {
-    Op(Op),
-    Const(Const),
-    Reg(machine::Register<A>),
+impl Immediate {
+    pub fn size(&self) -> machine::Size {
+        match self {
+            Self::Byte(_) => machine::Size::Byte,
+            Self::Word(_) => machine::Size::Word,
+            Self::DWord(_) => machine::Size::DWord,
+            Self::QWord(_) => machine::Size::QWord,
+        }
+    }
 }
 
-#[derive(Debug, Clone, EnumTryAs)]
-pub enum Const {
-    Int(i64),
+impl Display for Immediate {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Byte(b) => write!(f, "{:x?}", b.0),
+            Self::Word(w) => write!(f, "{:x?}", w.0),
+            Self::DWord(dw) => write!(f, "{:x?}", dw.0),
+            Self::QWord(qw) => write!(f, "{:x?}", qw.0),
+        }
+    }
 }
+
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
+pub struct Byte(u8);
+
+impl From<u8> for Byte {
+    fn from(val: u8) -> Self {
+        Self(val)
+    }
+}
+
+impl From<i8> for Byte {
+    fn from(val: i8) -> Self {
+        Self(val as u8)
+    }
+}
+
+impl From<bool> for Byte {
+    fn from(val: bool) -> Self {
+        Self(val as u8)
+    }
+}
+
+impl Into<u8> for Byte {
+    fn into(self) -> u8 {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
+pub struct Word([u8; 2]);
+
+impl From<u16> for Word {
+    fn from(val: u16) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
+impl From<i16> for Word {
+    fn from(val: i16) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
+impl Into<u16> for Word {
+    fn into(self) -> u16 {
+        u16::from_le_bytes(self.0)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
+pub struct DWord([u8; 4]);
+
+impl DWord {
+    pub fn into_unsigned(self) -> u32 {
+        u32::from_le_bytes(self.0)
+    }
+}
+
+impl From<u32> for DWord {
+    fn from(val: u32) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
+impl From<i32> for DWord {
+    fn from(val: i32) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
+pub struct QWord([u8; 8]);
+
+impl From<u64> for QWord {
+    fn from(val: u64) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
+impl From<i64> for QWord {
+    fn from(val: i64) -> Self {
+        Self(val.to_le_bytes())
+    }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Edge;
@@ -102,10 +199,131 @@ impl Display for Edge {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Op {
-    Mov,
-    Sub,
-    Ret,
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Op<A: Abi> {
+    Machine(MachineOp<A>),
+    Pseudo(PseudoOp<A>),
+}
+
+impl<A: Abi> Op<A> {
+    pub fn out(&self) -> Option<Register<A>> {
+        match self {
+            Op::Machine(op) => op.out(),
+            Op::Pseudo(op) => op.out(),
+        }
+    }
+
+    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+        match self {
+            Op::Machine(op) => op.consumed_regs(),
+            Op::Pseudo(op) => op.consumed_regs(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum PseudoOp<A: Abi> {
+    Copy(Register<A>, Register<A>)
+}
+
+impl<A: Abi> PseudoOp<A> {
+    pub fn out(&self) -> Option<Register<A>> {
+        match self {
+            PseudoOp::Copy(dest, _) => Some(*dest)
+        }
+    }
+
+    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+        match self {
+            PseudoOp::Copy(_, dest) => smallvec![*dest]
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum MachineOp<A: Abi> {
+    Mov(Register<A>, Operand<A>),
+    Sub(Register<A>, Operand<A>, Operand<A>),
+    Add(Register<A>, Operand<A>, Operand<A>),
+    Cmp(Register<A>, CmpOp, Operand<A>, Operand<A>),
+    Br(BasicBlockId),
+    CondBr(Operand<A>, BasicBlockId, BasicBlockId),
+    Ret(Option<Operand<A>>),
+}
+
+impl<A: Abi> MachineOp<A> {
+    pub fn out(&self) -> Option<Register<A>> {
+        match self {
+            Self::Mov(dest, _) => Some(*dest),
+            Self::Sub(dest, _, _) => Some(*dest),
+            Self::Add(dest, _, _) => Some(*dest),
+            Self::Cmp(dest, _, _, _) => Some(*dest),
+            Self::Ret(_) => None,
+            Self::Br(_) => None,
+            Self::CondBr(_, _, _) => None,
+        }
+    }
+
+    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+        match self {
+            MachineOp::Mov(_, src) => {
+                match src {
+                    Operand::Reg(reg) =>
+                        smallvec![*reg],
+                    _ =>
+                        smallvec![]
+                }
+            }
+            MachineOp::Sub(_, src, dest) => {
+                match (src.try_as_register(), dest.try_as_register()) {
+                    (Some(src), Some(dest)) => smallvec![src, dest],
+                    (Some(src), None) => smallvec![src],
+                    (None, Some(dest)) => smallvec![dest],
+                    _ => smallvec![]
+                }
+            }
+            MachineOp::Add(_, src, dest) => {
+                match (src.try_as_register(), dest.try_as_register()) {
+                    (Some(src), Some(dest)) => smallvec![src, dest],
+                    (Some(src), None) => smallvec![src],
+                    (None, Some(dest)) => smallvec![dest],
+                    _ => smallvec![]
+                }
+            }
+            MachineOp::Ret(value) => {
+                value.as_ref().and_then(|op| op.try_as_register()).into_iter().collect()
+            }
+            MachineOp::Br(_) => smallvec![],
+            MachineOp::Cmp(_, _, lhs, rhs) => {
+                match (lhs.try_as_register(), rhs.try_as_register()) {
+                    (Some(lhs), Some(rhs)) => smallvec![lhs, rhs],
+                    (Some(lhs), None) => smallvec![lhs],
+                    (None, Some(rhs)) => smallvec![rhs],
+                    _ => smallvec![]
+                }
+            }
+            MachineOp::CondBr(cond, _, _) => {
+                match cond.try_as_register() {
+                    Some(cond) => smallvec![cond],
+                    None => smallvec![]
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum Operand<A: Abi> {
+    Reg(Register<A>),
+    Imm(Immediate),
+}
+
+impl<A: Abi> Operand<A> {
+    pub fn try_as_register(&self) -> Option<Register<A>> {
+        match self {
+            Operand::Reg(reg) => Some(*reg),
+            Operand::Imm(_) => None,
+        }
+    }
 }
 
