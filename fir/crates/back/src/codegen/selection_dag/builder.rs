@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use cranelift_entity::{EntityRef, SecondaryMap};
 use daggy::{NodeIndex, Walker};
 use daggy::petgraph::visit::IntoNodeIdentifiers;
+use iter_tools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
@@ -16,7 +17,7 @@ use selection_dag::SelectionDAG;
 use crate::codegen;
 use crate::codegen::machine;
 use crate::codegen::machine::{Abi, Function, Register, VReg};
-use crate::codegen::machine::abi::calling_convention::ParameterSlot;
+use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::selection_dag::{Byte, Immediate, MachineOp, Op, Operand, PseudoOp, Word};
 
@@ -43,11 +44,19 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         let basic_blocks = func.cfg.basic_block_ids().filter(
             |bb_id| *bb_id != func.cfg.entry_block()
         ).collect::<Vec<_>>();
+
         for bb_id in basic_blocks {
             // Eliminate basic block arguments
             debug!("Eliminating basic block arguments for {}", bb_id);
-            let arg_types = func.cfg.basic_block(bb_id).arguments()
-                .map(|vreg| func.cfg.vreg_ty_cloned(vreg)).collect::<Vec<_>>();
+            let bb_args = func.cfg.basic_block(bb_id).arguments()
+                .map(|arg| (arg, func.cfg.vreg_ty_cloned(arg)))
+                .collect_vec();
+            let temp_regs = bb_args.iter().map(|(_, ty)| {
+                func.cfg.new_vreg(VRegData {
+                    defined_in: bb_id,
+                    ty: ty.clone(),
+                })
+            }).collect_vec();
             let preds = func.cfg.predecessors(bb_id).collect::<Vec<_>>();
             for pred_id in preds {
                 let args = func.cfg.basic_block(pred_id).terminator().branch_args(bb_id).unwrap().cloned().collect::<Vec<_>>();
@@ -69,31 +78,29 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     });
 
                 func.cfg.recompute_successors(pred_id);
-                let mut temp_regs = Vec::new();
-                for (arg, ty) in args.into_iter().zip(
-                    arg_types.iter()
-                ) {
+                for ((arg, temp_reg), ty) in args.into_iter().zip(
+                    temp_regs.iter().copied()
+                ).zip(bb_args.iter().map(|(_, ty)| ty.clone())) {
                     // Create a temp reg and copy the jump arg to it
-                    let (instr, temp_reg) = func.cfg.copy_op_to_temp_instr(
-                        critical_edge_split_bb,
+                    let instr = func.cfg.copy_op_instr(
+                        temp_reg,
                         arg,
-                        ty.clone(),
+                        ty,
                     );
                     func.cfg.add_instruction(critical_edge_split_bb, instr);
-                    temp_regs.push(temp_reg);
                 }
-                let arguments = func.cfg.basic_block(bb_id).arguments().collect::<Vec<_>>();
-                let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
-                for (arg, temp_reg) in arguments.into_iter().zip(
-                    temp_regs.into_iter()
-                ) {
-                    // Copy the temp reg to the basic block arg reg
-                    let instr = func.cfg.copy_reg_instr(
-                        arg,
-                        temp_reg,
-                    );
-                    func.cfg.basic_block_mut(bb_id).insert_instruction_at(0, instr);
-                }
+            }
+            let arguments = func.cfg.basic_block(bb_id).arguments().collect::<Vec<_>>();
+            let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
+            for (arg, temp_reg) in arguments.into_iter().zip(
+                temp_regs.into_iter()
+            ) {
+                // Copy the temp reg to the basic block arg reg
+                let instr = func.cfg.copy_reg_instr(
+                    arg,
+                    temp_reg,
+                );
+                func.cfg.basic_block_mut(bb_id).insert_instruction_at(0, instr);
             }
             debug!("Eliminated basic block arguments for {}", bb_id);
             debug!("{}", func);
@@ -106,7 +113,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                 );
                 for (slot, arg) in param_slots.into_iter().zip(bb.arguments()) {
                     match slot {
-                        ParameterSlot::Register(reg) => {
+                        Slot::Register(reg) => {
                             let phys_reg = Register::Physical(reg);
                             let mapped_reg = self.map_vreg(arg, func);
                             self.define_node(bb_id, Op::Pseudo(PseudoOp::Copy(
@@ -114,7 +121,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                                 phys_reg,
                             )));
                         }
-                        ParameterSlot::Stack => unimplemented!()
+                        Slot::Stack => unimplemented!()
                     };
                 }
             }
@@ -237,13 +244,13 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         debug!("Defining op {:?}. Out reg: {:?}, used regs: {:?}", op, out_reg, used_regs);
         let node = self.sel_dag.get_bb_dag(bb_id).add_node(op);
         debug!("Defined op as node {:?}", node);
-        if let Some(out_reg) = out_reg {
-            self.define_out_val(node, out_reg, bb_id);
-        }
         for reg in used_regs {
             if let Some(defining_node) = reg.try_as_virtual().and_then(|reg| self.get_defining_node(reg, bb_id)) {
                 self.add_dependency(bb_id, node, defining_node);
             }
+        }
+        if let Some(out_reg) = out_reg {
+            self.define_out_val(node, out_reg, bb_id);
         }
         node
     }

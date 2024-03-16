@@ -37,6 +37,7 @@ impl<A: Abi> Module<A> {
     pub fn run_register_allocator(&mut self) {
         info!("Running register allocator");
         for (function_id, function) in &mut self.functions {
+            function.build_cfg();
             debug!("Running register allocator for function {:?}", function_id);
             let liveness_repr = function.liveness_repr();
             let allocator = register_allocator::RegisterAllocator::<_, register_allocator::linear_scan::RegAlloc<A>>::new(function, &liveness_repr);

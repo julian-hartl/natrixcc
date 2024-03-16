@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 use iced_x86::{Code, Formatter, Instruction, IntelFormatter, NumberBase, Register};
 use iced_x86::code_asm::{CodeAssembler, CodeLabel};
 use rustc_hash::FxHashMap;
+use firc_middle::instruction::CmpOp;
 
 use crate::codegen::isa::x86_64;
 use crate::codegen::isa::x86_64::{X86Instr, PhysicalRegister};
@@ -36,6 +37,7 @@ impl DerefMut for Assembler {
 impl From<PhysicalRegister> for Register {
     fn from(value: PhysicalRegister) -> Self {
         match value {
+            PhysicalRegister::AL => Self::AL,
             PhysicalRegister::EAX => Self::EAX,
             PhysicalRegister::ECX => Self::ECX,
             PhysicalRegister::EDX => Self::EDX,
@@ -46,6 +48,7 @@ impl From<PhysicalRegister> for Register {
             PhysicalRegister::EDI => Self::EDI,
             PhysicalRegister::R8D => Self::R8D,
             PhysicalRegister::R9D => Self::R9D,
+            PhysicalRegister::EFLAGS => unreachable!(),
         }
     }
 }
@@ -65,15 +68,15 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
 
     fn assemble(&mut self, instr: &<x86_64::Abi as machine::Abi>::I) {
         match instr {
-            X86Instr::SUB32RI { dest, immediate } => {
+            X86Instr::SUB32ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
                     Code::Sub_rm32_imm32,
                     dest,
-                    immediate.into_unsigned(),
+                    immediate.try_as_d_word().unwrap().into_unsigned(),
                 ).unwrap()).unwrap()
             }
-            X86Instr::SUB32RR { src, dest } => {
+            X86Instr::SUB32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
@@ -82,15 +85,15 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
                     src,
                 ).unwrap()).unwrap()
             }
-            X86Instr::ADD32RI { dest, immediate } => {
+            X86Instr::ADD32ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
                     Code::Add_rm32_imm32,
                     dest,
-                    immediate.into_unsigned(),
+                    immediate.try_as_d_word().unwrap().into_unsigned(),
                 ).unwrap()).unwrap()
             }
-            X86Instr::ADD32RR { src, dest } => {
+            X86Instr::ADD32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
@@ -99,7 +102,7 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
                     src,
                 ).unwrap()).unwrap()
             }
-            X86Instr::MOV32RR { src, dest } => {
+            X86Instr::MOV32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
@@ -108,7 +111,7 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
                     src,
                 ).unwrap()).unwrap()
             }
-            X86Instr::MOV32RI {
+            X86Instr::MOV32ri {
                 dest,
                 immediate
             } => {
@@ -116,7 +119,7 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
                 self.add_instruction(Instruction::with2(
                     Code::Mov_rm32_imm32,
                     dest,
-                    immediate.into_unsigned(),
+                    immediate.try_as_d_word().unwrap().into_unsigned(),
                 ).unwrap()).unwrap()
             }
             X86Instr::RET => {
@@ -127,6 +130,26 @@ impl machine::asm::Assembler<x86_64::Abi> for  Assembler{
             } => {
                 let label = self.get_or_insert_label(*target);
                 self.jmp(label).unwrap()
+            }
+            X86Instr::CMP32rr { lhs, rhs } => {
+                let lhs: Register = lhs.try_as_physical().unwrap().into();
+                let rhs: Register = rhs.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Cmp_rm32_r32,
+                    lhs,
+                    rhs,
+                ).unwrap()).unwrap()
+            }
+            X86Instr::SETCC { dest, cc } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let code: Code = match cc {
+                    CmpOp::Eq => Code::Sete_rm8,
+                    CmpOp::Gt => Code::Setg_rm8,
+                };
+                self.add_instruction(Instruction::with1(
+                    code,
+                    dest,
+                ).unwrap()).unwrap();
             }
         }
     }

@@ -4,9 +4,12 @@ use std::hash::Hash;
 
 use cranelift_entity::{entity_impl, EntityRef, PrimaryMap};
 use daggy::{NodeIndex, Walker};
-use daggy::petgraph::visit::{Bfs, IntoEdges};
+use daggy::petgraph::{algo, Directed, Direction};
+use daggy::petgraph::prelude::StableGraph;
+use daggy::petgraph::visit::{Bfs, DfsPostOrder, IntoEdges};
 use iced_x86::Instruction;
-use index_vec::IndexVec;
+use index_vec::{index_vec, IndexVec};
+use iter_tools::Itertools;
 use rustc_hash::FxHashMap;
 use slotmap::{HopSlotMap, new_key_type};
 use smallvec::{SmallVec, smallvec};
@@ -19,7 +22,10 @@ use firc_middle::ty::Type;
 pub use module::Module;
 
 use crate::codegen::{machine, selection_dag};
+use crate::codegen::machine::abi::calling_convention::Slot;
+use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::machine::asm::Assembler;
+use crate::codegen::register_allocator::{InstrUid, LivenessRepr, ProgPoint};
 use crate::codegen::selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp};
 
 pub mod abi;
@@ -69,6 +75,13 @@ impl<A: Abi> Register<A> {
         }
     }
 
+    pub fn try_as_virtual_mut(&mut self) -> Option<&mut VReg> {
+        match self {
+            Register::Virtual(virt_reg) => Some(virt_reg),
+            Register::Physical(_) => None,
+        }
+    }
+
     pub fn try_as_physical(&self) -> Option<A::REG> {
         match self {
             Register::Virtual(_) => None,
@@ -95,8 +108,10 @@ impl<A: Abi> Display for Register<A> {
     }
 }
 
-new_key_type! {
-    pub struct InstrId;
+index_vec::define_index_type! {
+    pub struct InstrId = u32;
+
+    DISPLAY_FORMAT = "instr{}";
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Instr<A: Abi> {
@@ -112,34 +127,57 @@ impl<A: Abi> Instr<A> {
         }
     }
 
-    pub fn ins(&self) -> SmallVec<[InstrOperand<A>; 2]> {
+    pub fn reads(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
-            Instr::Pseudo(pseudo) => pseudo.ins(),
-            Instr::Machine(machine) => machine.ins(),
+            Instr::Pseudo(pseudo) => pseudo.reads(),
+            Instr::Machine(machine) => machine.reads(),
         }
     }
 
-    pub fn ins_mut(&mut self) -> SmallVec<[InstrInsMut<'_, A>; 2]> {
+    pub fn reads_implicitly(&self) -> SmallVec<[Register<A>; 2]> {
+        let writes = self.writes();
+        let reg_operands = self.operands().iter().filter_map(|operand| {
+            if let InstrOperand::Reg(reg) = operand {
+                Some(*reg)
+            } else {
+                None
+            }
+        }).collect::<SmallVec<[_; 2]>>();
+        let mut implicit_reads = SmallVec::new();
+        for read in self.reads() {
+            if !reg_operands.contains(&read) && writes.map_or(true, |writes| writes != read) {
+                implicit_reads.push(read);
+            }
+        }
+        implicit_reads
+    }
+
+    pub fn writes(&self) -> Option<Register<A>> {
         match self {
-            Instr::Pseudo(instr) => instr.ins_mut(),
-            Instr::Machine(instr) => instr.ins_mut(),
+            Instr::Pseudo(pseudo) => pseudo.writes(),
+            Instr::Machine(machine) => machine.writes().map(|reg| reg.into()),
         }
     }
 
-    pub fn out(&self) -> Option<Register<A>> {
+    pub fn operands(&self) -> SmallVec<[InstrOperand<A>; 3]> {
         match self {
-            Instr::Pseudo(pseudo) => Some(pseudo.out()),
-            Instr::Machine(machine) => machine.out().map(|reg| reg.into()),
+            Instr::Pseudo(pseudo) => pseudo.operands(),
+            Instr::Machine(machine) => machine.operands(),
         }
     }
 
-    pub fn out_mut(&mut self) -> Option<&mut Register<A>> {
+    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<A>; 1]> {
         match self {
-            Instr::Pseudo(pseudo) => Some(pseudo.out_mut()),
-            Instr::Machine(machine) => machine.out_mut().map(|reg| reg.into()),
+            Instr::Pseudo(pseudo) => pseudo.written_regs_mut(),
+            Instr::Machine(machine) => machine.written_regs_mut(),
         }
     }
-
+    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<A>; 2]> {
+        match self {
+            Instr::Pseudo(pseudo) => pseudo.read_regs_mut(),
+            Instr::Machine(machine) => machine.read_regs_mut(),
+        }
+    }
     pub fn try_as_machine(&self) -> Option<&A::I> {
         match self {
             Instr::Pseudo(_) => None,
@@ -153,34 +191,47 @@ pub trait MachineInstr: Debug + PartialEq + Eq + Clone {
 
     fn name(&self) -> &'static str;
 
-    fn out(&self) -> Option<Register<Self::Abi>>;
+    fn writes(&self) -> Option<Register<Self::Abi>>;
 
-    fn out_mut(&mut self) -> Option<&mut Register<Self::Abi>>;
+    fn reads(&self) -> SmallVec<[Register<Self::Abi>; 2]>;
 
-    fn ins(&self) -> SmallVec<[InstrOperand<Self::Abi>; 2]>;
+    fn operands(&self) -> SmallVec<[InstrOperand<Self::Abi>; 3]>;
 
-    fn ins_mut(&mut self) -> SmallVec<[InstrInsMut<'_, Self::Abi>; 2]>;
+    fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::Abi>; 1]>;
+
+    fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::Abi>; 2]>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum InstrOperand<A: Abi> {
     Reg(Register<A>),
     Imm(Immediate),
-    Label(BasicBlockId)
+    Label(BasicBlockId),
 }
 
 #[derive(Debug)]
-pub enum InstrInsMut<'a, A: Abi> {
+pub enum InstrOperandMut<'a, A: Abi> {
     Reg(&'a mut Register<A>),
-    // Imm(&'a mut Immediate),
+    Imm(&'a mut Immediate),
+    Label(&'a mut BasicBlockId),
 }
 
 impl<A: Abi> Display for InstrOperand<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            InstrOperand::Reg(reg) => write!(f, "{}", reg),
-            InstrOperand::Imm(imm) => write!(f, "{}", imm),
-            InstrOperand::Label(label) => write!(f, "{}", label),
+            Self::Reg(reg) => write!(f, "{}", reg),
+            Self::Imm(imm) => write!(f, "{}", imm),
+            Self::Label(label) => write!(f, "{}", label),
+        }
+    }
+}
+
+impl<'op, A: Abi> From<&'op mut InstrOperand<A>> for InstrOperandMut<'op, A> {
+    fn from(value: &'op mut InstrOperand<A>) -> Self {
+        match value {
+            InstrOperand::Reg(reg) => InstrOperandMut::Reg(reg),
+            InstrOperand::Imm(imm) => InstrOperandMut::Imm(imm),
+            InstrOperand::Label(label) => InstrOperandMut::Label(label),
         }
     }
 }
@@ -188,44 +239,84 @@ impl<A: Abi> Display for InstrOperand<A> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PseudoInstr<A: Abi> {
     Copy(Register<A>, Register<A>),
+    Ret(InstrOperand<A>),
 }
 
 impl<A: Abi> PseudoInstr<A> {
     pub fn name(&self) -> &'static str {
         match self {
-            PseudoInstr::Copy(_, _) => "COPY",
+            Self::Copy(_, _) => "COPY",
+            Self::Ret(_) => "RET"
         }
     }
 
-    pub fn ins(&self) -> SmallVec<[InstrOperand<A>; 2]> {
+    pub fn reads(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
-            PseudoInstr::Copy(_, to) => {
+            Self::Copy(_, to) => {
                 smallvec![
-                    InstrOperand::Reg(*to),
+                    *to,
+                ]
+            }
+            Self::Ret(value) => {
+                let mut reads = smallvec![];
+                if let InstrOperand::Reg(reg) = value {
+                    reads.push(*reg)
+                }
+                reads
+            }
+        }
+    }
+
+    pub fn operands(&self) -> SmallVec<[InstrOperand<A>; 3]> {
+        match self {
+            Self::Copy(dest, src) => {
+                smallvec![
+                    InstrOperand::Reg(*dest),
+                    InstrOperand::Reg(*src),
+                ]
+            }
+            Self::Ret(value) => {
+                smallvec![
+                    value.clone()
                 ]
             }
         }
     }
 
-    pub fn ins_mut(&mut self) -> SmallVec<[InstrInsMut<'_, A>; 2]> {
+    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<A>; 1]> {
         match self {
-            PseudoInstr::Copy(_, to) => {
+            Self::Copy(dest, _) => {
                 smallvec![
-                    InstrInsMut::Reg(to),
+                    dest,
                 ]
+            }
+            Self::Ret(_) => {
+                smallvec![]
             }
         }
     }
 
-    pub fn out(&self) -> Register<A> {
+    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<A>; 2]> {
         match self {
-            PseudoInstr::Copy(dest, _) => *dest,
+            Self::Copy(_, src) => {
+                smallvec![
+                    src,
+                ]
+            }
+            Self::Ret(value) => {
+                let mut reads = smallvec![];
+                if let InstrOperand::Reg(reg) = value {
+                    reads.push(reg)
+                }
+                reads
+            }
         }
     }
 
-    pub fn out_mut(&mut self) -> &mut Register<A> {
+    pub fn writes(&self) -> Option<Register<A>> {
         match self {
-            PseudoInstr::Copy(dest, _) => dest,
+            Self::Copy(dest, _) => Some(*dest),
+            Self::Ret(_) => None,
         }
     }
 }
@@ -237,7 +328,11 @@ pub trait Backend {
 
     fn patterns() -> &'static [Self::P];
 
-    fn expand_pseudo_instruction(instr: &PseudoInstr<Self::ABI>) -> SmallVec<[Instr<Self::ABI>; 2]>;
+    fn mov(dest: Register<Self::ABI>, src: Register<Self::ABI>) -> <Self::ABI as Abi>::I;
+
+    fn mov_imm(dest: Register<Self::ABI>, imm: Immediate) -> <Self::ABI as Abi>::I;
+
+    fn ret() -> <Self::ABI as Abi>::I;
 
     fn new() -> Self;
 }
@@ -415,7 +510,7 @@ pub trait Pattern: Sized + Debug + Clone + PartialEq + Eq + 'static {
 }
 
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Display)]
 pub enum Size {
     Byte,
     Word,
@@ -479,8 +574,8 @@ entity_impl!(FunctionId, "fun");
 pub struct Function<A: Abi> {
     pub name: String,
     pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<A>>,
-    pub(crate) instructions: HopSlotMap<InstrId, Instr<A>>,
     pub(crate) vregs: PrimaryMap<VReg, VRegInfo>,
+    cfg: Option<Cfg>,
 }
 
 impl<A: Abi> Function<A> {
@@ -491,7 +586,7 @@ impl<A: Abi> Function<A> {
             name,
             basic_blocks: IndexVec::default(),
             vregs: PrimaryMap::new(),
-            instructions: HopSlotMap::with_key(),
+            cfg: None,
         }
     }
 
@@ -504,7 +599,10 @@ impl<A: Abi> Function<A> {
     }
 
     pub fn create_bb(&mut self) -> BasicBlockId {
-        self.basic_blocks.push(Default::default())
+        let id = self.basic_blocks.next_idx();
+        self.basic_blocks.push(BasicBlock::new(
+            id
+        ))
     }
 
     pub fn assemble(&self) -> Vec<u8> {
@@ -513,9 +611,9 @@ impl<A: Abi> Function<A> {
         for (bb_id, bb) in self.basic_blocks.iter_enumerated() {
             debug!("Assembling basic block {}", bb_id);
             asm.begin_basic_block(bb_id);
-            for (_, instr) in bb.instructions(self) {
+            for instr in bb.instructions.iter() {
                 debug!("Assembling instruction {:?}", instr);
-                asm.assemble(instr.try_as_machine().expect("Pseudo instruction was not expanded"));
+                asm.assemble(instr.try_as_machine().unwrap_or_else(|| panic!("Pseudo instructions should have been expanded: {:?}", instr)));
             }
         }
         debug!("Finishing assembly for function {}", self.name);
@@ -524,34 +622,75 @@ impl<A: Abi> Function<A> {
     }
 
 
-    pub fn ordered_instructions(&self) -> impl IntoIterator<Item=(BasicBlockId, InstrId)> + '_ {
-        self.basic_blocks.iter_enumerated().flat_map(|(bb_id, bb)| bb.instructions.iter().copied().map(move |instr_id| (bb_id, instr_id)))
-    }
-
-
     pub fn expand_pseudo_instructions<B>(&mut self) where B: Backend<ABI=A> {
-        let mut i = 0;
-        let instructions = self.ordered_instructions().into_iter().collect::<Vec<_>>();
-        while let Some((bb_id, instr_id)) = instructions.get(i) {
-            let instr = &mut self.instructions[*instr_id];
-            if let Instr::Pseudo(pseudo_instr) = instr {
-                let expanded = B::expand_pseudo_instruction(pseudo_instr);
-                self.instructions.remove(*instr_id);
-                let instr_idx = self.basic_blocks[*bb_id].instructions.iter().position(|id| id == instr_id).unwrap();
-                self.basic_blocks[*bb_id].instructions.remove(instr_idx);
-                for (n, instr) in expanded.into_iter().enumerate() {
-                    let instr_id = self.instructions.insert(instr);
-                    self.basic_blocks[*bb_id].instructions.insert(instr_idx + n, instr_id);
+        debug!("Expanding pseudo instructions for function {}", self.name);
+        for bb in &mut self.basic_blocks {
+            if bb.instructions.is_empty() { continue; }
+            let mut instr_id = InstrId::new(0);
+            while instr_id <= bb.instructions.last_idx() {
+                let instr = &mut bb.instructions[instr_id];
+                if let Instr::Pseudo(pseudo_instr) = instr {
+                    let expanded: SmallVec<[_; 2]> = match pseudo_instr {
+                        PseudoInstr::Copy(dest, src) => {
+                            let instr = B::mov(*dest, *src);
+                            smallvec![
+                                instr
+                            ]
+                        }
+                        PseudoInstr::Ret(value) => {
+                            let return_slot = <B::ABI as Abi>::CallingConvention::return_slot(
+                                match value {
+                                    InstrOperand::Reg(reg) => {
+                                        reg.try_as_physical().unwrap().size()
+                                    }
+                                    InstrOperand::Imm(imm) => {
+                                        imm.size()
+                                    }
+                                    InstrOperand::Label(_) => unreachable!()
+                                }
+                            );
+                            match return_slot {
+                                Slot::Register(dest) => {
+                                    let dest = Register::Physical(dest);
+                                    let instr = match value {
+                                        InstrOperand::Reg(reg) => {
+                                            B::mov(dest, *reg)
+                                        }
+                                        InstrOperand::Imm(imm) => {
+                                            B::mov_imm(dest, *imm)
+                                        }
+                                        InstrOperand::Label(_) => unreachable!()
+                                    };
+                                    smallvec![
+                                        instr,
+                                        B::ret()
+                                    ]
+                                }
+                                Slot::Stack => unimplemented!()
+                            }
+                        }
+                    };
+                    debug!("Expanded pseudo instruction {:?} to {:?}", pseudo_instr, expanded);
+                    assert!(expanded.len() > 0, "Pseudo instruction was not expanded: {:?}", pseudo_instr);
+                    bb.instructions.remove(instr_id);
+                    let expanded_len = expanded.len();
+                    for (offset, instr) in expanded.into_iter().enumerate() {
+                        bb.instructions.insert(instr_id + offset, Instr::Machine(instr));
+                    }
+                    instr_id += expanded_len - 1;
                 }
+                instr_id += 1;
             }
-            i += 1;
         }
     }
 
-    pub fn remove_instruction(&mut self, bb_id: BasicBlockId, instr_id: InstrId) {
-        self.instructions.remove(instr_id);
-        let instr_idx = self.basic_blocks[bb_id].instructions.iter().position(|id| id == &instr_id).unwrap();
-        self.basic_blocks[bb_id].instructions.remove(instr_idx);
+    pub fn build_cfg(&mut self) {
+        let cfg = Cfg::build(&self.basic_blocks);
+        self.cfg = Some(cfg);
+    }
+
+    pub fn cfg(&self) -> &Cfg {
+        self.cfg.as_ref().expect("Cfg has not been built yey")
     }
 }
 
@@ -559,14 +698,32 @@ impl<A: Abi> Display for Function<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
         for (bb_id, bb) in self.basic_blocks.iter_enumerated() {
-            writeln!(f, "{}: ", bb_id)?;
-            for (_, instr) in bb.instructions(self) {
-                write!(f, "  {}", instr.name())?;
-                if let Some(out) = instr.out() {
-                    write!(f, " {},", out)?;
+            writeln!(f, "{bb_id}: ")?;
+            for instr in &bb.instructions {
+                write!(f, "  ")?;
+                if let Some(out) = instr.writes() {
+                    write!(f, "{out} = ")?;
                 }
-                for (i, operand) in instr.ins().into_iter().enumerate() {
-                    write!(f, " {}", operand)?;
+                write!(f, "{}", instr.name())?;
+                let operands = instr.operands();
+                let operands_len = operands.len();
+                for (i, operand) in operands.into_iter().enumerate() {
+                    write!(f, " {operand}")?;
+                    if i < operands_len - 1 {
+                        write!(f, ",")?;
+                    }
+                }
+                let reads_impl = instr.reads_implicitly();
+                let reads_impl_len = reads_impl.len();
+                if !reads_impl.is_empty() {
+                    write!(f, " {{implicit reads: ")?;
+                    for (i, reg) in reads_impl.into_iter().enumerate() {
+                        write!(f, "{reg}")?;
+                        if i < reads_impl_len - 1 {
+                            write!(f, ", ")?;
+                        }
+                    }
+                    write!(f, "}}")?;
                 }
                 writeln!(f)?;
             }
@@ -575,22 +732,145 @@ impl<A: Abi> Display for Function<A> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Cfg {
+    entry_block: BasicBlockId,
+    graph: StableGraph<(), (), Directed>,
+    node_to_block_map: FxHashMap<NodeIndex, BasicBlockId>,
+    block_to_node_map: FxHashMap<BasicBlockId, NodeIndex>,
+}
+
+impl Cfg {
+    pub fn build<A: Abi>(bbs: &IndexVec<BasicBlockId, BasicBlock<A>>) -> Self {
+        let mut cfg = Self::new(
+            BasicBlockId::new(0),
+        );
+        for bb_id in bbs.indices() {
+            let node = cfg.graph.add_node(());
+            cfg.node_to_block_map.insert(node, bb_id);
+            cfg.block_to_node_map.insert(bb_id, node);
+        }
+        for (bb_id, bb) in bbs.iter_enumerated() {
+            for instr in &bb.instructions {
+                let ins = instr.operands();
+                for operand in ins {
+                    if let InstrOperand::Label(successor_id) = operand {
+                        cfg.graph.add_edge(
+                            *cfg.block_to_node_map.get(&bb_id).expect("Block not found in block_to_node_map"),
+                            *cfg.block_to_node_map.get(&successor_id).expect("Block not found in block_to_node_map"),
+                            (),
+                        );
+                    }
+                }
+            }
+        }
+        cfg
+    }
+
+    pub fn new(entry_block: BasicBlockId) -> Self {
+        Self {
+            entry_block,
+            graph: StableGraph::new(),
+            node_to_block_map: FxHashMap::default(),
+            block_to_node_map: FxHashMap::default(),
+        }
+    }
+
+    /// Traverses the cfg using a post order depth first traversal
+    pub fn dfs_postorder(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+        DfsPostOrder::new(
+            &self.graph,
+            self.entry_node(),
+        ).iter(&self.graph).map(
+            |node|
+                self.node_to_block_map[&node]
+        )
+    }
+
+    pub fn bfs(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+        Bfs::new(
+            &self.graph,
+            self.entry_node(),
+        ).iter(&self.graph).map(
+            |node|
+                self.node_to_block_map[&node]
+        )
+    }
+
+    pub fn predecessors(&self, bb: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+        self.graph.neighbors_directed(
+            self.block_to_node_map[&bb],
+            Direction::Incoming,
+        ).map(
+            |node| self.node_to_block_map[&node]
+        )
+    }
+
+    pub fn successors(&self, bb: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+        self.graph.neighbors(
+            self.block_to_node_map[&bb],
+        ).map(
+            |node| self.node_to_block_map[&node]
+        )
+    }
+
+
+    fn entry_node(&self) -> NodeIndex {
+        self.node_to_block_map.iter().find_map(
+            |(node, bb)| {
+                if *bb == self.entry_block {
+                    return Some(*node);
+                }
+                None
+            }
+        ).expect("Did not find matching entry in node_to_block_map for entry block")
+    }
+
+    pub fn topological_order(&self) -> Vec<BasicBlockId> {
+        algo::toposort(&self.graph, None).expect("cyclic cfgs are not supported yet")
+            .into_iter().map(
+            |idx| self.node_to_block_map[&idx]
+        ).collect_vec()
+    }
+}
+
 index_vec::define_index_type! {
     pub struct BasicBlockId = u32;
 
     DISPLAY_FORMAT = "bb{}";
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BasicBlock<A: Abi> {
-    instructions: Vec<InstrId>,
-    marker: std::marker::PhantomData<A>,
+    pub id: BasicBlockId,
+    pub instructions: IndexVec<InstrId, Instr<A>>,
 }
 
 impl<A: Abi> BasicBlock<A> {
-    pub fn instructions<'func>(&'func self, ctx: &'func Function<A>) -> impl ExactSizeIterator<Item=(InstrId, &Instr<A>)> {
-        self.instructions.iter().copied().map(move |instr_id| {
-            (instr_id, &ctx.instructions[instr_id])
-        })
+    pub fn new(id: BasicBlockId) -> Self {
+        Self {
+            id,
+            instructions: IndexVec::default(),
+        }
+    }
+
+    pub fn entry_pp(&self, liveness_repr: &LivenessRepr) -> ProgPoint {
+        let instr_nr = liveness_repr.instr_numbering.get_instr_nr(
+            InstrUid {
+                bb: self.id,
+                instr: 0.into(),
+            }
+        ).unwrap();
+        ProgPoint::Read(instr_nr)
+    }
+
+    pub fn exit_pp(&self, liveness_repr: &LivenessRepr) -> ProgPoint {
+        let instr_nr = liveness_repr.instr_numbering.get_instr_nr(
+            InstrUid {
+                bb: self.id,
+                instr: self.instructions.len_idx() - 1,
+            }
+        ).unwrap();
+        ProgPoint::Write(instr_nr)
     }
 }
 
@@ -770,14 +1050,14 @@ impl<B: Backend> FunctionBuilder<B> {
                 }
             }
             for instr in instructions {
-                self.push_instruction(instr, mbb_id);
+                self.function.basic_blocks[mbb_id].instructions.push(instr);
             }
         }
         debug!("Finished building machine function for function {}", function.name);
         debug!("{}", self.function);
         self.function
     }
-    
+
     fn create_bb(&mut self, bb: firc_middle::cfg::BasicBlockId) -> BasicBlockId {
         let mbb = self.function.create_bb();
         self.bb_mapping.insert(bb, mbb);
@@ -796,10 +1076,6 @@ impl<B: Backend> FunctionBuilder<B> {
             Operand::Reg(reg) => PatternInOperand::Reg(reg.size(&self.function)),
             Operand::Imm(imm) => PatternInOperand::Imm(imm.size()),
         }
-    }
-    fn push_instruction(&mut self, instr: Instr<B::ABI>, bb: BasicBlockId) {
-        let instr_id = self.function.instructions.insert(instr);
-        self.function.basic_blocks[bb].instructions.push(instr_id);
     }
 }
 

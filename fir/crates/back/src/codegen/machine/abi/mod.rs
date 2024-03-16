@@ -1,16 +1,17 @@
-pub mod calling_convention;
-pub use calling_convention::CallingConvention;
-
 use std::fmt::Debug;
 use std::hash::Hash;
+
+pub use calling_convention::CallingConvention;
 
 use crate::codegen::machine;
 use crate::codegen::machine::asm::Assembler;
 
-pub trait Abi: Debug + Default + Clone + PartialEq +  Eq {
+pub mod calling_convention;
+
+pub trait Abi: Debug + Default + Clone + PartialEq + Eq + Hash {
     type I: machine::MachineInstr<Abi=Self>;
 
-    type REG: machine::PhysicalRegister + 'static + Hash;
+    type REG: machine::PhysicalRegister + 'static + Hash + Copy;
 
     type ASSEMBLER: Assembler<Self>;
 

@@ -75,7 +75,7 @@ impl<A: machine::Abi> SelectionDAG<A> {
 }
 
 
-#[derive(Debug, Clone, Ord, PartialOrd, PartialEq, Eq, EnumTryAs)]
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq, EnumTryAs)]
 pub enum Immediate {
     Byte(Byte),
     Word(Word),

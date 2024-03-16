@@ -1,14 +1,14 @@
-use iced_x86::code_asm::CodeAssembler;
 use smallvec::{SmallVec, smallvec};
 use strum::VariantArray;
 
+use firc_middle::instruction::CmpOp;
 use firc_middle::ty::Type;
 
 use crate::codegen::machine;
-use crate::codegen::machine::{Instr, InstrOperand, InstrInsMut, MatchedPattern, PatternInOperand, PatternInOutput, PseudoInstr, Size, BasicBlockId};
-use crate::codegen::machine::abi::calling_convention::ParameterSlot;
+use crate::codegen::machine::{BasicBlockId, Instr, InstrOperand, MatchedPattern, PatternInOperand, PatternInOutput, PseudoInstr, Size};
+use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
-use crate::codegen::selection_dag::{DWord, Immediate, MachineOp};
+use crate::codegen::selection_dag::Immediate;
 
 mod asm;
 
@@ -16,29 +16,37 @@ pub type Register = machine::Register<Abi>;
 
 #[derive(Debug, Clone, PartialEq, Eq, EnumTryAs, IntoStaticStr)]
 pub enum X86Instr {
-    SUB32RI {
+    SUB32ri {
         dest: Register,
-        immediate: DWord,
+        immediate: Immediate,
     },
-    SUB32RR {
+    SUB32rr {
         dest: Register,
         src: Register,
     },
-    ADD32RI {
+    ADD32ri {
         dest: Register,
-        immediate: DWord,
+        immediate: Immediate,
     },
-    ADD32RR {
+    ADD32rr {
         dest: Register,
         src: Register,
     },
-    MOV32RI {
+    MOV32ri {
         dest: Register,
-        immediate: DWord,
+        immediate: Immediate,
     },
-    MOV32RR {
+    MOV32rr {
         dest: Register,
         src: Register,
+    },
+    CMP32rr {
+        lhs: Register,
+        rhs: Register,
+    },
+    SETCC {
+        dest: Register,
+        cc: CmpOp,
     },
     JMP {
         target: BasicBlockId,
@@ -48,19 +56,21 @@ pub enum X86Instr {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, VariantArray)]
 pub enum Pattern {
-    MOV32RI,
-    MOV32RR,
-    SUB32RI,
-    SUB32RR,
-    ADD32RI,
-    ADD32RR,
-    RET_VOID,
-    RET_OP,
-    JMP,
+    Mov32ri,
+    Mov32rr,
+    Sub32ri,
+    Sub32rr,
+    Add32ri,
+    Add32rr,
+    Cmp32rreq,
+    RetVoid,
+    RetOp,
+    Jmp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, VariantArray, Hash)]
 pub enum PhysicalRegister {
+    AL,
     EAX,
     ECX,
     EDX,
@@ -71,6 +81,7 @@ pub enum PhysicalRegister {
     EDI,
     R8D,
     R9D,
+    EFLAGS,
 }
 
 impl machine::PhysicalRegister for PhysicalRegister {
@@ -84,17 +95,19 @@ impl machine::PhysicalRegister for PhysicalRegister {
 
     fn is_gp(&self) -> bool {
         match self {
+            Self::AL |
             Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI | Self::R8D | Self::R9D => true,
+            Self::EFLAGS => false,
         }
     }
 
     fn size(&self) -> Size {
         match self {
-            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI | Self::R8D | Self::R9D => Size::DWord,
+            Self::AL => Size::Byte,
+            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI | Self::R8D | Self::R9D | Self::EFLAGS => Size::DWord,
         }
     }
 }
-
 
 impl machine::MachineInstr for X86Instr {
     type Abi = Abi;
@@ -103,60 +116,107 @@ impl machine::MachineInstr for X86Instr {
         self.into()
     }
 
-    fn out(&self) -> Option<Register> {
+    fn writes(&self) -> Option<Register> {
         match self {
-            Self::MOV32RI { dest, .. } => Some(*dest),
-            Self::MOV32RR { dest, .. } => Some(*dest),
-            Self::SUB32RI { dest, .. } => Some(*dest),
-            Self::SUB32RR { dest, .. } => Some(*dest),
-            Self::ADD32RI { dest, .. } => Some(*dest),
-            Self::ADD32RR { dest, .. } => Some(*dest),
+            Self::MOV32ri { dest, .. } => Some(*dest),
+            Self::MOV32rr { dest, .. } => Some(*dest),
+            Self::SUB32ri { dest, .. } => Some(*dest),
+            Self::SUB32rr { dest, .. } => Some(*dest),
+            Self::ADD32ri { dest, .. } => Some(*dest),
+            Self::ADD32rr { dest, .. } => Some(*dest),
             Self::JMP { .. } => None,
             Self::RET => None,
+            Self::CMP32rr { .. } => Some(Register::Physical(PhysicalRegister::EFLAGS)),
+            Self::SETCC { dest, .. } => Some(*dest)
         }
     }
 
-    fn out_mut(&mut self) -> Option<&mut machine::Register<Self::Abi>> {
+    fn reads(&self) -> SmallVec<[machine::Register<Self::Abi>; 2]> {
         match self {
-            Self::MOV32RI { dest, .. } => Some(dest),
-            Self::MOV32RR { dest, .. } => Some(dest),
-            Self::SUB32RI { dest, .. } => Some(dest),
-            Self::SUB32RR { dest, .. } => Some(dest),
-            Self::ADD32RI { dest, .. } => Some(dest),
-            Self::ADD32RR { dest, .. } => Some(dest),
-            Self::JMP { .. } => None,
-            Self::RET => None,
-        }
-    }
-
-    fn ins(&self) -> SmallVec<[InstrOperand<Self::Abi>; 2]> {
-        match self {
-            Self::MOV32RI { immediate, .. } => smallvec![InstrOperand::Imm(Immediate::DWord(immediate.clone()))],
-            Self::MOV32RR { src, .. } => smallvec![InstrOperand::Reg(*src)],
-            Self::SUB32RI { immediate, .. } => smallvec![InstrOperand::Imm(Immediate::DWord(immediate.clone()))],
-            Self::SUB32RR { src, .. } => smallvec![InstrOperand::Reg(*src)],
-            Self::ADD32RI { immediate, .. } => smallvec![InstrOperand::Imm(Immediate::DWord(immediate.clone()))],
-            Self::ADD32RR { src, .. } => smallvec![InstrOperand::Reg(*src)],
-            Self::JMP { target} => smallvec![InstrOperand::Label(*target)],
-            Self::RET => smallvec![],
-        }
-    }
-
-    fn ins_mut(&mut self) -> SmallVec<[InstrInsMut<'_, Self::Abi>; 2]> {
-        match self {
-            Self::MOV32RI { .. } => smallvec![],
-            Self::MOV32RR { src, .. } => smallvec![InstrInsMut::Reg(src)],
-            Self::SUB32RI { .. } => smallvec![],
-            Self::SUB32RR { src, .. } => smallvec![InstrInsMut::Reg(src)],
-            Self::ADD32RI { .. } => smallvec![],
-            Self::ADD32RR { src, .. } => smallvec![InstrInsMut::Reg(src)],
+            Self::MOV32ri { .. } => smallvec![],
+            Self::MOV32rr { src, .. } => smallvec![*src],
+            Self::SUB32ri { dest, .. } => smallvec![*dest],
+            Self::SUB32rr { src, dest } => smallvec![*src, *dest],
+            Self::ADD32ri { dest, .. } => smallvec![*dest],
+            Self::ADD32rr { src, dest } => smallvec![*src, *dest],
             Self::JMP { .. } => smallvec![],
             Self::RET => smallvec![],
+            Self::CMP32rr { lhs, rhs } => smallvec![*lhs, *rhs],
+            Self::SETCC { .. } => smallvec![Register::Physical(PhysicalRegister::EFLAGS)]
+        }
+    }
+
+    fn operands(&self) -> SmallVec<[InstrOperand<Self::Abi>; 3]> {
+        match self {
+            Self::MOV32ri { dest, immediate } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Imm(*immediate)
+            ],
+            Self::MOV32rr { dest, src } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Reg(*src)
+            ],
+            Self::SUB32ri { dest, immediate } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Imm(*immediate)
+            ],
+            Self::SUB32rr { dest, src } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Reg(*src)
+            ],
+            Self::ADD32ri { dest, immediate } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Imm(*immediate)
+            ],
+            Self::ADD32rr { dest, src } => smallvec![
+                InstrOperand::Reg(*dest),
+                InstrOperand::Reg(*src)
+            ],
+            Self::JMP { target } => smallvec![
+                InstrOperand::Label(*target)
+            ],
+            Self::RET => smallvec![],
+            Self::CMP32rr { lhs, rhs } => smallvec![
+                InstrOperand::Reg(*lhs),
+                InstrOperand::Reg(*rhs)
+            ],
+            Self::SETCC { dest, .. } => smallvec![
+                InstrOperand::Reg(*dest)
+            ]
+        }
+    }
+    fn written_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::Abi>; 1]> {
+        match self {
+            Self::MOV32ri { dest, .. } => smallvec![dest],
+            Self::MOV32rr { dest, .. } => smallvec![dest],
+            Self::SUB32ri { dest, .. } => smallvec![dest],
+            Self::SUB32rr { dest, .. } => smallvec![dest],
+            Self::ADD32ri { dest, .. } => smallvec![dest],
+            Self::ADD32rr { dest, .. } => smallvec![dest],
+            Self::JMP { .. } => smallvec![],
+            Self::RET => smallvec![],
+            Self::CMP32rr { .. } => smallvec![],
+            Self::SETCC { dest, .. } => smallvec![dest],
+        }
+    }
+
+    fn read_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::Abi>; 2]> {
+        match self {
+            Self::MOV32ri { .. } => smallvec![],
+            Self::MOV32rr { src, .. } => smallvec![src],
+            Self::SUB32ri { dest, .. } => smallvec![dest],
+            Self::SUB32rr { src, dest } => smallvec![src, dest],
+            Self::ADD32ri { dest, .. } => smallvec![dest],
+            Self::ADD32rr { src, dest } => smallvec![src, dest],
+            Self::JMP { .. } => smallvec![],
+            Self::RET => smallvec![],
+            Self::CMP32rr { lhs, rhs } => smallvec![lhs, rhs],
+            Self::SETCC { .. } => smallvec![]
         }
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Abi {}
 
 impl machine::Abi for Abi {
@@ -172,7 +232,7 @@ pub struct SystemV;
 impl CallingConvention for SystemV {
     type Reg = PhysicalRegister;
 
-    fn parameter_slots(params: impl Iterator<Item=Type>) -> impl Iterator<Item=ParameterSlot<Self::Reg>> {
+    fn parameter_slots(params: impl Iterator<Item=Type>) -> impl Iterator<Item=Slot<Self::Reg>> {
         let mut used_regs = 0;
         params.map(move |ty| {
             let slot = if used_regs < 6 {
@@ -186,12 +246,19 @@ impl CallingConvention for SystemV {
                     _ => panic!("Too many parameters"),
                 };
                 used_regs += 1;
-                ParameterSlot::Register(reg)
+                Slot::Register(reg)
             } else {
-                ParameterSlot::Stack
+                Slot::Stack
             };
             slot
         })
+    }
+
+    fn return_slot(size: Size) -> Slot<Self::Reg> {
+        match size {
+            Size::DWord => Slot::Register(PhysicalRegister::EAX),
+            _ => unimplemented!()
+        }
     }
 }
 
@@ -200,126 +267,149 @@ impl machine::Pattern for Pattern {
 
     fn in_(&self) -> machine::PatternIn {
         match self {
-            Self::MOV32RI =>
+            Self::Mov32ri =>
                 machine::PatternIn::Mov(PatternInOutput::Reg(Size::DWord), PatternInOperand::Imm(Size::DWord)),
-            Self::MOV32RR => machine::PatternIn::Mov(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
-            Self::SUB32RI => machine::PatternIn::Sub(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Imm(Size::DWord)),
-            Self::SUB32RR => machine::PatternIn::Sub(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
-            Self::ADD32RI => machine::PatternIn::Add(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Imm(Size::DWord)),
-            Self::ADD32RR => machine::PatternIn::Add(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
-            Self::JMP => machine::PatternIn::Br,
-            Self::RET_VOID => {
+            Self::Mov32rr => machine::PatternIn::Mov(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
+            Self::Sub32ri => machine::PatternIn::Sub(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Imm(Size::DWord)),
+            Self::Sub32rr => machine::PatternIn::Sub(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
+            Self::Add32ri => machine::PatternIn::Add(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Imm(Size::DWord)),
+            Self::Add32rr => machine::PatternIn::Add(PatternInOutput::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord), PatternInOperand::Reg(Size::DWord)),
+            Self::Jmp => machine::PatternIn::Br,
+            Self::RetVoid => {
                 machine::PatternIn::Ret(None)
             }
-            Self::RET_OP => {
+            Self::RetOp => {
                 machine::PatternIn::Ret(Some(PatternInOperand::Reg(Size::DWord)))
             }
+            Self::Cmp32rreq => machine::PatternIn::Cmp(
+                PatternInOutput::Reg(Size::Byte),
+                CmpOp::Eq,
+                PatternInOperand::Reg(Size::DWord),
+                PatternInOperand::Reg(Size::DWord),
+            )
         }
     }
 
     fn into_instr(self, in_: MatchedPattern<Self::ABI>) -> SmallVec<[Instr<Self::ABI>; 2]> {
         match self {
-            Self::MOV32RR => {
+            Self::Mov32rr => {
                 let pattern = in_.try_as_mov().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
                 let src = pattern.src.try_as_reg().unwrap().clone();
                 smallvec![
-                    Instr::Machine(X86Instr::MOV32RR {
+                    Instr::Machine(X86Instr::MOV32rr {
                         dest,
                         src
                     })
                 ]
             }
-            Self::MOV32RI => {
+            Self::Mov32ri => {
                 let pattern = in_.try_as_mov().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
-                let immediate = pattern.src.try_as_imm().cloned().unwrap().try_as_d_word().unwrap();
+                let immediate = pattern.src.try_as_imm().cloned().unwrap();
                 smallvec![
-                    Instr::Machine(X86Instr::MOV32RI {
+                    Instr::Machine(X86Instr::MOV32ri {
                         dest,
                         immediate ,
                     })
                 ]
             }
-            Self::SUB32RI => {
+            Self::Sub32ri => {
                 let pattern = in_.try_as_sub().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
                 let lhs = pattern.lhs.try_as_reg().unwrap().clone();
-                let rhs = pattern.rhs.try_as_imm().cloned().unwrap().try_as_d_word().unwrap();
+                let rhs = pattern.rhs.try_as_imm().cloned().unwrap();
                 smallvec![
                     Instr::Pseudo(PseudoInstr::Copy(dest.clone(), lhs)),
-                    Instr::Machine(X86Instr::SUB32RI {
+                    Instr::Machine(X86Instr::SUB32ri {
                         dest,
                         immediate: rhs,
                     })
                 ]
             }
-            Self::SUB32RR => {
+            Self::Sub32rr => {
                 let pattern = in_.try_as_sub().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
                 let lhs = pattern.lhs.try_as_reg().unwrap().clone();
                 let rhs = pattern.rhs.try_as_reg().unwrap().clone();
                 smallvec![
-                    Instr::Machine(X86Instr::MOV32RR {
+                    Instr::Machine(X86Instr::MOV32rr {
                         dest: dest.clone(),
                         src: lhs,
                     }),
-                    Instr::Machine(X86Instr::SUB32RR {
+                    Instr::Machine(X86Instr::SUB32rr {
                         dest,
                         src: rhs,
                     })
                 ]
             }
-            Self::ADD32RI => {
+            Self::Add32ri => {
                 let pattern = in_.try_as_add().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
                 let lhs = pattern.lhs.try_as_reg().unwrap().clone();
-                let rhs = pattern.rhs.try_as_imm().cloned().unwrap().try_as_d_word().unwrap();
+                let rhs = pattern.rhs.try_as_imm().cloned().unwrap();
                 smallvec![
                     Instr::Pseudo(PseudoInstr::Copy(dest.clone(), lhs)),
-                    Instr::Machine(X86Instr::ADD32RI {
+                    Instr::Machine(X86Instr::ADD32ri {
                         dest,
                         immediate: rhs,
                     })
                 ]
             }
-            Self::ADD32RR => {
+            Self::Add32rr => {
                 let pattern = in_.try_as_add().unwrap();
                 let dest = pattern.dest.try_as_reg().unwrap().clone();
                 let lhs = pattern.lhs.try_as_reg().unwrap().clone();
                 let rhs = pattern.rhs.try_as_reg().unwrap().clone();
                 smallvec![
-                    Instr::Machine(X86Instr::MOV32RR {
+                    Instr::Machine(X86Instr::MOV32rr {
                         dest: dest.clone(),
                         src: lhs,
                     }),
-                    Instr::Machine(X86Instr::ADD32RR {
+                    Instr::Machine(X86Instr::ADD32rr {
                         dest,
                         src: rhs,
                     })
                 ]
             }
-            Self::RET_VOID => {
+            Self::RetVoid => {
                 smallvec![
                     Instr::Machine(X86Instr::RET)
                 ]
             }
-            Self::RET_OP => {
+            Self::RetOp => {
                 let value = *in_.try_as_ret().cloned().unwrap().value.unwrap().try_as_reg().unwrap();
                 smallvec![
-                    Instr::Machine(X86Instr::MOV32RR {
-                        dest: Register::Physical(PhysicalRegister::EAX),
-                        src: value,
-                    }),
-                    Instr::Machine(X86Instr::RET)
+                    Instr::Pseudo(PseudoInstr::Ret(InstrOperand::Reg(value)))
                 ]
             }
-            Self::JMP => {
+            Self::Jmp => {
                 let target = in_.try_as_br().unwrap().target;
                 smallvec![
                     Instr::Machine(X86Instr::JMP {
                         target
                     })
+                ]
+            }
+            Self::Cmp32rreq => {
+                let matched = in_.try_as_cmp().unwrap();
+                let lhs = *matched.lhs.try_as_reg().unwrap();
+                let rhs = *matched.rhs.try_as_reg().unwrap();
+                let dest = *matched.dest.try_as_reg().unwrap();
+                let cc = matched.cmp_op;
+                smallvec![
+                    Instr::Machine(
+                        X86Instr::CMP32rr {
+                            lhs,
+                            rhs,
+                        }
+                    ),
+                    Instr::Machine(
+                        X86Instr::SETCC {
+                            dest,
+                            cc,
+                        }
+                    )
                 ]
             }
         }
@@ -337,18 +427,23 @@ impl machine::Backend for Backend {
     fn patterns() -> &'static [Self::P] {
         Self::P::VARIANTS
     }
-
-    fn expand_pseudo_instruction(instr: &PseudoInstr<Self::ABI>) -> SmallVec<[Instr<Self::ABI>; 2]> {
-        match instr {
-            PseudoInstr::Copy(dest, src) => {
-                smallvec![
-                    Instr::Machine(X86Instr::MOV32RR {
-                        dest: *dest,
-                        src: *src,
-                    })
-                ]
-            }
+    fn mov(dest: machine::Register<Self::ABI>, src: machine::Register<Self::ABI>) -> X86Instr {
+        X86Instr::MOV32rr {
+            dest,
+            src,
         }
+    }
+
+    fn mov_imm(dest: machine::Register<Self::ABI>, imm: Immediate) -> X86Instr {
+        assert_eq!(imm.size(), Size::DWord);
+        X86Instr::MOV32ri {
+            dest,
+            immediate: imm,
+        }
+    }
+
+    fn ret() -> X86Instr {
+        X86Instr::RET
     }
 
     fn new() -> Self {
