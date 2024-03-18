@@ -5,7 +5,7 @@ use clap::Parser;
 use tracing::debug;
 
 use firc_back::codegen::register_allocator;
-use firc_middle::FrontBridge;
+use firc_middle::{FrontBridge, optimization};
 
 #[derive(Parser, Debug)]
 #[clap(name = "firc")]
@@ -36,7 +36,9 @@ fn main() -> Result<()> {
     println!("{:?}", module);
     let mut module = FrontBridge::new().bridge(module);
     println!("{:?}", module);
-    // module.optimize(optimization::PipelineConfig::o1());
+    let mut config = optimization::PipelineConfig::o1();
+    config.dead_code_elimination = false;
+    // module.optimize(config);
     println!("{module}");
     let mut x86_mod = firc_back::codegen::machine::module::Builder::<firc_back::codegen::isa::x86_64::Backend>::new(&mut module).build();
     x86_mod.run_register_allocator();

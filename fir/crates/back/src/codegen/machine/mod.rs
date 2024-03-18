@@ -25,7 +25,7 @@ use crate::codegen::{machine, selection_dag};
 use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::machine::asm::Assembler;
-use crate::codegen::register_allocator::{InstrUid, LivenessRepr, ProgPoint};
+use crate::codegen::register_allocator::{InstrNumbering, InstrUid, LivenessRepr, ProgPoint};
 use crate::codegen::selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp};
 
 pub mod abi;
@@ -120,6 +120,7 @@ pub enum Instr<A: Abi> {
 }
 
 impl<A: Abi> Instr<A> {
+
     pub fn name(&self) -> &'static str {
         match self {
             Instr::Pseudo(pseudo) => pseudo.name(),
@@ -184,6 +185,13 @@ impl<A: Abi> Instr<A> {
             Instr::Machine(machine) => Some(machine),
         }
     }
+
+    pub fn is_phi(&self) -> bool {
+        match self {
+            Instr::Pseudo(PseudoInstr::Phi(_, _)) => true,
+            _ => false,
+        }
+    }
 }
 
 pub trait MachineInstr: Debug + PartialEq + Eq + Clone {
@@ -239,14 +247,16 @@ impl<'op, A: Abi> From<&'op mut InstrOperand<A>> for InstrOperandMut<'op, A> {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PseudoInstr<A: Abi> {
     Copy(Register<A>, Register<A>),
-    Ret(InstrOperand<A>),
+    Ret(Option<InstrOperand<A>>),
+    Phi(Register<A>, Vec<Register<A>>),
 }
 
 impl<A: Abi> PseudoInstr<A> {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Copy(_, _) => "COPY",
-            Self::Ret(_) => "RET"
+            Self::Ret(_) => "RET",
+            Self::Phi(_, _) => "PHI",
         }
     }
 
@@ -259,10 +269,13 @@ impl<A: Abi> PseudoInstr<A> {
             }
             Self::Ret(value) => {
                 let mut reads = smallvec![];
-                if let InstrOperand::Reg(reg) = value {
+                if let Some(InstrOperand::Reg(reg)) = value {
                     reads.push(*reg)
                 }
                 reads
+            }
+            Self::Phi(_, operands) => {
+                operands.clone().into()
             }
         }
     }
@@ -276,9 +289,17 @@ impl<A: Abi> PseudoInstr<A> {
                 ]
             }
             Self::Ret(value) => {
-                smallvec![
-                    value.clone()
-                ]
+                match value {
+                    None => smallvec![],
+                    Some(value) => smallvec![value.clone()],
+                }
+            }
+            Self::Phi(dest, operands) => {
+                let mut ops = smallvec![
+                    InstrOperand::Reg(*dest),
+                ];
+                ops.extend(operands.iter().map(|reg| InstrOperand::Reg(*reg)));
+                ops
             }
         }
     }
@@ -293,6 +314,11 @@ impl<A: Abi> PseudoInstr<A> {
             Self::Ret(_) => {
                 smallvec![]
             }
+            Self::Phi(dest, _) => {
+                smallvec![
+                    dest,
+                ]
+            }
         }
     }
 
@@ -305,10 +331,13 @@ impl<A: Abi> PseudoInstr<A> {
             }
             Self::Ret(value) => {
                 let mut reads = smallvec![];
-                if let InstrOperand::Reg(reg) = value {
+                if let Some(InstrOperand::Reg(reg)) = value {
                     reads.push(reg)
                 }
                 reads
+            }
+            Self::Phi(_, operands) => {
+                operands.iter_mut().collect()
             }
         }
     }
@@ -317,6 +346,7 @@ impl<A: Abi> PseudoInstr<A> {
         match self {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
+            Self::Phi(dest, _) => Some(*dest),
         }
     }
 }
@@ -342,7 +372,6 @@ pub enum PatternIn {
     Mov(PatternInOutput, PatternInOperand),
     Sub(PatternInOutput, PatternInOperand, PatternInOperand),
     Add(PatternInOutput, PatternInOperand, PatternInOperand),
-    Ret(Option<PatternInOperand>),
     Cmp(PatternInOutput, CmpOp, PatternInOperand, PatternInOperand),
     Br,
     CondBr(PatternInOperand),
@@ -379,10 +408,6 @@ pub struct MatchedAddPattern<A: Abi> {
     pub rhs: MatchedPatternOperand<A>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedRetPattern<A: Abi> {
-    pub value: Option<MatchedPatternOperand<A>>,
-}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct MatchedBrPattern {
@@ -410,7 +435,6 @@ pub enum MatchedPattern<A: Abi> {
     Sub(MatchedSubPattern<A>),
     Add(MatchedAddPattern<A>),
     Cmp(MatchedCmpPattern<A>),
-    Ret(MatchedRetPattern<A>),
     CondBr(MatchedCondBrPattern<A>),
     Br(MatchedBrPattern),
 }
@@ -433,13 +457,6 @@ impl<A: Abi> MatchedPattern<A> {
     pub fn try_as_add(&self) -> Option<&MatchedAddPattern<A>> {
         match self {
             MatchedPattern::Add(add) => Some(add),
-            _ => None,
-        }
-    }
-
-    pub fn try_as_ret(&self) -> Option<&MatchedRetPattern<A>> {
-        match self {
-            MatchedPattern::Ret(ret) => Some(ret),
             _ => None,
         }
     }
@@ -506,7 +523,7 @@ pub trait Pattern: Sized + Debug + Clone + PartialEq + Eq + 'static {
 
     fn in_(&self) -> PatternIn;
 
-    fn into_instr(self, in_: MatchedPattern<Self::ABI>) -> SmallVec<[Instr<<Self as Pattern>::ABI>; 2]>;
+    fn into_instr(self, function: &mut Function<Self::ABI>, matched: MatchedPattern<Self::ABI>) -> SmallVec<[Instr<<Self as Pattern>::ABI>; 2]>;
 }
 
 
@@ -563,6 +580,8 @@ impl From<&Type> for Size {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct VRegInfo {
     pub size: Size,
+    /// If set, the vreg will be placed in the same location as tied_to
+    pub tied_to: Option<VReg>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -591,11 +610,15 @@ impl<A: Abi> Function<A> {
     }
 
     pub fn alloc_vreg(&mut self, size: Size) -> VReg {
-        self.vregs.push(VRegInfo { size })
+        self.vregs.push(VRegInfo { size, tied_to: None })
     }
 
     pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo {
         &self.vregs[vreg]
+    }
+    pub fn tie_vreg(&mut self, vreg: VReg, to: VReg) {
+        debug!("Tying {vreg} to {to}");
+        self.vregs[vreg].tied_to = Some(to);
     }
 
     pub fn create_bb(&mut self) -> BasicBlockId {
@@ -638,36 +661,49 @@ impl<A: Abi> Function<A> {
                             ]
                         }
                         PseudoInstr::Ret(value) => {
-                            let return_slot = <B::ABI as Abi>::CallingConvention::return_slot(
-                                match value {
-                                    InstrOperand::Reg(reg) => {
-                                        reg.try_as_physical().unwrap().size()
-                                    }
-                                    InstrOperand::Imm(imm) => {
-                                        imm.size()
-                                    }
-                                    InstrOperand::Label(_) => unreachable!()
-                                }
-                            );
-                            match return_slot {
-                                Slot::Register(dest) => {
-                                    let dest = Register::Physical(dest);
-                                    let instr = match value {
-                                        InstrOperand::Reg(reg) => {
-                                            B::mov(dest, *reg)
-                                        }
-                                        InstrOperand::Imm(imm) => {
-                                            B::mov_imm(dest, *imm)
-                                        }
-                                        InstrOperand::Label(_) => unreachable!()
-                                    };
+                            match value.as_mut() {
+                                None => {
                                     smallvec![
-                                        instr,
                                         B::ret()
                                     ]
                                 }
-                                Slot::Stack => unimplemented!()
+                                Some(value) => {
+                                    let return_slot = <B::ABI as Abi>::CallingConvention::return_slot(
+                                        match value {
+                                            InstrOperand::Reg(reg) => {
+                                                reg.try_as_physical().unwrap().size()
+                                            }
+                                            InstrOperand::Imm(imm) => {
+                                                imm.size()
+                                            }
+                                            InstrOperand::Label(_) => unreachable!()
+                                        }
+                                    );
+                                    match return_slot {
+                                        Slot::Register(dest) => {
+                                            let dest = Register::Physical(dest);
+                                            let instr = match value {
+                                                InstrOperand::Reg(reg) => {
+                                                    B::mov(dest, *reg)
+                                                }
+                                                InstrOperand::Imm(imm) => {
+                                                    B::mov_imm(dest, *imm)
+                                                }
+                                                InstrOperand::Label(_) => unreachable!()
+                                            };
+                                            smallvec![
+                                        instr,
+                                        B::ret()
+                                    ]
+                                        }
+                                        Slot::Stack => unimplemented!()
+                                    }
+                                }
                             }
+
+                        }
+                        PseudoInstr::Phi(_, _) => {
+                            unreachable!("Phi should have been coalesced away by now")
                         }
                     };
                     debug!("Expanded pseudo instruction {:?} to {:?}", pseudo_instr, expanded);
@@ -863,8 +899,8 @@ impl<A: Abi> BasicBlock<A> {
         ProgPoint::Read(instr_nr)
     }
 
-    pub fn exit_pp(&self, liveness_repr: &LivenessRepr) -> ProgPoint {
-        let instr_nr = liveness_repr.instr_numbering.get_instr_nr(
+    pub fn exit_pp(&self, instr_numbering: &InstrNumbering) -> ProgPoint {
+        let instr_nr = instr_numbering.get_instr_nr(
             InstrUid {
                 bb: self.id,
                 instr: self.instructions.len_idx() - 1,
@@ -927,6 +963,32 @@ impl<B: Backend> FunctionBuilder<B> {
                                     )
                                 );
                             }
+                            PseudoOp::Ret(operand) => {
+                                instructions.push(
+                                    Instr::Pseudo(
+                                        PseudoInstr::Ret(
+                                            operand.as_ref().cloned().map(|operand| match operand {
+                                                Operand::Reg(reg) => InstrOperand::Reg(
+                                                    reg
+                                                ),
+                                                Operand::Imm(imm) => InstrOperand::Imm(
+                                                    imm
+                                                ),
+                                            })
+                                        )
+                                    )
+                                );
+                            }
+                            PseudoOp::Phi(dest, operands) => {
+                                instructions.push(
+                                    Instr::Pseudo(
+                                        PseudoInstr::Phi(
+                                            dest.clone(),
+                                            operands.clone(),
+                                        )
+                                    )
+                                );
+                            }
                         }
                     }
                     Op::Machine(op) => {
@@ -949,11 +1011,6 @@ impl<B: Backend> FunctionBuilder<B> {
                                     PatternInOutput::Reg(dest.size(&self.function)),
                                     self.operand_to_pattern(lhs),
                                     self.operand_to_pattern(rhs),
-                                )
-                            }
-                            MachineOp::Ret(value) => {
-                                PatternIn::Ret(
-                                    value.as_ref().map(|value| self.operand_to_pattern(value))
                                 )
                             }
                             MachineOp::Br(bb_id) => {
@@ -993,54 +1050,51 @@ impl<B: Backend> FunctionBuilder<B> {
                                 panic!("No pattern matched for node {:?}", op);
                             }
                             Some(pattern) => {
+                                let matched = match op {
+                                    MachineOp::Mov(dest, src) => MatchedPattern::Mov(
+                                        MatchedMovPattern {
+                                            dest: MatchedPatternOutput::Reg(*dest),
+                                            src: self.operand_to_matched_pattern_operand(src),
+                                        }
+                                    ),
+                                    MachineOp::Sub(dest, lhs, rhs) => MatchedPattern::Sub(
+                                        MatchedSubPattern {
+                                            dest: MatchedPatternOutput::Reg(*dest),
+                                            lhs: self.operand_to_matched_pattern_operand(lhs),
+                                            rhs: self.operand_to_matched_pattern_operand(rhs),
+                                        }
+                                    ),
+                                    MachineOp::Add(dest, lhs, rhs) => MatchedPattern::Add(
+                                        MatchedAddPattern {
+                                            dest: MatchedPatternOutput::Reg(*dest),
+                                            lhs: self.operand_to_matched_pattern_operand(lhs),
+                                            rhs: self.operand_to_matched_pattern_operand(rhs),
+                                        }
+                                    ),
+                                    MachineOp::Br(target) => MatchedPattern::Br(
+                                        MatchedBrPattern {
+                                            target: self.bb_mapping[target],
+                                        }
+                                    ),
+                                    MachineOp::Cmp(dest, cmp_op, lhs, rhs) => MatchedPattern::Cmp(
+                                        MatchedCmpPattern {
+                                            dest: MatchedPatternOutput::Reg(*dest),
+                                            cmp_op: *cmp_op,
+                                            lhs: self.operand_to_matched_pattern_operand(lhs),
+                                            rhs: self.operand_to_matched_pattern_operand(rhs),
+                                        }
+                                    ),
+                                    MachineOp::CondBr(cond, true_target, false_target) => MatchedPattern::CondBr(
+                                        MatchedCondBrPattern {
+                                            cond: self.operand_to_matched_pattern_operand(cond),
+                                            true_target: self.bb_mapping[true_target],
+                                            false_target: self.bb_mapping[false_target],
+                                        }
+                                    ),
+                                };
                                 let generated_instructions = pattern.into_instr(
-                                    match op {
-                                        MachineOp::Mov(dest, src) => MatchedPattern::Mov(
-                                            MatchedMovPattern {
-                                                dest: MatchedPatternOutput::Reg(*dest),
-                                                src: self.operand_to_matched_pattern_operand(src),
-                                            }
-                                        ),
-                                        MachineOp::Sub(dest, lhs, rhs) => MatchedPattern::Sub(
-                                            MatchedSubPattern {
-                                                dest: MatchedPatternOutput::Reg(*dest),
-                                                lhs: self.operand_to_matched_pattern_operand(lhs),
-                                                rhs: self.operand_to_matched_pattern_operand(rhs),
-                                            }
-                                        ),
-                                        MachineOp::Add(dest, lhs, rhs) => MatchedPattern::Add(
-                                            MatchedAddPattern {
-                                                dest: MatchedPatternOutput::Reg(*dest),
-                                                lhs: self.operand_to_matched_pattern_operand(lhs),
-                                                rhs: self.operand_to_matched_pattern_operand(rhs),
-                                            }
-                                        ),
-                                        MachineOp::Ret(value) => MatchedPattern::Ret(
-                                            MatchedRetPattern {
-                                                value: value.as_ref().map(|value| self.operand_to_matched_pattern_operand(value)),
-                                            }
-                                        ),
-                                        MachineOp::Br(target) => MatchedPattern::Br(
-                                            MatchedBrPattern {
-                                                target: self.bb_mapping[target],
-                                            }
-                                        ),
-                                        MachineOp::Cmp(dest, cmp_op, lhs, rhs) => MatchedPattern::Cmp(
-                                            MatchedCmpPattern {
-                                                dest: MatchedPatternOutput::Reg(*dest),
-                                                cmp_op: *cmp_op,
-                                                lhs: self.operand_to_matched_pattern_operand(lhs),
-                                                rhs: self.operand_to_matched_pattern_operand(rhs),
-                                            }
-                                        ),
-                                        MachineOp::CondBr(cond, true_target, false_target) => MatchedPattern::CondBr(
-                                            MatchedCondBrPattern {
-                                                cond: self.operand_to_matched_pattern_operand(cond),
-                                                true_target: self.bb_mapping[true_target],
-                                                false_target: self.bb_mapping[false_target],
-                                            }
-                                        ),
-                                    }
+                                    &mut self.function,
+                                    matched,
                                 );
                                 debug!("Generated instructions {:?}", generated_instructions);
                                 instructions.extend(generated_instructions.into_iter());

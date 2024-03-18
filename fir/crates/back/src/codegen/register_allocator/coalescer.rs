@@ -29,6 +29,12 @@ impl<'module, A: Abi> Coalescer<'module, A> {
                                     }
                                 }
                                 PseudoInstr::Ret(_) => {}
+                                PseudoInstr::Phi(dest, operands) => {
+                                    if operands.iter().all(|op| op == dest) {
+                                        debug!("Removing redundant phi: {:?}", instr);
+                                        instructions_to_remove.push(instr_id);
+                                    } 
+                                }
                             }
                         }
                         Instr::Machine(_) => {}

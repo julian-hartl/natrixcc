@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
+use std::num::NonZeroUsize;
 
-use cranelift_entity::{EntityRef, SecondaryMap};
+use cranelift_entity::{EntityRef, SecondaryMap, SparseMap};
 use daggy::{NodeIndex, Walker};
 use daggy::petgraph::visit::IntoNodeIdentifiers;
 use iter_tools::Itertools;
@@ -51,59 +52,75 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
             let bb_args = func.cfg.basic_block(bb_id).arguments()
                 .map(|arg| (arg, func.cfg.vreg_ty_cloned(arg)))
                 .collect_vec();
-            let temp_regs = bb_args.iter().map(|(_, ty)| {
-                func.cfg.new_vreg(VRegData {
-                    defined_in: bb_id,
-                    ty: ty.clone(),
-                })
-            }).collect_vec();
+            let mut temp_regs = FxHashMap::<_, Vec<_>>::default();
             let preds = func.cfg.predecessors(bb_id).collect::<Vec<_>>();
             for pred_id in preds {
                 let args = func.cfg.basic_block(pred_id).terminator().branch_args(bb_id).unwrap().cloned().collect::<Vec<_>>();
                 if args.is_empty() {
                     continue;
                 }
-                // Create new basic block for copying the argument ops to temp regs
-                let critical_edge_split_bb = func.cfg.new_basic_block();
-                func.cfg.basic_block_mut(critical_edge_split_bb).set_terminator(
-                    Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(
-                        bb_id
-                    ))))
-                );
-                func.cfg.recompute_successors(critical_edge_split_bb);
-                func.cfg.basic_block_mut(pred_id).update_terminator(|term|
-                    {
-                        term.clear_args(bb_id);
-                        term.update_references_to_bb(bb_id, critical_edge_split_bb);
-                    });
+                let succ_len = func.cfg.successors(pred_id).count();
+                let copy_instr_bb = if succ_len == 1 {
+                    // No need to split the critical edge
+                    func.cfg.basic_block_mut(pred_id).update_terminator(|term|
+                        {
+                            term.clear_args(bb_id);
+                        });
+                    pred_id
+                } else {
+                    // Create new basic block for copying the argument ops to temp regs
+                    let critical_edge_split_bb = func.cfg.new_basic_block();
+                    func.cfg.basic_block_mut(critical_edge_split_bb).set_terminator(
+                        Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(
+                            bb_id
+                        ))))
+                    );
+                    func.cfg.recompute_successors(critical_edge_split_bb);
+                    func.cfg.basic_block_mut(pred_id).update_terminator(|term|
+                        {
+                            term.clear_args(bb_id);
+                            term.update_references_to_bb(bb_id, critical_edge_split_bb);
+                        });
 
-                func.cfg.recompute_successors(pred_id);
-                for ((arg, temp_reg), ty) in args.into_iter().zip(
-                    temp_regs.iter().copied()
-                ).zip(bb_args.iter().map(|(_, ty)| ty.clone())) {
+                    func.cfg.recompute_successors(pred_id);
+                    critical_edge_split_bb
+                };
+
+                for (arg, (bb_arg, ty)) in args.into_iter().zip(bb_args.iter()) {
                     // Create a temp reg and copy the jump arg to it
+                    let temp_reg = func.cfg.new_vreg(VRegData {
+                        defined_in: pred_id,
+                        ty: ty.clone(),
+                    });
+                    temp_regs.entry(*bb_arg).or_default().push(temp_reg);
                     let instr = func.cfg.copy_op_instr(
                         temp_reg,
                         arg,
-                        ty,
+                        ty.clone(),
                     );
-                    func.cfg.add_instruction(critical_edge_split_bb, instr);
+                    func.cfg.add_instruction(copy_instr_bb, instr);
                 }
             }
-            let arguments = func.cfg.basic_block(bb_id).arguments().collect::<Vec<_>>();
             let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
-            for (arg, temp_reg) in arguments.into_iter().zip(
-                temp_regs.into_iter()
-            ) {
-                // Copy the temp reg to the basic block arg reg
-                let instr = func.cfg.copy_reg_instr(
-                    arg,
-                    temp_reg,
+            for (arg, _) in bb_args {
+                let mapped_arg = self.map_vreg(arg, func);
+                let operands = temp_regs.remove(&arg).unwrap().into_iter().map(
+                    |reg| {
+                        let mapped = self.map_vreg(reg, func);
+                        // Ensure that the temp reg and arg reg will be placed in the same location => we can trivially remove the phi instruction later on
+                        self.function.tie_vreg(mapped, mapped_arg);
+                        Register::Virtual(mapped)
+                    }
+                ).collect_vec();
+                let pseudo_op = PseudoOp::Phi(
+                    Register::Virtual(mapped_arg),
+                    operands,
                 );
-                func.cfg.basic_block_mut(bb_id).insert_instruction_at(0, instr);
+                debug!("Adding phi to {bb_id}: {:?}", pseudo_op);
+                let phi_op = Op::Pseudo(pseudo_op);
+                self.define_node(bb_id, phi_op);
             }
             debug!("Eliminated basic block arguments for {}", bb_id);
-            debug!("{}", func);
         }
         for (bb_id, bb) in func.cfg.basic_blocks() {
             debug!("Building SelectionDAG for basic block {}", bb_id);
@@ -183,22 +200,22 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
             match &bb.terminator().kind {
                 firc_middle::cfg::TerminatorKind::Ret(ret_term) => {
                     let value = ret_term.value.as_ref().map(|value| self.map_op(value, &func.ret_ty, func));
-                    self.define_term_node(bb_id, MachineOp::Ret(
+                    self.define_term_node(bb_id, Op::Pseudo(PseudoOp::Ret(
                         value
-                    ));
+                    )));
                 }
                 firc_middle::cfg::TerminatorKind::Branch(branch_term) => {
-                    self.define_term_node(bb_id, MachineOp::Br(
+                    self.define_term_node(bb_id, Op::Machine(MachineOp::Br(
                         branch_term.target.id
-                    ));
+                    )));
                 }
                 firc_middle::cfg::TerminatorKind::CondBranch(branch_term) => {
                     let op = self.map_op(&branch_term.cond, &Type::Bool, func);
-                    self.define_term_node(bb_id, MachineOp::CondBr(
+                    self.define_term_node(bb_id, Op::Machine(MachineOp::CondBr(
                         op,
                         branch_term.true_target.id.into(),
                         branch_term.false_target.id.into(),
-                    ));
+                    )));
                 }
             }
         }
@@ -255,8 +272,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         node
     }
 
-    fn define_term_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: MachineOp<A>) -> NodeIndex {
-        let term_node = self.define_node(bb_id, Op::Machine(op));
+    fn define_term_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
+        let term_node = self.define_node(bb_id, op);
         let dag = self.sel_dag.get_bb_dag(bb_id);
         dag.set_term_node(term_node);
         debug!("Adding dependency on term node for every node");

@@ -223,19 +223,30 @@ impl<A: Abi> Op<A> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PseudoOp<A: Abi> {
-    Copy(Register<A>, Register<A>)
+    Copy(Register<A>, Register<A>),
+    Ret(Option<Operand<A>>),
+    Phi(Register<A>, Vec<Register<A>>)
 }
 
 impl<A: Abi> PseudoOp<A> {
     pub fn out(&self) -> Option<Register<A>> {
         match self {
-            PseudoOp::Copy(dest, _) => Some(*dest)
+            Self::Copy(dest, _) => Some(*dest),
+            Self::Ret(_) => None,
+            Self::Phi(dest, _) => Some(*dest)
         }
     }
 
     pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
-            PseudoOp::Copy(_, dest) => smallvec![*dest]
+            PseudoOp::Copy(_, dest) => smallvec![*dest],
+            PseudoOp::Ret(op) => {
+                match op {
+                    Some(Operand::Reg(reg)) => smallvec![*reg],
+                    _ => smallvec![]
+                }
+            }
+            PseudoOp::Phi(_, regs) => regs.clone().into()
         }
     }
 }
@@ -248,7 +259,6 @@ pub enum MachineOp<A: Abi> {
     Cmp(Register<A>, CmpOp, Operand<A>, Operand<A>),
     Br(BasicBlockId),
     CondBr(Operand<A>, BasicBlockId, BasicBlockId),
-    Ret(Option<Operand<A>>),
 }
 
 impl<A: Abi> MachineOp<A> {
@@ -258,7 +268,6 @@ impl<A: Abi> MachineOp<A> {
             Self::Sub(dest, _, _) => Some(*dest),
             Self::Add(dest, _, _) => Some(*dest),
             Self::Cmp(dest, _, _, _) => Some(*dest),
-            Self::Ret(_) => None,
             Self::Br(_) => None,
             Self::CondBr(_, _, _) => None,
         }
@@ -289,9 +298,6 @@ impl<A: Abi> MachineOp<A> {
                     (None, Some(dest)) => smallvec![dest],
                     _ => smallvec![]
                 }
-            }
-            MachineOp::Ret(value) => {
-                value.as_ref().and_then(|op| op.try_as_register()).into_iter().collect()
             }
             MachineOp::Br(_) => smallvec![],
             MachineOp::Cmp(_, _, lhs, rhs) => {
