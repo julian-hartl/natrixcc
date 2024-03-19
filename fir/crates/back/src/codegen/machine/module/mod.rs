@@ -46,6 +46,12 @@ impl<A: Abi> Module<A> {
             debug!("{}", function);
         }
     }
+    
+    pub fn remove_fallthrough_jumps(&mut self) {
+        for (_, function) in &mut self.functions {
+            function.remove_fallthrough_jumps();
+        }
+    }
 
     pub fn expand_pseudo_instructions<B>(&mut self) where B: Backend<ABI=A> {
         for (_, function) in &mut self.functions {

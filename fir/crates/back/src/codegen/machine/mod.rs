@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::fmt::{Debug, Display, Formatter};
 use std::hash::Hash;
+use std::ops::Range;
 
 use cranelift_entity::{entity_impl, EntityRef, PrimaryMap};
 use daggy::{NodeIndex, Walker};
@@ -10,7 +11,7 @@ use daggy::petgraph::visit::{Bfs, DfsPostOrder, IntoEdges};
 use iced_x86::Instruction;
 use index_vec::{index_vec, IndexVec};
 use iter_tools::Itertools;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use slotmap::{HopSlotMap, new_key_type};
 use smallvec::{SmallVec, smallvec};
 use tracing::debug;
@@ -32,6 +33,8 @@ pub mod abi;
 pub mod asm;
 pub mod module;
 
+// #[derive(Debug, Clone)]
+// pub struct SubReg<P: PhysicalRegister>((P, Range<u16>));
 
 pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn name(&self) -> &'static str;
@@ -41,6 +44,25 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn is_gp(&self) -> bool;
 
     fn size(&self) -> Size;
+
+    /// Returns the sub registers of this register.
+    /// 
+    /// E.g. on x86-64, the sub registers of RAX are EAX, AX, AH and AL.
+    fn subregs(&self) -> Option<&'static [Self]>;
+    
+    fn has_subreg(&self, other: Self) -> bool where Self: 'static {
+        self.subregs().map_or(false, |subregs| subregs.contains(&other))
+    }
+    
+    fn interferes_with(self, other: Self) -> bool where Self: 'static {
+        if self == other {
+            return true;
+        }
+        if self.has_subreg(other) || other.has_subreg(self) {
+            return true;
+        }
+        false
+    }
 }
 
 
@@ -120,7 +142,6 @@ pub enum Instr<A: Abi> {
 }
 
 impl<A: Abi> Instr<A> {
-
     pub fn name(&self) -> &'static str {
         match self {
             Instr::Pseudo(pseudo) => pseudo.name(),
@@ -631,10 +652,11 @@ impl<A: Abi> Function<A> {
     pub fn assemble(&self) -> Vec<u8> {
         debug!("Assembling function {}", self.name);
         let mut asm = A::get_assembler();
-        for (bb_id, bb) in self.basic_blocks.iter_enumerated() {
+        for bb_id in self.cfg().ordered() {
+            let bb = &self.basic_blocks[bb_id];
             debug!("Assembling basic block {}", bb_id);
             asm.begin_basic_block(bb_id);
-            for instr in bb.instructions.iter() {
+            for instr in &bb.instructions {
                 debug!("Assembling instruction {:?}", instr);
                 asm.assemble(instr.try_as_machine().unwrap_or_else(|| panic!("Pseudo instructions should have been expanded: {:?}", instr)));
             }
@@ -700,14 +722,13 @@ impl<A: Abi> Function<A> {
                                     }
                                 }
                             }
-
                         }
                         PseudoInstr::Phi(_, _) => {
                             unreachable!("Phi should have been coalesced away by now")
                         }
                     };
                     debug!("Expanded pseudo instruction {:?} to {:?}", pseudo_instr, expanded);
-                    assert!(expanded.len() > 0, "Pseudo instruction was not expanded: {:?}", pseudo_instr);
+                    assert!(!expanded.is_empty(), "Pseudo instruction was not expanded: {:?}", pseudo_instr);
                     bb.instructions.remove(instr_id);
                     let expanded_len = expanded.len();
                     for (offset, instr) in expanded.into_iter().enumerate() {
@@ -716,6 +737,24 @@ impl<A: Abi> Function<A> {
                     instr_id += expanded_len - 1;
                 }
                 instr_id += 1;
+            }
+        }
+    }
+
+    pub fn remove_fallthrough_jumps(&mut self) {
+        let ordered = self.cfg().ordered();
+        for (i, bb_id) in ordered.iter().copied().enumerate() {
+            let bb = &mut self.basic_blocks[bb_id];
+            let Some(next_bb_id) = ordered.get(i + 1).copied() else {
+                continue;
+            };
+            if let Some(last_instr) = bb.instructions.last() {
+                if let Some(InstrOperand::Label(label)) = last_instr.operands().last() {
+                    if *label == next_bb_id {
+                        debug!("Removing fallthrough jump from {} to {}", bb_id, next_bb_id);
+                        bb.instructions.pop();
+                    }
+                }
             }
         }
     }
@@ -733,7 +772,12 @@ impl<A: Abi> Function<A> {
 impl<A: Abi> Display for Function<A> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
-        for (bb_id, bb) in self.basic_blocks.iter_enumerated() {
+        let bbs: Box<dyn Iterator<Item=BasicBlockId>> = match &self.cfg {
+            Some(cfg) => Box::new(cfg.ordered().into_iter()),
+            None => Box::new(self.basic_blocks.indices().into_iter()),
+        };
+        for bb_id in bbs {
+            let bb = &self.basic_blocks[bb_id];
             writeln!(f, "{bb_id}: ")?;
             for instr in &bb.instructions {
                 write!(f, "  ")?;
@@ -862,11 +906,37 @@ impl Cfg {
         ).expect("Did not find matching entry in node_to_block_map for entry block")
     }
 
-    pub fn topological_order(&self) -> Vec<BasicBlockId> {
-        algo::toposort(&self.graph, None).expect("cyclic cfgs are not supported yet")
-            .into_iter().map(
-            |idx| self.node_to_block_map[&idx]
-        ).collect_vec()
+    /// Returns an ordering of basic block with the following guarantees:
+    /// 1. All predecessors of a basic block are visited before the basic block itself (except if the bb is a predecessor of itself)
+    pub fn ordered(&self) -> Vec<BasicBlockId> {
+        // let mut visited = FxHashSet::default();
+        let mut order = self.bfs().collect_vec();
+        // let mut stack = VecDeque::new();
+        // stack.push_back(self.entry_block);
+        // while let Some(bb) = stack.pop_front() {
+        //     debug!("Visiting basic block {}:{:?}", bb,visited);
+        //     if visited.contains(&bb) {
+        //         continue;
+        //     }
+        //     let mut all_preds_visited = true;
+        //     for pred in self.predecessors(bb) {
+        //         if !(pred == bb || visited.contains(&pred)) {
+        //             debug!("Pred {} of {} has not been visited yet", pred, bb);
+        //             stack.push_back(pred);
+        //             all_preds_visited = false;
+        //         }
+        //     }
+        //     if all_preds_visited {
+        //         visited.insert(bb);
+        //         order.push(bb);
+        //         for succ in self.successors(bb) {
+        //             stack.push_back(succ);
+        //         }
+        //     } else {
+        //         stack.push_back(bb);
+        //     }
+        // }
+        order
     }
 }
 

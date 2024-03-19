@@ -96,7 +96,8 @@ impl<'func> Builder<'func> {
         value
     }
 
-    pub fn icmp(&mut self, ty: Type, condition: CmpOp, op1: Op, op2: Op) -> VReg {
+    pub fn icmp(&mut self,  condition: CmpOp, op1: Op, op2: Op) -> VReg {
+        let ty = Type::Bool;
         let value = self.next_vreg(ty.clone());
         self.add_instr(Instr::new(ty, InstrKind::Cmp(
             CmpInstr {
@@ -115,6 +116,10 @@ impl<'func> Builder<'func> {
         self.func.cfg.basic_block_mut(current_bb).add_argument(value);
         value
     }
+    
+    pub fn get_bb_arguments(&self, bb: BasicBlockId) -> &[VReg] {
+        &self.func.cfg.basic_block(bb).arguments
+    }
 
     pub fn add_instr(&mut self, instr: Instr) {
         self.func.cfg.add_instruction(self.current_bb(), instr);
@@ -124,6 +129,10 @@ impl<'func> Builder<'func> {
     /// instead of continuing serially. 
     pub(crate) fn set_next_vreg(&mut self, vreg: VReg) {
         self.next_vreg = Some(vreg);
+    }
+    
+    pub fn vreg(&self, vreg: VReg) -> &VRegData {
+        &self.func.cfg.vregs[vreg]
     }
 
     fn next_vreg(&mut self, ty: Type) -> VReg {

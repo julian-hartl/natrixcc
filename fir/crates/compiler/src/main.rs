@@ -43,6 +43,7 @@ fn main() -> Result<()> {
     let mut x86_mod = firc_back::codegen::machine::module::Builder::<firc_back::codegen::isa::x86_64::Backend>::new(&mut module).build();
     x86_mod.run_register_allocator();
     x86_mod.run_register_coalescer();
+    x86_mod.remove_fallthrough_jumps();
     x86_mod.expand_pseudo_instructions::<firc_back::codegen::isa::x86_64::Backend>();
     debug!("{x86_mod}");
     x86_mod.assemble();

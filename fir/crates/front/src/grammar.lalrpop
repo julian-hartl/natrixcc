@@ -44,8 +44,8 @@ pub InstructionInner: Instruction = {
     <decl:RegId> "=" "add" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Add(decl, ty, op1, op2),
     <decl:RegId> "=" "sub" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Sub(decl, ty, op1, op2),
     <decl:RegId> "=" <ty: Type> <op: Operand> => Instruction::Op(decl, ty, op),
-    <decl:RegId> "=" "icmp" <ty: Type> <op: CmpOp> <op1: Operand> "," <op2: Operand> => Instruction::ICmp(decl, ty, op, op1, op2),
-    "condbr" <ty: Type> <condition: Operand> "," <true_target: Target> "," <false_target: Target> => Instruction::Condbr(ty, condition, true_target, false_target),
+    <decl:RegId> "=" "icmp" <op: CmpOp> <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::ICmp(decl, op, ty, op1, op2),
+    "condbr" <condition: Operand> <true_target: Target> "," <false_target: Target> => Instruction::Condbr(condition, true_target, false_target),
     "br" <target: Target> => Instruction::Br(target),
     "ret" <ty: Type> <op: Operand?> => Instruction::Ret(ty, op),
 }

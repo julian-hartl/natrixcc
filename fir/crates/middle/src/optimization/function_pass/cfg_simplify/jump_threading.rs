@@ -78,7 +78,7 @@ impl basic_block_pass::BasicBlockPass for Pass {
                             let is_true_branch = match const_val {
                                 // It is important to not check equality with one, as any other value than 0 is evaluated to true at runtime.
                                 // For example: 2 => true, -1 => true, 0 => false
-                                Const::Int (value) => *value != 0,
+                                Const::Int (_, value) => *value != 0,
                             };
                             let target = if is_true_branch { condbr_term.true_target.clone() } else { condbr_term.false_target.clone() };
                             debug!("Found constant condition in conditional branch. Replacing with branch to {}", target.id);

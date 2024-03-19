@@ -33,7 +33,7 @@ impl BasicBlockPass for ConstantFoldPass {
                         changes += 1;
                     }
                     if let Some(const_val) = Self::eval_binary_instr(&constant_values, &sub_instr.lhs, &sub_instr.rhs, |lhs, rhs| {
-                        lhs.sub(rhs, instr.ty.clone()).unwrap()
+                        lhs.sub(rhs).unwrap()
                     }) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: sub_instr.value,
@@ -50,7 +50,7 @@ impl BasicBlockPass for ConstantFoldPass {
                         changes += 1;
                     }
                     if let Some(const_val) = Self::eval_binary_instr(&constant_values, &add_instr.lhs, &add_instr.rhs, |lhs, rhs| {
-                        lhs.add(rhs, instr.ty.clone()).unwrap()
+                        lhs.add(rhs).unwrap()
                     }) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: add_instr.value,
@@ -62,7 +62,7 @@ impl BasicBlockPass for ConstantFoldPass {
                 InstrKind::Op(op_instr) => {
                     let updated_op = match &op_instr.op {
                         Op::Const(constant) => {
-                            constant_values.insert(op_instr.value, *constant);
+                            constant_values.insert(op_instr.value, constant.clone());
                             None
                         }
                         Op::Value(place) => {
@@ -95,12 +95,7 @@ impl BasicBlockPass for ConstantFoldPass {
                         changes += 1;
                     }
                     if let Some(const_val) = Self::eval_binary_instr(&constant_values, &icmp_instr.lhs, &icmp_instr.rhs, |lhs, rhs| {
-                        Const::Int(
-                            match icmp_instr.op {
-                                CmpOp::Eq => lhs == rhs,
-                                CmpOp::Gt => lhs > rhs
-                            } as i64
-                        )
+                        lhs.cmp(rhs, CmpOp::from(icmp_instr.op)).unwrap()
                     }) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: icmp_instr.value,
@@ -120,7 +115,7 @@ impl BasicBlockPass for ConstantFoldPass {
                             Op::Value(value) => {
                                 if let Some(constant_value) = constant_values.get(value) {
                                     changes += 1;
-                                    *ret_value = Op::Const(*constant_value);
+                                    *ret_value = Op::Const(constant_value.clone());
                                 }
                             }
                         }
@@ -141,7 +136,7 @@ impl BasicBlockPass for ConstantFoldPass {
 impl ConstantFoldPass {
     fn op_to_const(constant_values: &FxHashMap<VReg, Const>, op: &Op) -> Option<Const> {
         match op {
-            Op::Const(constant) => Some(*constant),
+            Op::Const(constant) => Some(constant.clone()),
             Op::Value(place) => constant_values.get(place).cloned(),
         }
     }
@@ -150,7 +145,7 @@ impl ConstantFoldPass {
         if let Op::Value(value) = op {
             if let Some(const_val) = constant_values.get(value) {
                 debug!("Replacing {value} with {const_val}");
-                *op = Op::Const(*const_val);
+                *op = Op::Const(const_val.clone());
                 return true;
             }
         }

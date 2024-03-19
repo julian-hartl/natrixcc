@@ -38,16 +38,41 @@ impl From<PhysicalRegister> for Register {
     fn from(value: PhysicalRegister) -> Self {
         match value {
             PhysicalRegister::AL => Self::AL,
+            PhysicalRegister::AH => Self::AH,
+            PhysicalRegister::AX => Self::AX,
             PhysicalRegister::EAX => Self::EAX,
-            PhysicalRegister::ECX => Self::ECX,
-            PhysicalRegister::EDX => Self::EDX,
+            PhysicalRegister::RAX => Self::RAX,
+            PhysicalRegister::BL => Self::BL,
+            PhysicalRegister::BH => Self::BH,
+            PhysicalRegister::BX => Self::BX,
             PhysicalRegister::EBX => Self::EBX,
-            PhysicalRegister::ESP => Self::ESP,
-            PhysicalRegister::EBP => Self::EBP,
+            PhysicalRegister::RBX => Self::RBX,
+            PhysicalRegister::CL => Self::CL,
+            PhysicalRegister::CH => Self::CH,
+            PhysicalRegister::CX => Self::CX,
+            PhysicalRegister::ECX => Self::ECX,
+            PhysicalRegister::RCX => Self::RCX,
+            PhysicalRegister::DL => Self::DL,
+            PhysicalRegister::DH => Self::DH,
+            PhysicalRegister::DX => Self::DX,
+            PhysicalRegister::EDX => Self::EDX,
+            PhysicalRegister::RDX => Self::RDX,
+            PhysicalRegister::SIL => Self::SIL,
+            PhysicalRegister::SI => Self::SI,
             PhysicalRegister::ESI => Self::ESI,
+            PhysicalRegister::RSI => Self::RSI,
+            PhysicalRegister::DIL => Self::DIL,
+            PhysicalRegister::DI => Self::DI,
             PhysicalRegister::EDI => Self::EDI,
+            PhysicalRegister::RDI => Self::RDI,
+            PhysicalRegister::R8L => Self::R8L,
+            PhysicalRegister::R8W => Self::R8W,
             PhysicalRegister::R8D => Self::R8D,
+            PhysicalRegister::R8 => Self::R8,
+            PhysicalRegister::R9L => Self::R9L,
+            PhysicalRegister::R9W => Self::R9W,
             PhysicalRegister::R9D => Self::R9D,
+            PhysicalRegister::R9 => Self::R9,
             PhysicalRegister::EFLAGS => unreachable!(),
         }
     }
@@ -161,6 +186,7 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let code: Code = match cc {
                     CC::Eq => Code::Sete_rm8,
+                    CC::Gt => Code::Setg_rm8,
                 };
                 self.add_instruction(Instruction::with1(
                     code,
@@ -172,6 +198,9 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 match cc {
                     CC::Eq => {
                         self.je(label).unwrap();
+                    }
+                    CC::Gt => {
+                        self.jg(label).unwrap();
                     }
                 };
             }

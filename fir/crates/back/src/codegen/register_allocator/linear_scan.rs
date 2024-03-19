@@ -25,7 +25,7 @@ impl<'liveness, A: Abi> RegAllocAlgorithm<'liveness, A> for RegAlloc<'liveness, 
     fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<A>) -> A::REG {
         self.set_cursor(vreg.lifetime.start);
         let reg = hints.into_iter().find(
-            |hint| self.free_regs.contains(hint)
+            |hint| self.is_free(*hint)
         ).unwrap_or_else(|| self.find_reg_with_size(vreg.size).expect("No free register available"));
         self.insert_active(vreg.lifetime.clone(), reg);
         reg
@@ -61,7 +61,7 @@ impl<A: Abi> RegAlloc<'_, A> {
 
     /// Inserts a new live interval into the active list.
     fn insert_active(&mut self, interval: Lifetime, reg: A::REG) {
-        self.free_regs.retain(|r| r != &reg);
+        self.free_regs.retain(|r| !reg.interferes_with(*r));
         // let idx = self.active.iter().position(|(i, _)| i.end >= interval.end);
         // if let Some(idx) = idx {
         //     self.active.insert(idx, (interval, reg));
@@ -74,6 +74,9 @@ impl<A: Abi> RegAlloc<'_, A> {
     fn remove_active(&mut self, i: usize) -> (Lifetime, A::REG) {
         let (lifetime, reg) = self.active.remove(i);
         self.free_regs.push(reg);
+        for subreg in reg.subregs().into_iter().flatten().copied() {
+            self.free_regs.push(subreg);
+        }
         (lifetime, reg)
     }
 
@@ -82,9 +85,7 @@ impl<A: Abi> RegAlloc<'_, A> {
     }
 
     fn remove_inactive(&mut self, i: usize) -> (Lifetime, A::REG) {
-        let (interval, reg) = self.inactive.remove(i);
-        self.free_regs.push(reg);
-        (interval, reg)
+        self.inactive.remove(i)
     }
 
     fn expire_old_intervals(&mut self, pp: ProgPoint) {

@@ -175,7 +175,7 @@ impl ConstantPropagation {
                     }
                     Some(const_value) => {
                         debug!("Replaced {value} with {const_value}");
-                        *op = Op::Const(*const_value);
+                        *op = Op::Const(const_value.clone());
                         true
                     }
                 }

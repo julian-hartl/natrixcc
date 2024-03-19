@@ -151,7 +151,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     firc_middle::InstrKind::Load(_) => unimplemented!(),
                     firc_middle::InstrKind::Op(op_instr) => {
                         let out_reg = self.map_vreg(op_instr.value, func);
-                        let op = match self.map_op(&op_instr.op, &instr.ty, func) {
+                        let op = match self.map_op(&op_instr.op, func) {
                             Operand::Reg(reg) => Op::Pseudo(PseudoOp::Copy(
                                 Register::Virtual(out_reg),
                                 reg,
@@ -165,8 +165,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     }
                     firc_middle::InstrKind::Sub(sub_instr) => {
                         let out_reg = self.map_vreg(sub_instr.value, func);
-                        let lhs = self.map_op(&sub_instr.lhs, &instr.ty, func);
-                        let rhs = self.map_op(&sub_instr.rhs, &instr.ty, func);
+                        let lhs = self.map_op(&sub_instr.lhs, func);
+                        let rhs = self.map_op(&sub_instr.rhs, func);
                         self.define_node(bb_id, Op::Machine(MachineOp::Sub(
                             Register::Virtual(out_reg),
                             lhs,
@@ -175,8 +175,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     }
                     firc_middle::InstrKind::Add(add_instr) => {
                         let out_reg = self.map_vreg(add_instr.value, func);
-                        let lhs = self.map_op(&add_instr.lhs, &instr.ty, func);
-                        let rhs = self.map_op(&add_instr.rhs, &instr.ty, func);
+                        let lhs = self.map_op(&add_instr.lhs, func);
+                        let rhs = self.map_op(&add_instr.rhs, func);
                         self.define_node(bb_id, Op::Machine(MachineOp::Add(
                             Register::Virtual(out_reg),
                             lhs,
@@ -185,8 +185,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     }
                     firc_middle::InstrKind::Cmp(cmp_instr) => {
                         let out_reg = self.map_vreg(cmp_instr.value, func);
-                        let lhs = self.map_op(&cmp_instr.lhs, &instr.ty, func);
-                        let rhs = self.map_op(&cmp_instr.rhs, &instr.ty, func);
+                        let lhs = self.map_op(&cmp_instr.lhs, func);
+                        let rhs = self.map_op(&cmp_instr.rhs, func);
                         self.define_node(bb_id, Op::Machine(MachineOp::Cmp(
                             Register::Virtual(out_reg),
                             cmp_instr.op,
@@ -199,7 +199,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
 
             match &bb.terminator().kind {
                 firc_middle::cfg::TerminatorKind::Ret(ret_term) => {
-                    let value = ret_term.value.as_ref().map(|value| self.map_op(value, &func.ret_ty, func));
+                    let value = ret_term.value.as_ref().map(|value| self.map_op(value,  func));
                     self.define_term_node(bb_id, Op::Pseudo(PseudoOp::Ret(
                         value
                     )));
@@ -210,7 +210,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     )));
                 }
                 firc_middle::cfg::TerminatorKind::CondBranch(branch_term) => {
-                    let op = self.map_op(&branch_term.cond, &Type::Bool, func);
+                    let op = self.map_op(&branch_term.cond, func);
                     self.define_term_node(bb_id, Op::Machine(MachineOp::CondBr(
                         op,
                         branch_term.true_target.id.into(),
@@ -222,11 +222,11 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         self.sel_dag
     }
 
-    fn map_op(&mut self, op: &firc_middle::instruction::Op, ty: &Type, func: &firc_middle::Function) -> Operand<A> {
+    fn map_op(&mut self, op: &firc_middle::instruction::Op, func: &firc_middle::Function) -> Operand<A> {
         match op {
             firc_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
             firc_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
-                Const::Int(value) => {
+                Const::Int(ty, value) => {
                     let value = *value;
                     match ty {
                         Type::U8 => Immediate::Byte((value as u8).into()),

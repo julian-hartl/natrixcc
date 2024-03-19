@@ -35,10 +35,10 @@ pub struct BasicBlock {
 pub enum Instruction {
     Add(RegId, Type, Operand, Operand),
     Sub(RegId, Type, Operand, Operand),
-    ICmp(RegId, Type, CmpOp, Operand, Operand),
+    ICmp(RegId, CmpOp, Type, Operand, Operand),
     Op(RegId, Type, Operand),
     Ret(Type, Option<Operand>),
-    Condbr(Type, Operand, Target, Target),
+    Condbr(Operand, Target, Target),
     Br(Target),
 }
 
@@ -76,10 +76,10 @@ pub enum Literal {
     Int(i64),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegId(pub u32);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct BasicBlockId(pub u32);
 
 #[cfg(test)]

@@ -176,28 +176,44 @@ impl Display for Op {
 }
 
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Const {
-    Int(i64),
+    Int(Type, i64),
 }
 
+
 impl Const {
-    pub fn sub(self, other: Const, ty: Type) -> Option<Self> {
+    
+    pub fn cmp(self, other: Const, op: CmpOp) -> Option<Self> {
         match (self, other) {
-            (Self::Int(lhs), Self::Int(rhs)) => {
+            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
+                assert_eq!(lty, rty, "comparison of different types");
+                let res = match op {
+                    CmpOp::Eq => (lhs == rhs) as i64,
+                    CmpOp::Gt => (lhs > rhs) as i64,
+                };
+                Some(Self::Int(Type::Bool, res))
+            }
+        }
+    }
+    
+    pub fn sub(self, other: Const) -> Option<Self> {
+        match (self, other) {
+            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
+                assert_eq!(lty, rty, "subtraction of different types");
                 let res = lhs.checked_sub(rhs)?;
                 // todo: check if result has overflown
-                Some(Self::Int(res))
+                Some(Self::Int(lty, res))
             }
         }
     }
 
-    pub fn add(self, other: Const, ty: Type) -> Option<Self> {
+    pub fn add(self, other: Const) -> Option<Self> {
         match (self, other) {
-            (Self::Int(lhs), Self::Int(rhs)) => {
+            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
+                assert_eq!(lty, rty, "addition of different types");
                 let res = lhs.checked_add(rhs)?;
-                // todo: check if result has overflown
-                Some(Self::Int(res))
+                Some(Self::Int(lty, res))
             }
         }
     }
@@ -206,7 +222,7 @@ impl Const {
 impl Display for Const {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Int(value) => write!(f, "{}", value),
+            Self::Int(_,value) => write!(f, "{}", value),
         }
     }
 }

@@ -17,12 +17,14 @@ pub type Register = machine::Register<Abi>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumTryAs, IntoStaticStr)]
 pub enum CC {
     Eq,
+    Gt,
 }
 
 impl From<CmpOp> for CC {
     fn from(op: CmpOp) -> Self {
         match op {
             CmpOp::Eq => Self::Eq,
+            CmpOp::Gt => Self::Gt,
             _ => unimplemented!()
         }
     }
@@ -89,6 +91,7 @@ pub enum Pattern {
     Add32ri,
     Add32rr,
     Cmp32rreq,
+    Cmp32rigt,
     CondJmp,
     Jmp,
 }
@@ -96,16 +99,41 @@ pub enum Pattern {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, VariantArray, Hash)]
 pub enum PhysicalRegister {
     AL,
+    AH,
+    AX,
     EAX,
-    ECX,
-    EDX,
+    RAX,
+    BL,
+    BH,
+    BX,
     EBX,
-    ESP,
-    EBP,
+    RBX,
+    CL,
+    CH,
+    CX,
+    ECX,
+    RCX,
+    DL,
+    DH,
+    DX,
+    EDX,
+    RDX,
+    SIL,
+    SI,
     ESI,
+    RSI,
+    DIL,
+    DI,
     EDI,
+    RDI,
+    R8L,
+    R8W,
     R8D,
+    R8,
+    R9L,
+    R9W,
     R9D,
+    R9,
     EFLAGS,
 }
 
@@ -120,16 +148,59 @@ impl machine::PhysicalRegister for PhysicalRegister {
 
     fn is_gp(&self) -> bool {
         match self {
-            Self::AL |
-            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI | Self::R8D | Self::R9D => true,
             Self::EFLAGS => false,
+            _ => true,
         }
     }
 
     fn size(&self) -> Size {
         match self {
-            Self::AL => Size::Byte,
-            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESP | Self::EBP | Self::ESI | Self::EDI | Self::R8D | Self::R9D | Self::EFLAGS => Size::DWord,
+            Self::AL | Self::AH | Self::BL | Self::BH | Self::CL | Self::CH | Self::DL | Self::DH | Self::SIL | Self::DIL | Self::R8L | Self::R9L => Size::Byte,
+            Self::AX | Self::BX | Self::CX | Self::DX | Self::SI | Self::DI | Self::R8W | Self::R9W => Size::Word,
+            Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESI | Self::EDI | Self::R8D | Self::R9D | Self::EFLAGS => Size::DWord,
+            Self::RAX | Self::RBX | Self::RCX | Self::RDX | Self::R8 | Self::R9 | Self::RSI | Self::RDI => Size::QWord,
+        }
+    }
+
+    fn subregs(&self) -> Option<&'static [Self]> {
+        match self {
+            Self::AL |
+            Self::AH => None,
+            Self::AX => Some(&[Self::AL, Self::AH]),
+            Self::EAX => Some(&[Self::AX, Self::AL, Self::AH]),
+            Self::RAX => Some(&[Self::EAX, Self::AX, Self::AL, Self::AH]),
+            Self::BL |
+            Self::BH => None,
+            Self::BX => Some(&[Self::BL, Self::BH]),
+            Self::EBX => Some(&[Self::BX, Self::BL, Self::BH]),
+            Self::RBX => Some(&[Self::EBX, Self::BX, Self::BL, Self::BH]),
+            Self::CL |
+            Self::CH => None,
+            Self::CX => Some(&[Self::CL, Self::CH]),
+            Self::ECX => Some(&[Self::CX, Self::CL, Self::CH]),
+            Self::RCX => Some(&[Self::ECX, Self::CX, Self::CL, Self::CH]),
+            Self::DL |
+            Self::DH => None,
+            Self::DX => Some(&[Self::DL, Self::DH]),
+            Self::EDX => Some(&[Self::DX, Self::DL, Self::DH]),
+            Self::RDX => Some(&[Self::EDX, Self::DX, Self::DL, Self::DH]),
+            Self::SIL => None,
+            Self::SI => Some(&[Self::SIL]),
+            Self::ESI => Some(&[Self::SI, Self::SIL]),
+            Self::RSI => Some(&[Self::ESI, Self::SI, Self::SIL]),
+            Self::DIL => None,
+            Self::DI => Some(&[Self::DIL]),
+            Self::EDI => Some(&[Self::DI, Self::DIL]),
+            Self::RDI => Some(&[Self::EDI, Self::DI, Self::DIL]),
+            Self::R8L => None,
+            Self::R8W => Some(&[Self::R8L]),
+            Self::R8D => Some(&[Self::R8W, Self::R8L]),
+            Self::R8 => Some(&[Self::R8D, Self::R8W, Self::R8L]),
+            Self::R9L => None,
+            Self::R9W => Some(&[Self::R9L]),
+            Self::R9D => Some(&[Self::R9W, Self::R9L]),
+            Self::R9 => Some(&[Self::R9D, Self::R9W, Self::R9L]),
+            Self::EFLAGS => None,
         }
     }
 }
@@ -327,6 +398,12 @@ impl machine::Pattern for Pattern {
                 PatternInOperand::Reg(Size::DWord),
                 PatternInOperand::Reg(Size::DWord),
             ),
+            Self::Cmp32rigt => machine::PatternIn::Cmp(
+                PatternInOutput::Reg(Size::Byte),
+                CmpOp::Gt,
+                PatternInOperand::Reg(Size::DWord),
+                PatternInOperand::Imm(Size::DWord),
+            ),
             Self::CondJmp => machine::PatternIn::CondBr(
                 PatternInOperand::Reg(Size::Byte),
             )
@@ -430,6 +507,27 @@ impl machine::Pattern for Pattern {
                 smallvec![
                     Instr::Machine(
                         X86Instr::CMP32rr {
+                            lhs,
+                            rhs,
+                        }
+                    ),
+                    Instr::Machine(
+                        X86Instr::SETCC {
+                            dest,
+                            cc,
+                        }
+                    )
+                ]
+            }
+            Self::Cmp32rigt => {
+                let matched = matched.try_as_cmp().unwrap();
+                let lhs = *matched.lhs.try_as_reg().unwrap();
+                let rhs = matched.rhs.try_as_imm().copied().unwrap();
+                let dest = *matched.dest.try_as_reg().unwrap();
+                let cc = CC::Gt;
+                smallvec![
+                    Instr::Machine(
+                        X86Instr::CMP32ri {
                             lhs,
                             rhs,
                         }

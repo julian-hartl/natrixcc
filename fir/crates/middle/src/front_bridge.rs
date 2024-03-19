@@ -2,7 +2,7 @@ use firc_front::module::{Instruction, Literal, Operand, RegId};
 
 use crate::{cfg, Function, Module, Type, VReg};
 use crate::cfg::{BasicBlockId, BranchTerm, Builder, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
-use crate::instruction::{Const, CmpOp, Op};
+use crate::instruction::{CmpOp, Const, Op};
 
 pub struct FrontBridge {}
 
@@ -25,40 +25,45 @@ impl FrontBridge {
             |arg| arg.into()
         ).collect::<Vec<_>>(), front_f.ret_ty.into());
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        for basic_block in front_f.basic_blocks {
+        for basic_block in &front_f.basic_blocks {
             let bb_id = basic_block.id.into();
             Self::ensure_bb_exists(&mut cfg_builder, bb_id);
             cfg_builder.set_bb(bb_id);
-            for arg in basic_block.args {
+            for arg in &basic_block.args {
                 cfg_builder.set_next_vreg(arg.id.into());
                 cfg_builder.add_argument(arg.ty.into());
             }
+        }
+        for basic_block in front_f.basic_blocks {
+            let bb_id = basic_block.id.into();
+            cfg_builder.set_bb(bb_id);
+            
             for instruction in basic_block.instructions {
                 match instruction {
                     Instruction::Add(dest, ty, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs);
-                        let rhs = self.operand_to_op(rhs);
+                        let lhs = self.operand_to_op(lhs, ty.into());
+                        let rhs = self.operand_to_op(rhs, ty.into());
                         cfg_builder.set_next_vreg(dest.into());
                         cfg_builder.add(ty.into(), lhs, rhs);
                     }
                     Instruction::Sub(dest, ty, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs);
-                        let rhs = self.operand_to_op(rhs);
+                        let lhs = self.operand_to_op(lhs, ty.into());
+                        let rhs = self.operand_to_op(rhs, ty.into());
                         cfg_builder.set_next_vreg(dest.into());
                         cfg_builder.sub(ty.into(), lhs, rhs);
                     }
                     Instruction::Ret(ty, op) => {
                         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm {
                             ty: ty.into(),
-                            value: op.map(|op| self.operand_to_op(op)),
+                            value: op.map(|op| self.operand_to_op(op, ty.into())),
                         }));
                     }
                     Instruction::Op(dest, ty, op) => {
                         cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.op(ty.into(), self.operand_to_op(op));
+                        cfg_builder.op(ty.into(), self.operand_to_op(op, ty.into()));
                     }
-                    Instruction::Condbr(ty, condition, true_target, false_target) => {
-                        let cond = self.operand_to_op(condition);
+                    Instruction::Condbr(condition, true_target, false_target) => {
+                        let cond = self.operand_to_op(condition, Type::Bool);
                         let true_target = self.map_target(true_target, &mut cfg_builder);
                         let false_target = self.map_target(false_target, &mut cfg_builder);
                         cfg_builder.end_bb(
@@ -81,11 +86,11 @@ impl FrontBridge {
                             )
                         );
                     }
-                    Instruction::ICmp(dest, ty, op, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs);
-                        let rhs = self.operand_to_op(rhs);
+                    Instruction::ICmp(dest, op, ty, lhs, rhs) => {
+                        let lhs = self.operand_to_op(lhs, ty.into());
+                        let rhs = self.operand_to_op(rhs, ty.into());
                         cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.icmp(ty.into(), op.into(), lhs, rhs);
+                        cfg_builder.icmp(op.into(), lhs, rhs);
                     }
                 }
             }
@@ -95,13 +100,17 @@ impl FrontBridge {
 
     fn map_target(&mut self, target: firc_front::module::Target, builder: &mut cfg::Builder) -> JumpTarget {
         let target_bb_id = target.0.into();
-        Self::ensure_bb_exists(builder, target_bb_id);
         JumpTarget::new(
             target_bb_id,
             target.1.map(
-                |args| args.into_iter().map(
-                    |arg| self.operand_to_op(arg)
-                ).collect::<Vec<_>>()
+                |args| {
+                    let bb_args = builder.get_bb_arguments(target_bb_id);
+                    args.into_iter().enumerate().map(
+                        |(i, arg_op)| {
+                            self.operand_to_op(arg_op, builder.vreg(bb_args[i]).ty.clone())
+                        }
+                    ).collect::<Vec<_>>()
+                }
             ).unwrap_or_default(),
         )
     }
@@ -112,11 +121,11 @@ impl FrontBridge {
         }
     }
 
-    fn operand_to_op(&self, operand: Operand) -> Op {
+    fn operand_to_op(&self, operand: Operand, context_ty: Type) -> Op {
         match operand {
             Operand::Literal(literal) => {
                 Op::Const(match literal {
-                    Literal::Int(value) => Const::Int(value)
+                    Literal::Int(value) => Const::Int(context_ty, value)
                 })
             }
             Operand::Register(reg) => {

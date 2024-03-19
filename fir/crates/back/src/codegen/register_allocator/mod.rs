@@ -143,7 +143,8 @@ pub struct InstrNumbering {
 
 impl InstrNumbering {
     pub fn new<A: Abi>(func: &Function<A>) -> Self {
-        let order = func.cfg().topological_order().into_iter().map(
+        debug!("Creating instruction numbering");
+        let order = func.cfg().ordered().into_iter().map(
             |bb| (bb, func.basic_blocks[bb].instructions.len_idx().raw())
         ).collect_vec();
         debug!("Created instruction numbering with ordering: {:?}",order);
@@ -241,9 +242,17 @@ pub struct LivenessRepr {
     uses: SecondaryMap<VReg, Vec<InstrNr>>,
 }
 
-impl Display for LivenessRepr {
+impl LivenessRepr {
+    pub fn display<'func, 'liveness, A: Abi>(&'liveness self, func: &'func Function<A>) -> LivenessReprDisplay<'func, 'liveness, A> {
+        LivenessReprDisplay(self, func)
+    }
+}
+
+struct LivenessReprDisplay<'func, 'liveness, A: Abi>(&'liveness LivenessRepr, &'func Function<A>);
+
+impl <A: Abi> Display for LivenessReprDisplay<'_, '_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (reg, lifetime) in self.defs.keys().map(|reg| (reg, self.lifetime(reg))) {
+        for (reg, lifetime) in self.0.defs.keys().map(|reg| (reg, self.0.lifetime(reg, self.1))) {
             writeln!(f, "{}: {}", reg, lifetime)?;
         }
         Ok(())
@@ -252,6 +261,7 @@ impl Display for LivenessRepr {
 
 impl LivenessRepr {
     pub fn new<A: Abi>(func: &Function<A>) -> Self {
+        debug!("Creating liveness representation");
         Self {
             defs: SecondaryMap::default(),
             uses: SecondaryMap::default(),
@@ -268,12 +278,11 @@ impl LivenessRepr {
         self.uses[reg].insert(insert_at, instr_nr);
     }
 
-    pub fn lifetime(&self, reg: VReg) -> Lifetime {
+    pub fn lifetime<A: Abi>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
         let start = self.defs[reg];
         let end = self.last_use(reg).unwrap_or(start);
-        if self.instr_numbering.get_instr_uid(end).unwrap_or_else(
-            || panic!("No instr uid for {}", end)
-        ).instr == InstrId::from_raw(0) {
+        let end_uid = self.instr_numbering.get_instr_uid(end).unwrap();
+        if func.basic_blocks[end_uid.bb].instructions[end_uid.instr].is_phi() {
             if let Some(second_last_use_in_bb) = Some(self.second_last_use(reg).unwrap_or(start)).and_then(|instr_nr| self.instr_numbering.get_instr_uid(instr_nr)).map(|uid| uid.bb) {
                 let end = self.instr_numbering.end_of_bb(second_last_use_in_bb).unwrap();
                 return Lifetime::new(start, ProgPoint::Write(end));
@@ -396,7 +405,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
             if self.allocations.get_allocated_reg(vreg).is_some() {
                 continue;
             }
-            let lifetime = self.liveness_repr.lifetime(vreg);
+            let lifetime = self.liveness_repr.lifetime(vreg, &self.func);
             let vreg_info = &self.func.vregs[vreg];
             let size = vreg_info.size;
             let alloc_vreg = RegAllocVReg {
@@ -413,7 +422,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
                     }
                     Some(tied_to) => {
                         debug!("{vreg} is tied to {tied_to}. Trying to put it in the same register");
-                        assert!(!lifetime.overlaps(&self.liveness_repr.lifetime(tied_to)), "Tied register {tied_to} overlaps with {vreg}");
+                        assert!(!lifetime.overlaps(&self.liveness_repr.lifetime(tied_to, &self.func)), "Tied register {tied_to} overlaps with {vreg}");
                         let allocated_reg = self.allocations.get_allocated_reg(tied_to);
                         match allocated_reg {
                             None => {
@@ -485,29 +494,30 @@ impl<A: Abi> Function<A> {
             }
         }
         let mut liveins = Liveins::default();
+        
         let mut repr = LivenessRepr::new(self);
         debug!("Starting liveness analysis");
         let mut worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
         let mut visited = FxHashSet::default();
-        while let Some(bb_id) = worklist.pop_front() {
+        for bb_id in self.cfg().ordered().into_iter().rev() {
             debug!("Looking at {bb_id}");
-            if visited.contains(&bb_id) {
-                debug!("Already visited");
-                continue;
-            }
-            let mut all_visited = true;
-            for succ in self.cfg().successors(bb_id) {
-                if !visited.contains(&succ) {
-                    debug!("Successor {succ} has not been visited yet. Queueing");
-                    all_visited = false;
-                    worklist.push_front(succ);
-                }
-            }
-            if !all_visited {
-                debug!("Not all successors have been visited. Queueing {bb_id} for later");
-                worklist.push_back(bb_id);
-                continue;
-            }
+            // if visited.contains(&bb_id) {
+            //     debug!("Already visited");
+            //     continue;
+            // }
+            // let mut all_visited = true;
+            // for succ in self.cfg().successors(bb_id) {
+            //     if succ != bb_id && !visited.contains(&succ) {
+            //         debug!("Successor {succ} has not been visited yet. Queueing");
+            //         all_visited = false;
+            //         worklist.push_front(succ);
+            //     }
+            // }
+            // if !all_visited {
+            //     debug!("Not all successors have been visited. Queueing {bb_id} for later");
+            //     worklist.push_back(bb_id);
+            //     continue;
+            // }
             debug!("Analysing liveness in {bb_id}");
             visited.insert(bb_id);
             let bb = &self.basic_blocks[bb_id];
@@ -567,7 +577,7 @@ impl<A: Abi> Function<A> {
             // }
         }
 
-        debug!("{}", repr);
+        debug!("{}", repr.display(self));
         repr
     }
 }
