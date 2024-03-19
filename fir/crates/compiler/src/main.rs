@@ -3,8 +3,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use tracing::debug;
+use firc_back::codegen::isa::{Architecture, Endianness, Target};
 
 use firc_back::codegen::register_allocator;
+use firc_back::emu::Emulator;
 use firc_middle::{FrontBridge, optimization};
 
 #[derive(Parser, Debug)]
@@ -46,6 +48,22 @@ fn main() -> Result<()> {
     x86_mod.remove_fallthrough_jumps();
     x86_mod.expand_pseudo_instructions::<firc_back::codegen::isa::x86_64::Backend>();
     debug!("{x86_mod}");
-    x86_mod.assemble();
+    let base_addr = 0x1000;
+    let code = x86_mod.assemble(base_addr);
+    let mut emu = Emulator::new(
+        Target {
+            arch: Architecture::X86_64,
+            endianness: Endianness::Little,
+        },
+        &code,
+        base_addr
+    );
+    let result = emu.emulate(
+        &[
+            30,
+            20
+        ]
+    );
+    println!("Result: {}", result);
     Ok(())
 }

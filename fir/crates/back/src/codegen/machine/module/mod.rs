@@ -23,10 +23,15 @@ impl<A: Abi> Module<A> {
         self.functions.iter()
     }
 
-    pub fn assemble(&self) {
+    pub fn assemble(&self, base_addr: u64) -> Vec<u8> {
+        let mut result = Vec::new();
+        let mut addr = base_addr;
         for (_, function) in self.functions() {
-            let _ = function.assemble();
+            let assembled = function.assemble(addr);
+            addr += assembled.len() as u64;
+            result.extend(assembled);
         }
+        result
     }
 
     pub fn run_register_coalescer(&mut self) {

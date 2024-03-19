@@ -6,6 +6,15 @@ pub enum Endianness {
     Little,
     Big
 }
+
+pub enum Architecture {
+    X86_64,
+}
+
+pub struct Target {
+    pub arch: Architecture,
+    pub endianness: Endianness,
+}
 //
 // pub trait Architecture {
 //     fn get_calling_convention(&self) -> &dyn CallingConvention;

@@ -46,14 +46,26 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn size(&self) -> Size;
 
     /// Returns the sub registers of this register.
-    /// 
+    ///
     /// E.g. on x86-64, the sub registers of RAX are EAX, AX, AH and AL.
     fn subregs(&self) -> Option<&'static [Self]>;
-    
+
+    fn superregs(&self) -> Option<&'static [Self]>;
+
+    fn regclass(&self) -> impl Iterator<Item=Self> where Self: 'static {
+        self.subregs().into_iter().flatten().copied()
+            .chain(
+                self.superregs().into_iter().flatten().copied()
+            )
+            .chain(
+                std::iter::once(*self)
+            )
+    }
+
     fn has_subreg(&self, other: Self) -> bool where Self: 'static {
         self.subregs().map_or(false, |subregs| subregs.contains(&other))
     }
-    
+
     fn interferes_with(self, other: Self) -> bool where Self: 'static {
         if self == other {
             return true;
@@ -64,7 +76,6 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
         false
     }
 }
-
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct VReg(u32);
@@ -270,6 +281,7 @@ pub enum PseudoInstr<A: Abi> {
     Copy(Register<A>, Register<A>),
     Ret(Option<InstrOperand<A>>),
     Phi(Register<A>, Vec<Register<A>>),
+    Def(Register<A>),
 }
 
 impl<A: Abi> PseudoInstr<A> {
@@ -278,6 +290,7 @@ impl<A: Abi> PseudoInstr<A> {
             Self::Copy(_, _) => "COPY",
             Self::Ret(_) => "RET",
             Self::Phi(_, _) => "PHI",
+            Self::Def(_) => "DEF",
         }
     }
 
@@ -297,6 +310,9 @@ impl<A: Abi> PseudoInstr<A> {
             }
             Self::Phi(_, operands) => {
                 operands.clone().into()
+            }
+            Self::Def(_) => {
+                smallvec![]
             }
         }
     }
@@ -322,6 +338,11 @@ impl<A: Abi> PseudoInstr<A> {
                 ops.extend(operands.iter().map(|reg| InstrOperand::Reg(*reg)));
                 ops
             }
+            Self::Def(reg) => {
+                smallvec![
+                    InstrOperand::Reg(*reg),
+                ]
+            }
         }
     }
 
@@ -338,6 +359,11 @@ impl<A: Abi> PseudoInstr<A> {
             Self::Phi(dest, _) => {
                 smallvec![
                     dest,
+                ]
+            }
+            Self::Def(reg) => {
+                smallvec![
+                    reg,
                 ]
             }
         }
@@ -360,6 +386,9 @@ impl<A: Abi> PseudoInstr<A> {
             Self::Phi(_, operands) => {
                 operands.iter_mut().collect()
             }
+            Self::Def(_) => {
+                smallvec![]
+            }
         }
     }
 
@@ -368,6 +397,7 @@ impl<A: Abi> PseudoInstr<A> {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
             Self::Phi(dest, _) => Some(*dest),
+            Self::Def(dest) => Some(*dest),
         }
     }
 }
@@ -379,9 +409,9 @@ pub trait Backend {
 
     fn patterns() -> &'static [Self::P];
 
-    fn mov(dest: Register<Self::ABI>, src: Register<Self::ABI>) -> <Self::ABI as Abi>::I;
+    fn mov(dest: <Self::ABI as Abi>::REG, src: <Self::ABI as Abi>::REG) -> <Self::ABI as Abi>::I;
 
-    fn mov_imm(dest: Register<Self::ABI>, imm: Immediate) -> <Self::ABI as Abi>::I;
+    fn mov_imm(dest: <Self::ABI as Abi>::REG, imm: Immediate) -> <Self::ABI as Abi>::I;
 
     fn ret() -> <Self::ABI as Abi>::I;
 
@@ -599,10 +629,12 @@ impl From<&Type> for Size {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct VRegInfo {
+pub struct VRegInfo<A: Abi> {
     pub size: Size,
     /// If set, the vreg will be placed in the same location as tied_to
     pub tied_to: Option<VReg>,
+    /// If set, the vreg is ensured to be placed in the same location as fixed
+    pub fixed: Option<A::REG>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -614,7 +646,8 @@ entity_impl!(FunctionId, "fun");
 pub struct Function<A: Abi> {
     pub name: String,
     pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<A>>,
-    pub(crate) vregs: PrimaryMap<VReg, VRegInfo>,
+    pub(crate) vregs: PrimaryMap<VReg, VRegInfo<A>>,
+    pub(crate) params: SmallVec<[VReg; 2]>,
     cfg: Option<Cfg>,
 }
 
@@ -627,19 +660,25 @@ impl<A: Abi> Function<A> {
             basic_blocks: IndexVec::default(),
             vregs: PrimaryMap::new(),
             cfg: None,
+            params: SmallVec::new(),
         }
     }
 
     pub fn alloc_vreg(&mut self, size: Size) -> VReg {
-        self.vregs.push(VRegInfo { size, tied_to: None })
+        self.vregs.push(VRegInfo { size, tied_to: None, fixed: None })
     }
 
-    pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo {
+    pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo<A> {
         &self.vregs[vreg]
     }
     pub fn tie_vreg(&mut self, vreg: VReg, to: VReg) {
         debug!("Tying {vreg} to {to}");
         self.vregs[vreg].tied_to = Some(to);
+    }
+
+    pub fn fix_vreg(&mut self, vreg: VReg, to: A::REG) {
+        debug!("Fixing {vreg} to {}",to.name());
+        self.vregs[vreg].fixed = Some(to);
     }
 
     pub fn create_bb(&mut self) -> BasicBlockId {
@@ -649,9 +688,9 @@ impl<A: Abi> Function<A> {
         ))
     }
 
-    pub fn assemble(&self) -> Vec<u8> {
+    pub fn assemble(&self, base_addr: u64) -> Vec<u8> {
         debug!("Assembling function {}", self.name);
-        let mut asm = A::get_assembler();
+        let mut asm = A::get_assembler(base_addr);
         for bb_id in self.cfg().ordered() {
             let bb = &self.basic_blocks[bb_id];
             debug!("Assembling basic block {}", bb_id);
@@ -677,7 +716,7 @@ impl<A: Abi> Function<A> {
                 if let Instr::Pseudo(pseudo_instr) = instr {
                     let expanded: SmallVec<[_; 2]> = match pseudo_instr {
                         PseudoInstr::Copy(dest, src) => {
-                            let instr = B::mov(*dest, *src);
+                            let instr = B::mov(dest.try_as_physical().unwrap(), src.try_as_physical().unwrap());
                             smallvec![
                                 instr
                             ]
@@ -696,27 +735,37 @@ impl<A: Abi> Function<A> {
                                                 reg.try_as_physical().unwrap().size()
                                             }
                                             InstrOperand::Imm(imm) => {
-                                                imm.size()
+                                                imm.size
                                             }
                                             InstrOperand::Label(_) => unreachable!()
                                         }
                                     );
                                     match return_slot {
                                         Slot::Register(dest) => {
-                                            let dest = Register::Physical(dest);
                                             let instr = match value {
                                                 InstrOperand::Reg(reg) => {
-                                                    B::mov(dest, *reg)
+                                                    let reg = reg.try_as_physical().unwrap();
+                                                    if reg == dest {
+                                                        None
+                                                    } else {
+                                                        Some(B::mov(dest, reg))
+                                                    }
                                                 }
                                                 InstrOperand::Imm(imm) => {
-                                                    B::mov_imm(dest, *imm)
+                                                    Some(B::mov_imm(dest, *imm))
                                                 }
                                                 InstrOperand::Label(_) => unreachable!()
                                             };
-                                            smallvec![
-                                        instr,
-                                        B::ret()
-                                    ]
+                                            if let Some(instr) = instr {
+                                                smallvec![
+                                                    instr,
+                                                    B::ret()
+                                                ]
+                                            } else {
+                                                smallvec![
+                                                    B::ret()
+                                                ]
+                                            }
                                         }
                                         Slot::Stack => unimplemented!()
                                     }
@@ -726,11 +775,17 @@ impl<A: Abi> Function<A> {
                         PseudoInstr::Phi(_, _) => {
                             unreachable!("Phi should have been coalesced away by now")
                         }
+                        PseudoInstr::Def(reg) => {
+                            assert!(reg.try_as_physical().is_some(), "Def pseudo instruction should have a physical register");
+                            smallvec![]
+                        }
                     };
                     debug!("Expanded pseudo instruction {:?} to {:?}", pseudo_instr, expanded);
-                    assert!(!expanded.is_empty(), "Pseudo instruction was not expanded: {:?}", pseudo_instr);
                     bb.instructions.remove(instr_id);
                     let expanded_len = expanded.len();
+                    if (expanded_len == 0) {
+                        continue;
+                    }
                     for (offset, instr) in expanded.into_iter().enumerate() {
                         bb.instructions.insert(instr_id + offset, Instr::Machine(instr));
                     }
@@ -1059,6 +1114,17 @@ impl<B: Backend> FunctionBuilder<B> {
                                     )
                                 );
                             }
+                            PseudoOp::Def(reg) => {
+                                instructions.push(
+                                    Instr::Pseudo(
+                                        PseudoInstr::Def(
+                                            Register::Virtual(
+                                                *reg
+                                            ),
+                                        )
+                                    )
+                                );
+                            }
                         }
                     }
                     Op::Machine(op) => {
@@ -1198,7 +1264,7 @@ impl<B: Backend> FunctionBuilder<B> {
     fn operand_to_pattern(&self, src: &Operand<<B as Backend>::ABI>) -> PatternInOperand {
         match src {
             Operand::Reg(reg) => PatternInOperand::Reg(reg.size(&self.function)),
-            Operand::Imm(imm) => PatternInOperand::Imm(imm.size()),
+            Operand::Imm(imm) => PatternInOperand::Imm(imm.size),
         }
     }
 }

@@ -9,7 +9,7 @@
 #![allow(clippy::too_many_lines)]
 
 pub mod codegen;
-mod emu;
+pub mod emu;
 
 #[macro_use]
 extern crate strum;

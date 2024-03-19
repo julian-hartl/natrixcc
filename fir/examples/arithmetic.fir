@@ -1,13 +1,13 @@
-fun i32 @add(i32, i32) {
+fun i32 @mul(i32, i32) {
 bb0(i32 v0, i32 v1):
-  v2 = add i32 v0, v1;
-  ret i32 v2;
-}
-
-fun i32 @sub(i32, i32) {
-bb0(i32 v0, i32 v1):
-  v2 = sub i32 v0, v1;
-  v3 = i32 v0;
-  v4 = i32 v1;
-  ret i32 v2;
+  br bb1(0, v1);
+bb1(i32 v2, i32 v3):
+  v4 = icmp gt i32 v3, 0;
+  condbr v4 bb2, bb3;
+bb2:
+    v5 = add i32 v2, v0;
+    v6 = sub i32 v3, 1;
+    br bb1(v5, v6);
+bb3:
+    ret i32 v2;
 }

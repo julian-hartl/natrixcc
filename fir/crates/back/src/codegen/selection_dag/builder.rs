@@ -20,7 +20,7 @@ use crate::codegen::machine;
 use crate::codegen::machine::{Abi, Function, Register, VReg};
 use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
-use crate::codegen::selection_dag::{Byte, Immediate, MachineOp, Op, Operand, PseudoOp, Word};
+use crate::codegen::selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp};
 
 #[derive(Debug)]
 pub struct Builder<'func, A: machine::Abi> {
@@ -125,21 +125,12 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         for (bb_id, bb) in func.cfg.basic_blocks() {
             debug!("Building SelectionDAG for basic block {}", bb_id);
             if bb_id == func.cfg.entry_block() {
-                let param_slots = A::CallingConvention::parameter_slots(
-                    bb.arguments().map(|arg| func.cfg.vreg_ty_cloned(arg))
-                );
-                for (slot, arg) in param_slots.into_iter().zip(bb.arguments()) {
-                    match slot {
-                        Slot::Register(reg) => {
-                            let phys_reg = Register::Physical(reg);
-                            let mapped_reg = self.map_vreg(arg, func);
-                            self.define_node(bb_id, Op::Pseudo(PseudoOp::Copy(
-                                Register::Virtual(mapped_reg),
-                                phys_reg,
-                            )));
-                        }
-                        Slot::Stack => unimplemented!()
-                    };
+                for arg in bb.arguments() {
+                    let mapped_reg = self.map_vreg(arg, func);
+                    self.function.params.push(mapped_reg);
+                    self.define_node(bb_id, Op::Pseudo(PseudoOp::Def(
+                        mapped_reg,
+                    )));
                 }
             }
             for instr in bb.instructions() {
@@ -229,15 +220,15 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                 Const::Int(ty, value) => {
                     let value = *value;
                     match ty {
-                        Type::U8 => Immediate::Byte((value as u8).into()),
-                        Type::U16 => Immediate::Word((value as u16).into()),
-                        Type::U32 => Immediate::DWord((value as u32).into()),
-                        Type::U64 => Immediate::QWord((value as u64).into()),
-                        Type::I8 => Immediate::Byte((value as i8).into()),
-                        Type::I16 => Immediate::Word((value as i16).into()),
-                        Type::I32 => Immediate::DWord((value as i32).into()),
-                        Type::I64 => Immediate::QWord((value as i64).into()),
-                        Type::Bool => Immediate::Byte((value as u8).into()),
+                        Type::U8 => Immediate::from(value as u8),
+                        Type::U16 => Immediate::from(value as u16),
+                        Type::U32 => Immediate::from(value as u32),
+                        Type::U64 => Immediate::from(value as u64),
+                        Type::I8 => Immediate::from(value as i8),
+                        Type::I16 => Immediate::from(value as i16),
+                        Type::I32 => Immediate::from(value as i32),
+                        Type::I64 => Immediate::from(value),
+                        Type::Bool => Immediate::from(value as u8),
                         Type::Void => unreachable!("Cannot have a constant of type void"),
                         Type::Ptr(_) => unimplemented!(),
                     }

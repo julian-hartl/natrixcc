@@ -17,8 +17,8 @@ pub trait Abi: Debug + Default + Clone + PartialEq + Eq + Hash {
 
     type CallingConvention: CallingConvention<Reg=Self::REG>;
 
-    fn get_assembler() -> Self::ASSEMBLER {
-        Self::ASSEMBLER::new()
+    fn get_assembler(base_addr: u64) -> Self::ASSEMBLER {
+        Self::ASSEMBLER::new(base_addr)
     }
 }
 

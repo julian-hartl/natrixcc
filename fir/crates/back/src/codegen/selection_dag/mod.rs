@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::Display;
 use std::ops::{Deref, DerefMut};
 
 use daggy::petgraph::dot::{Config, Dot};
@@ -10,7 +10,7 @@ use firc_middle::cfg::BasicBlockId;
 use firc_middle::instruction::CmpOp;
 
 use crate::codegen::machine;
-use crate::codegen::machine::{Abi,  MachineInstr, Pattern, Register};
+use crate::codegen::machine::{Abi, MachineInstr, Pattern, Register, Size, VReg};
 
 pub mod builder;
 
@@ -75,120 +75,110 @@ impl<A: machine::Abi> SelectionDAG<A> {
 }
 
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq, EnumTryAs)]
-pub enum Immediate {
-    Byte(Byte),
-    Word(Word),
-    DWord(DWord),
-    QWord(QWord),
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Immediate {
+    value: [u8; 8],
+    pub signed: bool,
+    pub size: Size,
 }
 
 impl Immediate {
-    pub fn size(&self) -> machine::Size {
-        match self {
-            Self::Byte(_) => machine::Size::Byte,
-            Self::Word(_) => machine::Size::Word,
-            Self::DWord(_) => machine::Size::DWord,
-            Self::QWord(_) => machine::Size::QWord,
+    pub fn as_encoded_dword(&self) -> Option<i32> {
+        let (value, rest) = self.value.split_at(4);
+        if rest != [0, 0, 0, 0] {
+            return None;
         }
+        Some(i32::from_le_bytes(value.try_into().unwrap()))
+    }
+
+    pub fn as_u64(&self) -> u64 {
+        u64::from_le_bytes(self.value)
+    }
+
+    pub fn as_i64(&self) -> i64 {
+        i64::from_le_bytes(self.value)
     }
 }
 
 impl Display for Immediate {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Byte(b) => write!(f, "{:x?}", b.0),
-            Self::Word(w) => write!(f, "{:x?}", w.0),
-            Self::DWord(dw) => write!(f, "{:x?}", dw.0),
-            Self::QWord(qw) => write!(f, "{:x?}", qw.0),
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.signed {
+            write!(f, "{}", self.as_i64())
+        } else {
+            write!(f, "{}", self.as_u64())
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
-pub struct Byte(u8);
-
-impl From<u8> for Byte {
-    fn from(val: u8) -> Self {
-        Self(val)
+impl From<u8> for Immediate {
+    fn from(value: u8) -> Self {
+        let mut imm = Self::from(value as u64);
+        imm.size = Size::Byte;
+        imm
     }
 }
 
-impl From<i8> for Byte {
-    fn from(val: i8) -> Self {
-        Self(val as u8)
+impl From<i8> for Immediate {
+    fn from(value: i8) -> Self {
+        let mut imm = Self::from(value as i64);
+        imm.size = Size::Byte;
+        imm
     }
 }
 
-impl From<bool> for Byte {
-    fn from(val: bool) -> Self {
-        Self(val as u8)
+impl From<u16> for Immediate {
+    fn from(value: u16) -> Self {
+        let mut imm = Self::from(value as u64);
+        imm.size = Size::Word;
+        imm
     }
 }
 
-impl Into<u8> for Byte {
-    fn into(self) -> u8 {
-        self.0
+impl From<i16> for Immediate {
+    fn from(value: i16) -> Self {
+        let mut imm = Self::from(value as i64);
+        imm.size = Size::Word;
+        imm
     }
 }
 
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
-pub struct Word([u8; 2]);
-
-impl From<u16> for Word {
-    fn from(val: u16) -> Self {
-        Self(val.to_le_bytes())
+impl From<u32> for Immediate {
+    fn from(value: u32) -> Self {
+        let mut imm = Self::from(value as u64);
+        imm.size = Size::DWord;
+        imm
     }
 }
 
-impl From<i16> for Word {
-    fn from(val: i16) -> Self {
-        Self(val.to_le_bytes())
+impl From<i32> for Immediate {
+    fn from(value: i32) -> Self {
+        let mut imm = Self::from(value as i64);
+        imm.size = Size::DWord;
+        imm
     }
 }
 
-impl Into<u16> for Word {
-    fn into(self) -> u16 {
-        u16::from_le_bytes(self.0)
+impl From<u64> for Immediate {
+    fn from(value: u64) -> Self {
+        let bytes = value.to_le_bytes();
+        Self {
+            value: bytes,
+            signed: false,
+            size: Size::QWord,
+        }
     }
 }
 
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
-pub struct DWord([u8; 4]);
-
-impl DWord {
-    pub fn into_unsigned(self) -> u32 {
-        u32::from_le_bytes(self.0)
+impl From<i64> for Immediate {
+    fn from(value: i64) -> Self {
+        let bytes = value.to_le_bytes();
+        Self {
+            value: bytes,
+            signed: true,
+            size: Size::QWord,
+        }
     }
 }
-
-impl From<u32> for DWord {
-    fn from(val: u32) -> Self {
-        Self(val.to_le_bytes())
-    }
-}
-
-impl From<i32> for DWord {
-    fn from(val: i32) -> Self {
-        Self(val.to_le_bytes())
-    }
-}
-
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, PartialEq, Eq)]
-pub struct QWord([u8; 8]);
-
-impl From<u64> for QWord {
-    fn from(val: u64) -> Self {
-        Self(val.to_le_bytes())
-    }
-}
-
-impl From<i64> for QWord {
-    fn from(val: i64) -> Self {
-        Self(val.to_le_bytes())
-    }
-}
-
 
 #[derive(Debug, Clone)]
 pub struct Edge;
@@ -223,9 +213,10 @@ impl<A: Abi> Op<A> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PseudoOp<A: Abi> {
+    Def(VReg),
     Copy(Register<A>, Register<A>),
     Ret(Option<Operand<A>>),
-    Phi(Register<A>, Vec<Register<A>>)
+    Phi(Register<A>, Vec<Register<A>>),
 }
 
 impl<A: Abi> PseudoOp<A> {
@@ -233,20 +224,22 @@ impl<A: Abi> PseudoOp<A> {
         match self {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
-            Self::Phi(dest, _) => Some(*dest)
+            Self::Phi(dest, _) => Some(*dest),
+            Self::Def(dest) => Some(Register::Virtual(*dest))
         }
     }
 
     pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
-            PseudoOp::Copy(_, dest) => smallvec![*dest],
-            PseudoOp::Ret(op) => {
+            Self::Copy(_, dest) => smallvec![*dest],
+            Self::Ret(op) => {
                 match op {
                     Some(Operand::Reg(reg)) => smallvec![*reg],
                     _ => smallvec![]
                 }
             }
-            PseudoOp::Phi(_, regs) => regs.clone().into()
+            Self::Phi(_, regs) => regs.clone().into(),
+            Self::Def(_) => smallvec![]
         }
     }
 }

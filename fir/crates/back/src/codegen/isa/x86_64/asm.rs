@@ -12,6 +12,7 @@ use crate::codegen::machine::BasicBlockId;
 pub struct Assembler {
     assembler: CodeAssembler,
     bb_to_label: FxHashMap<BasicBlockId, (CodeLabel, usize)>,
+    base_addr: u64,
 }
 
 impl Assembler {
@@ -79,10 +80,11 @@ impl From<PhysicalRegister> for Register {
 }
 
 impl machine::asm::Assembler<x86_64::Abi> for Assembler {
-    fn new() -> Self {
+    fn new(base_addr: u64) -> Self {
         Self {
             bb_to_label: FxHashMap::default(),
             assembler: CodeAssembler::new(64).unwrap(),
+            base_addr,
         }
     }
 
@@ -98,7 +100,7 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 self.add_instruction(Instruction::with2(
                     Code::Sub_rm32_imm32,
                     dest,
-                    immediate.try_as_d_word().unwrap().into_unsigned(),
+                    immediate.as_encoded_dword().unwrap()
                 ).unwrap()).unwrap();
             }
             X86Instr::SUB32rr { src, dest } => {
@@ -115,7 +117,7 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 self.add_instruction(Instruction::with2(
                     Code::Add_rm32_imm32,
                     dest,
-                    immediate.try_as_d_word().unwrap().into_unsigned(),
+                    immediate.as_encoded_dword().unwrap(),
                 ).unwrap()).unwrap();
             }
             X86Instr::ADD32rr { src, dest } => {
@@ -127,11 +129,36 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                     src,
                 ).unwrap()).unwrap();
             }
-            X86Instr::MOV32rr { src, dest } => {
+            X86Instr::MOV8ri { dest, immediate } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm8_imm8,
+                    dest,
+                    immediate.as_encoded_dword().unwrap(),
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV8rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
                 self.add_instruction(Instruction::with2(
-                    Code::Mov_rm32_r32,
+                    Code::Mov_rm8_r8,
+                    dest,
+                    src,
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV16ri { dest, immediate } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm16_imm16,
+                    dest,
+                    immediate.as_encoded_dword().unwrap(),
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV16rr { src, dest } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let src: Register = src.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm16_r16,
                     dest,
                     src,
                 ).unwrap()).unwrap();
@@ -144,7 +171,36 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 self.add_instruction(Instruction::with2(
                     Code::Mov_rm32_imm32,
                     dest,
-                    immediate.try_as_d_word().unwrap().into_unsigned(),
+                    immediate.as_encoded_dword().unwrap(),
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV32rr { src, dest } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let src: Register = src.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm32_r32,
+                    dest,
+                    src,
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV64ri {
+                dest,
+                immediate
+            } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm64_imm32,
+                    dest,
+                    immediate.as_encoded_dword().expect("64-bit immediates are too large. Should be stored in memory"),
+                ).unwrap()).unwrap();
+            }
+            X86Instr::MOV64rr { src, dest } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let src: Register = src.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(
+                    Code::Mov_rm64_r64,
+                    dest,
+                    src,
                 ).unwrap()).unwrap();
             }
             X86Instr::RET => {
@@ -170,16 +226,15 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
                 self.add_instruction(Instruction::with2(
                     Code::Cmp_rm32_imm32,
                     lhs,
-                    rhs.try_as_d_word().unwrap().into_unsigned(),
+                    rhs.as_encoded_dword().unwrap(),
                 ).unwrap()).unwrap();
             }
             X86Instr::CMP8ri { lhs, rhs } => {
                 let lhs: Register = lhs.try_as_physical().unwrap().into();
-                let i: u8 = rhs.try_as_byte().unwrap().into();
                 self.add_instruction(Instruction::with2(
                     Code::Cmp_rm8_imm8,
                     lhs,
-                    i as i32,
+                    rhs.as_encoded_dword().unwrap(),
                 ).unwrap()).unwrap();
             }
             X86Instr::SETCC { dest, cc } => {
@@ -208,7 +263,7 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
     }
 
     fn finish(mut self) -> Vec<u8> {
-        self.assembler.assemble(0).unwrap()
+        self.assembler.assemble(self.base_addr).unwrap()
     }
 
     fn format(&self) -> String {

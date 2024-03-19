@@ -35,6 +35,7 @@ impl<'module, A: Abi> Coalescer<'module, A> {
                                         instructions_to_remove.push(instr_id);
                                     } 
                                 }
+                                PseudoInstr::Def(_) => {}
                             }
                         }
                         Instr::Machine(_) => {}

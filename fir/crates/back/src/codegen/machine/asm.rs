@@ -1,7 +1,9 @@
 use crate::codegen::machine::{Abi, BasicBlockId};
 
 pub trait Assembler<A: Abi> {
-    fn new() -> Self;
+    fn new(
+        base_addr: u64,
+    ) -> Self;
     
     fn begin_basic_block(&mut self, bb_id: BasicBlockId);
 
