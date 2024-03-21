@@ -2,14 +2,30 @@ use smallvec::{SmallVec, smallvec};
 use strum::VariantArray;
 
 use firc_middle::instruction::CmpOp;
+use crate::codegen::isa::{Architecture, Endianness};
 
 use crate::codegen::machine;
-use crate::codegen::machine::{BasicBlockId, Function, Instr, InstrOperand, MatchedPattern, PatternInOperand, PatternInOutput, PhysicalRegister as MachPhysicalRegister, PseudoInstr, Size};
+use crate::codegen::machine::{BasicBlockId, Function, Instr, InstrOperand, MatchedPattern, PatternInOperand, PatternInOutput, PhysicalRegister as MachPhysicalRegister, PseudoInstr, Size, TargetMachine};
 use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::selection_dag::Immediate;
 
 mod asm;
+
+pub struct DefaultTarget;
+
+impl TargetMachine for DefaultTarget {
+    type Abi = Abi;
+    type Backend = Backend;
+
+    fn endianness() -> Endianness {
+        Endianness::Little
+    }
+
+    fn arch() -> Architecture {
+        Architecture::X86_64
+    }
+}
 
 pub type Register = machine::Register<Abi>;
 
@@ -188,6 +204,50 @@ impl MachPhysicalRegister for PhysicalRegister {
             Self::AX | Self::BX | Self::CX | Self::DX | Self::SI | Self::DI | Self::R8W | Self::R9W => Size::Word,
             Self::EAX | Self::ECX | Self::EDX | Self::EBX | Self::ESI | Self::EDI | Self::R8D | Self::R9D | Self::EFLAGS => Size::DWord,
             Self::RAX | Self::RBX | Self::RCX | Self::RDX | Self::R8 | Self::R9 | Self::RSI | Self::RDI => Size::QWord,
+        }
+    }
+
+    fn into_unicorn_emu_reg(self) -> impl Into<i32> {
+        
+        use unicorn_engine::RegisterX86;
+        match self {
+            Self::AL => RegisterX86::AL,
+            Self::AH => RegisterX86::AH,
+            Self::AX => RegisterX86::AX,
+            Self::EAX => RegisterX86::EAX,
+            Self::RAX => RegisterX86::RAX,
+            Self::BL => RegisterX86::BL,
+            Self::BH => RegisterX86::BH,
+            Self::BX => RegisterX86::BX,
+            Self::EBX => RegisterX86::EBX,
+            Self::RBX => RegisterX86::RBX,
+            Self::CL => RegisterX86::CL,
+            Self::CH => RegisterX86::CH,
+            Self::CX => RegisterX86::CX,
+            Self::ECX => RegisterX86::ECX,
+            Self::RCX => RegisterX86::RCX,
+            Self::DL => RegisterX86::DL,
+            Self::DH => RegisterX86::DH,
+            Self::DX => RegisterX86::DX,
+            Self::EDX => RegisterX86::EDX,
+            Self::RDX => RegisterX86::RDX,
+            Self::SIL => RegisterX86::SIL,
+            Self::SI => RegisterX86::SI,
+            Self::ESI => RegisterX86::ESI,
+            Self::RSI => RegisterX86::RSI,
+            Self::DIL => RegisterX86::DIL,
+            Self::DI => RegisterX86::DI,
+            Self::EDI => RegisterX86::EDI,
+            Self::RDI => RegisterX86::RDI,
+            Self::R8L => RegisterX86::R8B,
+            Self::R8W => RegisterX86::R8W,
+            Self::R8D => RegisterX86::R8D,
+            Self::R8 => RegisterX86::R8,
+            Self::R9L => RegisterX86::R9B,
+            Self::R9W => RegisterX86::R9W,
+            Self::R9D => RegisterX86::R9D,
+            Self::R9 => RegisterX86::R9,
+            Self::EFLAGS => RegisterX86::EFLAGS,
         }
     }
 

@@ -1,13 +1,13 @@
 use tracing::{debug, info};
 
-use crate::codegen::machine::{Abi, Instr, Module, PseudoInstr};
+use crate::codegen::machine::{Abi, Instr, Module, PseudoInstr, TargetMachine};
 
-pub struct Coalescer<'module, A: Abi> {
-    module: &'module mut Module<A>,
+pub struct Coalescer<'module, TM: TargetMachine> {
+    module: &'module mut Module<TM>,
 }
 
-impl<'module, A: Abi> Coalescer<'module, A> {
-    pub fn new(module: &'module mut Module<A>) -> Self {
+impl<'module, TM: TargetMachine> Coalescer<'module, TM> {
+    pub fn new(module: &'module mut Module<TM>) -> Self {
         Self {
             module,
         }

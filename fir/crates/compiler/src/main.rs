@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use tracing::debug;
-use firc_back::codegen::isa::{Architecture, Endianness, Target};
+use firc_back::codegen::isa::{Architecture, Endianness};
 
 use firc_back::codegen::register_allocator;
 use firc_back::emu::Emulator;
@@ -42,28 +42,24 @@ fn main() -> Result<()> {
     config.dead_code_elimination = false;
     // module.optimize(config);
     println!("{module}");
-    let mut x86_mod = firc_back::codegen::machine::module::Builder::<firc_back::codegen::isa::x86_64::Backend>::new(&mut module).build();
+    let mut x86_mod = firc_back::codegen::machine::module::Builder::<firc_back::codegen::isa::x86_64::DefaultTarget>::new(&mut module).build();
     x86_mod.run_register_allocator();
     x86_mod.run_register_coalescer();
     x86_mod.remove_fallthrough_jumps();
-    x86_mod.expand_pseudo_instructions::<firc_back::codegen::isa::x86_64::Backend>();
+    x86_mod.expand_pseudo_instructions();
     debug!("{x86_mod}");
     let base_addr = 0x1000;
-    let code = x86_mod.assemble(base_addr);
+    let asm_module = x86_mod.assemble(base_addr);
     let mut emu = Emulator::new(
-        Target {
-            arch: Architecture::X86_64,
-            endianness: Endianness::Little,
-        },
-        &code,
-        base_addr
+        &asm_module
     );
-    let result = emu.emulate(
+    let result = emu.run_function(
+        x86_mod.functions().next().unwrap().0,
         &[
-            30,
-            20
+            30000,
+            20000
         ]
-    );
+    ).unwrap();
     println!("Result: {}", result);
     Ok(())
 }

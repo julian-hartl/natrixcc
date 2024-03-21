@@ -23,6 +23,7 @@ use firc_middle::ty::Type;
 pub use module::Module;
 
 use crate::codegen::{machine, selection_dag};
+use crate::codegen::isa::{Architecture, Endianness};
 use crate::codegen::machine::abi::calling_convention::Slot;
 use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::machine::asm::Assembler;
@@ -32,6 +33,20 @@ use crate::codegen::selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp}
 pub mod abi;
 pub mod asm;
 pub mod module;
+
+pub trait TargetMachine {
+    type Abi: Abi;
+    
+    type Backend: Backend<ABI=Self::Abi>;
+    
+    fn backend() -> Self::Backend {
+        Self::Backend::new()
+    }
+
+    fn endianness() -> Endianness;
+
+    fn arch() -> Architecture;
+}
 
 // #[derive(Debug, Clone)]
 // pub struct SubReg<P: PhysicalRegister>((P, Range<u16>));
@@ -44,6 +59,8 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn is_gp(&self) -> bool;
 
     fn size(&self) -> Size;
+    
+    fn into_unicorn_emu_reg(self) -> impl Into<i32>;
 
     /// Returns the sub registers of this register.
     ///
@@ -648,6 +665,7 @@ pub struct Function<A: Abi> {
     pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<A>>,
     pub(crate) vregs: PrimaryMap<VReg, VRegInfo<A>>,
     pub(crate) params: SmallVec<[VReg; 2]>,
+    pub(crate) return_ty_size: Size,
     cfg: Option<Cfg>,
 }
 
@@ -661,6 +679,7 @@ impl<A: Abi> Function<A> {
             vregs: PrimaryMap::new(),
             cfg: None,
             params: SmallVec::new(),
+            return_ty_size: Size::Byte,
         }
     }
 
@@ -1053,6 +1072,9 @@ impl<B: Backend> FunctionBuilder<B> {
 
     pub fn build(mut self, function: &mut firc_middle::Function) -> Function<B::ABI> {
         self.function.name = function.name.clone();
+        self.function.return_ty_size = Size::from_ty(
+            &function.ret_ty
+        );
         debug!("Building machine function for function {}", function.name);
         let mut sel_dag_builder = selection_dag::Builder::<B::ABI>::new(&mut self.function);
         let mut sel_dag = sel_dag_builder.build(function);

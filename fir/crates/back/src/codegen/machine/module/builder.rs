@@ -1,12 +1,12 @@
-use crate::codegen::machine::{Backend, FunctionBuilder, Module};
+use crate::codegen::machine::{Backend, FunctionBuilder, Module, TargetMachine};
 
 #[derive(Debug)]
-pub struct Builder<'module, B: Backend> {
+pub struct Builder<'module, TM: TargetMachine> {
     module: &'module mut firc_middle::Module,
-    mtbb: Module<B::ABI>,
+    mtbb: Module<TM>,
 }
 
-impl<'module, B: Backend> Builder<'module, B> {
+impl<'module, TM: TargetMachine> Builder<'module, TM> {
     pub fn new(module: &'module mut firc_middle::Module) -> Self {
         Self {
             module,
@@ -14,9 +14,9 @@ impl<'module, B: Backend> Builder<'module, B> {
         }
     }
 
-    pub fn build(mut self) -> Module<B::ABI> {
+    pub fn build(mut self) -> Module<TM> {
         for (_, function) in &mut self.module.functions {
-            let builder = FunctionBuilder::<B>::new();
+            let builder = FunctionBuilder::<TM::Backend>::new();
             self.mtbb.functions.push(
                 builder.build(function)
             );

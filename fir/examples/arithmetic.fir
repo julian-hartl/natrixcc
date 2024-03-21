@@ -9,5 +9,6 @@ bb2:
     v6 = sub i32 v3, 1;
     br bb1(v5, v6);
 bb3:
-    ret i32 v2;
+    v7 = add i32 v2, v2;
+    ret i32 v7;
 }
