@@ -1,0 +1,108 @@
+use std::str::FromStr;
+use crate::module::{Instruction, Operand, Literal, BasicBlock, Function, Type, Arg, Module, RegId, Target, BasicBlockId, CmpOp};
+grammar;
+
+pub Module: Module = {
+    <functions:Function+> => Module {
+        functions,
+    }
+}
+
+pub Function: Function = {
+    "fun" <ret_ty: Type> <name:FunId> "(" <args:Comma<Type>> ")" "{" <blocks:BasicBlock*> "}" => Function {
+        name,
+        ret_ty,
+        args,
+        basic_blocks: blocks,
+    }
+}
+
+pub BasicBlock: BasicBlock = {
+    <id:BasicBlockId> <args:BasicBlockArgList?> ":" <instructions: Instruction*> => BasicBlock {
+        args: args.unwrap_or_default(),
+        id,
+        instructions,
+    }
+}
+
+BasicBlockArgList: Vec<Arg> = {
+    "("  <args:Comma<Arg>> ")" => args
+}
+
+Arg: Arg = {
+    <ty:Type> <id:RegId> => Arg {
+        ty,
+        id,
+    }
+}
+
+pub Instruction: Instruction = {
+    <instr:InstructionInner> ";" => instr,
+}
+
+pub InstructionInner: Instruction = {
+    <decl:RegId> "=" "add" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Add(decl, ty, op1, op2),
+    <decl:RegId> "=" "sub" <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::Sub(decl, ty, op1, op2),
+    <decl:RegId> "=" <ty: Type> <op: Operand> => Instruction::Op(decl, ty, op),
+    <decl:RegId> "=" "icmp" <op: CmpOp> <ty: Type> <op1: Operand> "," <op2: Operand> => Instruction::ICmp(decl, op, ty, op1, op2),
+    "condbr" <condition: Operand> <true_target: Target> "," <false_target: Target> => Instruction::Condbr(condition, true_target, false_target),
+    "br" <target: Target> => Instruction::Br(target),
+    "ret" <ty: Type> <op: Operand?> => Instruction::Ret(ty, op),
+}
+
+pub CmpOp: CmpOp = {
+    "eq" => CmpOp::Eq,
+    "gt" => CmpOp::Gt
+}
+
+pub Target: Target = {
+    <id: BasicBlockId> <args: TargetArgList?> => Target(id, args)
+}
+
+TargetArgList: Vec<Operand> = {
+    "("  <args:Comma<Operand>> ")" => args
+}
+
+
+pub Operand: Operand = {
+    Literal => Operand::Literal(<>),
+    RegId => Operand::Register(<>)
+}
+
+Literal: Literal = {
+    SignedNum => Literal::Int(<>),
+}
+
+Type: Type = {
+    "u8" => Type::U8,
+    "u16" => Type::U16,
+    "u32" => Type::U32,
+    "u64" => Type::U64,
+    "i8" => Type::I8,
+    "i16" => Type::I16,
+    "i32" => Type::I32,
+    "i64" => Type::I64,
+    "void" => Type::Void,
+    "bool" => Type::Bool,
+}
+
+FunId: String = <id:r"@[a-zA-Z_][a-zA-Z0-9_]*"> => id[1..].to_string();
+RegId: RegId = <id:r"v(0|([1-9][0-9]*))"> => RegId(u32::from_str(&id[1..]).unwrap());
+BasicBlockId: BasicBlockId = <id:r"bb(0|([1-9][0-9]*))"> => BasicBlockId(u32::from_str(&id[2..]).unwrap());
+SignedNum: i64 =  <s: "-"?> <num:UnsignedNum> => match s {
+     Some(_) => -(num as i64),
+     None => num as i64
+};
+UnsignedNum: u64 =  {
+    "0" => 0,
+    <s:r"[1-9][0-9]*"> => u64::from_str(s).unwrap()
+}
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};

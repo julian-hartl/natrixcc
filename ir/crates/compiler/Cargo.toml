@@ -1,0 +1,13 @@
+[package]
+name = "natrix"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.79"
+clap = { version = "4.5.1", features = ["derive"] }
+natrix_back = { path = "../back" }
+natrix_middle = { path = "../middle" }
+natrix_front = { path = "../front" }
+tracing-subscriber = "0.3.18"
+tracing = "0.1.40"
