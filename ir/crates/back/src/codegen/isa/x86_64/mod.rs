@@ -1,7 +1,7 @@
 use smallvec::{SmallVec, smallvec};
 use strum::VariantArray;
 
-use firc_middle::instruction::CmpOp;
+use natrix_middle::instruction::CmpOp;
 use crate::codegen::isa::{Architecture, Endianness};
 
 use crate::codegen::machine;
@@ -208,7 +208,7 @@ impl MachPhysicalRegister for PhysicalRegister {
     }
 
     fn into_unicorn_emu_reg(self) -> impl Into<i32> {
-        
+
         use unicorn_engine::RegisterX86;
         match self {
             Self::AL => RegisterX86::AL,

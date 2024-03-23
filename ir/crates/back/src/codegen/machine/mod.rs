@@ -17,9 +17,9 @@ use smallvec::{SmallVec, smallvec};
 use tracing::debug;
 
 pub use abi::Abi;
-use firc_middle;
-use firc_middle::instruction::CmpOp;
-use firc_middle::ty::Type;
+use natrix_middle;
+use natrix_middle::instruction::CmpOp;
+use natrix_middle::ty::Type;
 pub use module::Module;
 
 use crate::codegen::{machine, selection_dag};
@@ -36,9 +36,9 @@ pub mod module;
 
 pub trait TargetMachine {
     type Abi: Abi;
-    
+
     type Backend: Backend<ABI=Self::Abi>;
-    
+
     fn backend() -> Self::Backend {
         Self::Backend::new()
     }
@@ -59,7 +59,7 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     fn is_gp(&self) -> bool;
 
     fn size(&self) -> Size;
-    
+
     fn into_unicorn_emu_reg(self) -> impl Into<i32>;
 
     /// Returns the sub registers of this register.
@@ -1058,7 +1058,7 @@ impl<A: Abi> BasicBlock<A> {
 pub struct FunctionBuilder<B: Backend> {
     function: Function<B::ABI>,
     backend: B,
-    bb_mapping: FxHashMap<firc_middle::cfg::BasicBlockId, BasicBlockId>,
+    bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockId>,
 }
 
 impl<B: Backend> FunctionBuilder<B> {
@@ -1070,7 +1070,7 @@ impl<B: Backend> FunctionBuilder<B> {
         }
     }
 
-    pub fn build(mut self, function: &mut firc_middle::Function) -> Function<B::ABI> {
+    pub fn build(mut self, function: &mut natrix_middle::Function) -> Function<B::ABI> {
         self.function.name = function.name.clone();
         self.function.return_ty_size = Size::from_ty(
             &function.ret_ty
@@ -1270,7 +1270,7 @@ impl<B: Backend> FunctionBuilder<B> {
         self.function
     }
 
-    fn create_bb(&mut self, bb: firc_middle::cfg::BasicBlockId) -> BasicBlockId {
+    fn create_bb(&mut self, bb: natrix_middle::cfg::BasicBlockId) -> BasicBlockId {
         let mbb = self.function.create_bb();
         self.bb_mapping.insert(bb, mbb);
         mbb
@@ -1296,9 +1296,9 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::codegen::isa;
-    use crate::firc_middle::cfg;
-    use crate::firc_middle::cfg::{RetTerm, TerminatorKind};
-    use crate::firc_middle::instruction::{Const, Op};
+    use crate::natrix_middle::cfg;
+    use crate::natrix_middle::cfg::{RetTerm, TerminatorKind};
+    use crate::natrix_middle::instruction::{Const, Op};
     use crate::test_utils::create_test_function;
 
     #[test]

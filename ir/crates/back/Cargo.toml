@@ -1,0 +1,23 @@
+[package]
+name = "natrix_back"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+index_vec = "0.1.3"
+tracing = "0.1.40"
+rustc-hash = "1.1.0"
+strum = { version = "0.26.1",features = ["derive"]}
+strum_macros = "0.26.1"
+tracing-test = "0.2.4"
+smallvec = "1.13.1"
+iced-x86 = { version = "1.20.0", features = ["code_asm"] }
+iter_tools = "0.4.0"
+daggy = "0.8.0"
+log = "0.4.20"
+natrix_middle = { path = "../middle" }
+unicorn-engine = "2.0.1"
+cranelift-entity = "0.105.2"
+slotmap = "1.0.7"
+anyhow = "1.0.81"
+

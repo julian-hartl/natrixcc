@@ -13,7 +13,11 @@ A collection of common compiler tooling designed and developed for educational p
 
 ## General Purpose Codegen Backend
 
-## Example C-Like Language Frontend
+See [here](./ir/README.md) for more information.
+
+## Natrix Language Frontend
+
+See [here](./lang/README.md) for more information.
 
 ## Example Package Manager
 

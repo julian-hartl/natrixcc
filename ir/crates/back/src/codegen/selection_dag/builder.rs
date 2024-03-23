@@ -9,10 +9,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use tracing::debug;
 
 use codegen::selection_dag;
-use firc_middle::cfg::{BasicBlockId, BranchTerm, JumpTarget, Terminator, TerminatorKind};
-use firc_middle::InstrKind;
-use firc_middle::instruction::{Const, OpInstr, VRegData};
-use firc_middle::ty::Type;
+use natrix_middle::cfg::{BasicBlockId, BranchTerm, JumpTarget, Terminator, TerminatorKind};
+use natrix_middle::InstrKind;
+use natrix_middle::instruction::{Const, OpInstr, VRegData};
+use natrix_middle::ty::Type;
 use selection_dag::SelectionDAG;
 
 use crate::codegen;
@@ -26,7 +26,7 @@ use crate::codegen::selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp}
 pub struct Builder<'func, A: machine::Abi> {
     function: &'func mut Function<A>,
     sel_dag: SelectionDAG<A>,
-    reg_mapping: SecondaryMap<firc_middle::VReg, Option<VReg>>,
+    reg_mapping: SecondaryMap<natrix_middle::VReg, Option<VReg>>,
     defining_nodes: FxHashMap<(VReg, BasicBlockId), NodeIndex>,
 }
 
@@ -40,7 +40,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         }
     }
 
-    pub fn build(mut self, func: &mut firc_middle::Function) -> SelectionDAG<A> {
+    pub fn build(mut self, func: &mut natrix_middle::Function) -> SelectionDAG<A> {
         debug!("Building SelectionDAGs for function {}", func.name);
         let basic_blocks = func.cfg.basic_block_ids().filter(
             |bb_id| *bb_id != func.cfg.entry_block()
@@ -137,10 +137,10 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                 debug!("Add instruction to SelectionDAG: {:?}", instr);
 
                 match &instr.kind {
-                    firc_middle::InstrKind::Alloca(_) => unimplemented!(),
-                    firc_middle::InstrKind::Store(_) => unimplemented!(),
-                    firc_middle::InstrKind::Load(_) => unimplemented!(),
-                    firc_middle::InstrKind::Op(op_instr) => {
+                    natrix_middle::InstrKind::Alloca(_) => unimplemented!(),
+                    natrix_middle::InstrKind::Store(_) => unimplemented!(),
+                    natrix_middle::InstrKind::Load(_) => unimplemented!(),
+                    natrix_middle::InstrKind::Op(op_instr) => {
                         let out_reg = self.map_vreg(op_instr.value, func);
                         let op = match self.map_op(&op_instr.op, func) {
                             Operand::Reg(reg) => Op::Pseudo(PseudoOp::Copy(
@@ -154,7 +154,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                         };
                         self.define_node(bb_id, op);
                     }
-                    firc_middle::InstrKind::Sub(sub_instr) => {
+                    natrix_middle::InstrKind::Sub(sub_instr) => {
                         let out_reg = self.map_vreg(sub_instr.value, func);
                         let lhs = self.map_op(&sub_instr.lhs, func);
                         let rhs = self.map_op(&sub_instr.rhs, func);
@@ -164,7 +164,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                             rhs,
                         )));
                     }
-                    firc_middle::InstrKind::Add(add_instr) => {
+                    natrix_middle::InstrKind::Add(add_instr) => {
                         let out_reg = self.map_vreg(add_instr.value, func);
                         let lhs = self.map_op(&add_instr.lhs, func);
                         let rhs = self.map_op(&add_instr.rhs, func);
@@ -174,7 +174,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                             rhs,
                         )));
                     }
-                    firc_middle::InstrKind::Cmp(cmp_instr) => {
+                    natrix_middle::InstrKind::Cmp(cmp_instr) => {
                         let out_reg = self.map_vreg(cmp_instr.value, func);
                         let lhs = self.map_op(&cmp_instr.lhs, func);
                         let rhs = self.map_op(&cmp_instr.rhs, func);
@@ -189,18 +189,18 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
             }
 
             match &bb.terminator().kind {
-                firc_middle::cfg::TerminatorKind::Ret(ret_term) => {
+                natrix_middle::cfg::TerminatorKind::Ret(ret_term) => {
                     let value = ret_term.value.as_ref().map(|value| self.map_op(value,  func));
                     self.define_term_node(bb_id, Op::Pseudo(PseudoOp::Ret(
                         value
                     )));
                 }
-                firc_middle::cfg::TerminatorKind::Branch(branch_term) => {
+                natrix_middle::cfg::TerminatorKind::Branch(branch_term) => {
                     self.define_term_node(bb_id, Op::Machine(MachineOp::Br(
                         branch_term.target.id
                     )));
                 }
-                firc_middle::cfg::TerminatorKind::CondBranch(branch_term) => {
+                natrix_middle::cfg::TerminatorKind::CondBranch(branch_term) => {
                     let op = self.map_op(&branch_term.cond, func);
                     self.define_term_node(bb_id, Op::Machine(MachineOp::CondBr(
                         op,
@@ -213,10 +213,10 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         self.sel_dag
     }
 
-    fn map_op(&mut self, op: &firc_middle::instruction::Op, func: &firc_middle::Function) -> Operand<A> {
+    fn map_op(&mut self, op: &natrix_middle::instruction::Op, func: &natrix_middle::Function) -> Operand<A> {
         match op {
-            firc_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
-            firc_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
+            natrix_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
+            natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
                 Const::Int(ty, value) => {
                     let value = *value;
                     match ty {
@@ -246,7 +246,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         ).unwrap();
     }
 
-    fn define_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
+    fn define_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
         let used_regs = op.consumed_regs();
         let out_reg = op.out().and_then(|reg| reg.try_as_virtual());
         debug!("Defining op {:?}. Out reg: {:?}, used regs: {:?}", op, out_reg, used_regs);
@@ -263,7 +263,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         node
     }
 
-    fn define_term_node(&mut self, bb_id: firc_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
+    fn define_term_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
         let term_node = self.define_node(bb_id, op);
         let dag = self.sel_dag.get_bb_dag(bb_id);
         dag.set_term_node(term_node);
@@ -277,7 +277,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
     }
 
 
-    fn map_vreg(&mut self, vreg: firc_middle::VReg, func: &firc_middle::Function) -> VReg {
+    fn map_vreg(&mut self, vreg: natrix_middle::VReg, func: &natrix_middle::Function) -> VReg {
         let mapped = self.reg_mapping[vreg];
         match mapped {
             Some(reg) => reg,
@@ -301,10 +301,10 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
 
 #[cfg(test)]
 mod tests {
-    use firc_middle::cfg;
-    use firc_middle::cfg::{RetTerm, TerminatorKind};
-    use firc_middle::instruction::{Const, Op};
-    use firc_middle::test::create_test_module;
+    use natrix_middle::cfg;
+    use natrix_middle::cfg::{RetTerm, TerminatorKind};
+    use natrix_middle::instruction::{Const, Op};
+    use natrix_middle::test::create_test_module;
 
     use crate::codegen::isa::x86_64;
 

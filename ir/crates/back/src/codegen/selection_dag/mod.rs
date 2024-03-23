@@ -6,8 +6,8 @@ use rustc_hash::FxHashMap;
 use smallvec::{SmallVec, smallvec};
 
 pub use builder::Builder;
-use firc_middle::cfg::BasicBlockId;
-use firc_middle::instruction::CmpOp;
+use natrix_middle::cfg::BasicBlockId;
+use natrix_middle::instruction::CmpOp;
 
 use crate::codegen::machine;
 use crate::codegen::machine::{Abi, MachineInstr, Pattern, Register, Size, VReg};
@@ -20,11 +20,11 @@ type Dag<A> = daggy::Dag<Op<A>, Edge>;
 pub struct BasicBlockDAG<A: machine::Abi> {
     dag: Dag<A>,
     term_node: Option<daggy::NodeIndex>,
-    bb: firc_middle::cfg::BasicBlockId,
+    bb: natrix_middle::cfg::BasicBlockId,
 }
 
 impl<A: machine::Abi> BasicBlockDAG<A> {
-    pub fn new(bb: firc_middle::cfg::BasicBlockId) -> Self {
+    pub fn new(bb: natrix_middle::cfg::BasicBlockId) -> Self {
         Self {
             dag: Dag::new(),
             term_node: None,
@@ -65,11 +65,11 @@ impl<A: machine::Abi> DerefMut for BasicBlockDAG<A> {
 
 #[derive(Debug, Default)]
 pub struct SelectionDAG<A: machine::Abi> {
-    pub basic_blocks: FxHashMap<firc_middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
+    pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
 }
 
 impl<A: machine::Abi> SelectionDAG<A> {
-    pub fn get_bb_dag(&mut self, basic_block: firc_middle::cfg::BasicBlockId) -> &mut BasicBlockDAG<A> {
+    pub fn get_bb_dag(&mut self, basic_block: natrix_middle::cfg::BasicBlockId) -> &mut BasicBlockDAG<A> {
         self.basic_blocks.entry(basic_block).or_insert_with(|| BasicBlockDAG::new(basic_block))
     }
 }

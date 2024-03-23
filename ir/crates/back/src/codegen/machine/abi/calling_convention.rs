@@ -1,4 +1,4 @@
-use firc_middle::Type;
+use natrix_middle::Type;
 use crate::codegen::machine;
 use crate::codegen::machine::Size;
 
