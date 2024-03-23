@@ -1,4 +1,4 @@
-# Fusion compiler collection
+# Natrix Compiler Collection
 
 A collection of common compiler tooling designed and developed for educational purposes.
 
