@@ -57,9 +57,8 @@ pub type Graph = StableGraph<(), (), Directed>;
 #[derive(Debug, Clone, Default)]
 pub struct Cfg {
     graph: Graph,
-    basic_blocks: PrimaryMap<BasicBlockId, BasicBlock>,
-    entry_block: Option<BasicBlockId>,
-    vregs: PrimaryMap<VReg, VRegData>,
+    basic_blocks: PrimaryMap<BasicBlockId, Option<BasicBlock>>,
+    pub(crate) vregs: PrimaryMap<VReg, Option<VRegData>>,
 }
 
 impl Cfg {
@@ -71,27 +70,41 @@ impl Cfg {
         let bb = {
             self.graph.add_node(());
             let next_id = self.basic_blocks.next_key();
-            self.basic_blocks.push(BasicBlock::new(next_id))
+            self.basic_blocks.push(Some(BasicBlock::new(next_id)))
         };
-        if self.entry_block.is_none() {
-            self.entry_block = Some(bb);
-        }
         bb
+    }
+    
+    pub(crate) fn ensure_exists(&mut self, id: BasicBlockId) {
+        self.basic_blocks[id].get_or_insert_with(
+            || {
+                BasicBlock::new(id)
+            }
+        );
+    }
+    
+    pub(crate) fn new_empty_block(&mut self) -> BasicBlockId {
+        self.graph.add_node(());
+        self.basic_blocks.push(None)
     }
 
     pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> (Vec<Instr>, Terminator) {
         self.graph.remove_node(bb_id.into());
-        let bb = self.basic_block_mut(bb_id);
-        let instructions = bb.instructions.raw.drain(..).collect();
-        let terminator = bb.terminator.take().unwrap();
+        let bb = self.basic_blocks[bb_id].take().expect("Basic block does not exist");
+        let instructions = bb.instructions.raw;
+        let terminator = bb.terminator.unwrap();
         (instructions, terminator)
     }
 
     /// Returns an iterator visiting all basics blocks in arbitrary order.
-    pub fn basic_blocks(&self) -> impl Iterator<Item = (BasicBlockId, &BasicBlock)> {
-        self.basic_blocks
-            .iter()
-            .filter(|(id, bb)| bb.has_terminator())
+    pub fn basic_blocks(&self) -> impl Iterator<Item=(BasicBlockId, &BasicBlock)> {
+        self.basic_blocks.iter().flat_map(
+            |(id, bb)| {
+                bb.as_ref().map(
+                    |bb| (id, bb)
+                )
+            }
+        )
     }
 
     /// Returns an iterator visiting all basics block ids in arbitrary order.
@@ -107,15 +120,15 @@ impl Cfg {
 
     /// The basic block associated with `id`.
     pub fn basic_block(&self, id: BasicBlockId) -> &BasicBlock {
-        &self.basic_blocks[id]
+        self.basic_blocks[id].as_ref().expect("Basic block was removed")
     }
 
     pub fn basic_block_mut(&mut self, id: BasicBlockId) -> &mut BasicBlock {
-        &mut self.basic_blocks[id]
+        self.basic_blocks[id].as_mut().expect("Basic block was removed")
     }
 
     pub fn entry_block(&self) -> BasicBlockId {
-        self.entry_block.expect("Entry block has not been created")
+        BasicBlockId::from_u32(0)
     }
 
     pub fn add_bb_argument(&mut self, id: BasicBlockId, arg: VReg) {
@@ -206,7 +219,11 @@ impl Cfg {
     }
 
     pub fn new_vreg(&mut self, vreg: VRegData) -> VReg {
-        self.vregs.push(vreg)
+        self.vregs.push(Some(vreg))
+    }
+    
+    pub(crate) fn empty_vreg(&mut self) -> VReg {
+        self.vregs.push(None)
     }
 
     pub fn vreg_ty(&self, vreg: VReg) -> &Type {
@@ -218,10 +235,10 @@ impl Cfg {
     }
 
     pub fn vreg(&self, vreg: VReg) -> &VRegData {
-        &self.vregs[vreg]
+        self.vregs[vreg].as_ref().expect("VReg does not exist")
     }
 
-    pub fn dfs_postorder(&self) -> impl Iterator<Item = BasicBlockId> + '_ {
+    pub fn dfs_postorder(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
         DfsPostOrder::new(&self.graph, self.entry_block().into())
             .iter(&self.graph)
             .map(|node| node.into())
@@ -276,6 +293,12 @@ mod cfg_tests {
 
 index_vec::define_index_type! {
     pub struct InstrId = u32;
+    
+    DISPLAY_FORMAT = "{}";
+}
+
+impl InstrId {
+    pub const TERMINATOR: Self = Self::from_usize_unchecked(Self::MAX_INDEX);
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -354,6 +377,10 @@ impl BasicBlock {
         self.instructions.iter()
     }
 
+    pub fn instructions_indexed(&self) -> impl DoubleEndedIterator<Item=(InstrId, &Instr)> {
+        self.instructions.iter_enumerated()
+    }
+
     /// Returns a mutable iterator over the [`BasicBlock`]'s [`Instructions`][`Instr`].
     pub fn instructions_mut(&mut self) -> impl DoubleEndedIterator<Item = &mut Instr> {
         self.instructions.iter_mut()
@@ -387,34 +414,17 @@ mod bb_tests {
     use cranelift_entity::EntityRef;
     use index_vec::index_vec;
 
-    use super::{
-        BranchTerm,
-        Cfg,
-        CondBranchTerm,
-        InstrId,
-        JumpTarget,
-        RetTerm,
-        Terminator,
-        TerminatorKind,
-    };
-    use crate::{
-        instruction::{
-            Const,
-            Op,
-            OpInstr,
-        },
-        Instr,
-        InstrKind,
-        Type,
-        VReg,
-    };
+    use crate::{Instr, InstrKind, Type, VReg};
+    use crate::instruction::{Const, Op, OpInstr};
+
+    use super::{BasicBlockId, BranchTerm, Cfg, CondBranchTerm, InstrId, JumpTarget, RetTerm, TerminatorKind};
 
     #[test]
-    fn should_set_entry_block() {
+    fn entry_block_should_be_index_0() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let bb1 = cfg.new_basic_block();
-        assert_eq!(cfg.entry_block, Some(bb0));
+        let bb0 = cfg.new_basic_block();
+        assert_eq!(cfg.entry_block(), BasicBlockId::from_u32(0));
     }
 
     #[test]
@@ -445,10 +455,7 @@ mod bb_tests {
     fn should_add_instruction() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let instr = InstrKind::Op(OpInstr {
-            op: Op::Const(Const::Int(Type::I32, 3)),
-            value: VReg::new(2),
-        });
+        let instr = InstrKind::Op(OpInstr { op: Op::Const(Const::Int(Type::I32, 3)), value: VReg::new(2) });
         cfg.add_instruction(bb0, Type::I32, instr.clone());
         assert_eq!(
             cfg.basic_block(bb0).instructions,

@@ -1,18 +1,11 @@
 use cranelift_entity::SecondaryMap;
 use tracing::debug;
 
-use crate::{
-    analysis::{
-        dataflow,
-        dataflow::use_def::InstrUid,
-    },
-    module::Module,
-    optimization::{
-        FunctionPass,
-        Pass,
-    },
-    FunctionId,
-};
+use crate::analysis::dataflow;
+use crate::analysis::dataflow::use_def::IRLocation;
+use crate::FunctionId;
+use crate::module::Module;
+use crate::optimization::{FunctionPass, Pass};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct DeadCodeEliminationPass {}
@@ -31,7 +24,7 @@ impl FunctionPass for DeadCodeEliminationPass {
         let mut removed_instr_count = SecondaryMap::new();
         for vreg in state.unused_regs() {
             debug!("Removing unused def {vreg}");
-            let InstrUid(bb_id, instr_id) = state.get_def(vreg).unwrap();
+            let IRLocation(bb_id, instr_id) = state.get_def(vreg).unwrap();
             let bb = &mut module.functions[function].cfg.basic_block_mut(bb_id);
             let removed_instrs = removed_instr_count.get(bb_id).copied().unwrap_or(0);
             let instr_id = instr_id - removed_instrs;

@@ -15,15 +15,8 @@ use strum_macros::{
     EnumTryAs,
 };
 
-use crate::{
-    cfg::{
-        BasicBlockId,
-        Cfg,
-        InstrId,
-    },
-    Type,
-    VReg,
-};
+use crate::{Function, Type, VReg};
+use crate::cfg::{BasicBlockId, Cfg, InstrId};
 
 /// An instruction in a basic block.
 ///
@@ -205,6 +198,14 @@ impl From<VReg> for Op {
 }
 
 impl Op {
+
+    pub fn ty<'func>(&'func self, function: &'func Function) -> &'func Type {
+        match self {
+            Op::Const(const_val) => const_val.ty(),
+            Op::Vreg(vreg) => function.cfg.vreg_ty(*vreg),
+        }
+    }
+
     pub fn referenced_value(&self) -> Option<VReg> {
         match self {
             Op::Const(_) => None,
@@ -259,6 +260,12 @@ impl Const {
                 let res = lhs.checked_add(rhs)?;
                 Some(Self::Int(lty, res))
             }
+        }
+    }
+
+    pub fn ty(&self) -> &Type {
+        match self {
+            Const::Int(ty, _) => ty
         }
     }
 }
