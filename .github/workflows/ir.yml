@@ -1,4 +1,4 @@
-name: Rust
+name: Natrix ir
 
 on:
   push:
@@ -8,6 +8,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  
+defaults:
+  run:
+    working-directory: ./ir
 
 jobs:
   test:
