@@ -73,7 +73,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     func.cfg.basic_block_mut(critical_edge_split_bb).set_terminator(
                         Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(
                             bb_id
-                        ))))
+                        ))), critical_edge_split_bb)
                     );
                     func.cfg.recompute_successors(critical_edge_split_bb);
                     func.cfg.basic_block_mut(pred_id).update_terminator(|term|
@@ -96,9 +96,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     let instr = func.cfg.copy_op_instr(
                         temp_reg,
                         arg,
-                        ty.clone(),
                     );
-                    func.cfg.add_instruction(copy_instr_bb, instr);
+                    func.cfg.add_instruction(copy_instr_bb, ty.clone(), instr);
                 }
             }
             let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
@@ -215,7 +214,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
 
     fn map_op(&mut self, op: &natrix_middle::instruction::Op, func: &natrix_middle::Function) -> Operand<A> {
         match op {
-            natrix_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
+            natrix_middle::instruction::Op::Vreg(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
             natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
                 Const::Int(ty, value) => {
                     let value = *value;

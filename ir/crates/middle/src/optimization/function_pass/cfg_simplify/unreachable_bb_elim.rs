@@ -113,10 +113,10 @@ impl FunctionPass for Pass {
                     // To keep the program consistent, we need to insert move instruction for each argument
                     // They look like this:
                     // <previous argument> = <previous value argument in branch instruction>
-                    function.cfg.basic_block_mut(pred_id).append_instruction(Instr::new(ty, InstrKind::Op(OpInstr {
+                    function.cfg.basic_block_mut(pred_id).append_instruction(ty, InstrKind::Op(OpInstr {
                         value: argument,
                         op,
-                    })));
+                    }));
                 }
             }
         }

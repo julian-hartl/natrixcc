@@ -3,8 +3,10 @@
 use std::fmt::{Debug, Display, Formatter};
 
 use cranelift_entity::{entity_impl, EntityRef, PrimaryMap};
+use index_vec::IndexVec;
 use petgraph::prelude::*;
 use petgraph::visit::Walker;
+use smallvec::SmallVec;
 
 #[allow(unused_imports)]
 pub use builder::Builder;
@@ -50,7 +52,8 @@ impl Cfg {
     pub fn new_basic_block(&mut self) -> BasicBlockId {
         let bb = {
             self.graph.add_node(());
-            self.basic_blocks.push(BasicBlock::new())
+            let next_id = self.basic_blocks.next_key();
+            self.basic_blocks.push(BasicBlock::new(next_id))
         };
         if self.entry_block.is_none() {
             self.entry_block = Some(bb);
@@ -58,10 +61,11 @@ impl Cfg {
         bb
     }
 
-    pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> (Option<Vec<Instr>>, Terminator) {
+    pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> (Vec<Instr>, Terminator) {
         self.graph.remove_node(bb_id.into());
-        let instructions = self.basic_block_mut(bb_id).instructions.take();
-        let terminator = self.basic_block_mut(bb_id).terminator.take().unwrap();
+        let bb = self.basic_block_mut(bb_id);
+        let instructions = bb.instructions.raw.drain(..).collect();
+        let terminator = bb.terminator.take().unwrap();
         (instructions, terminator)
     }
 
@@ -98,48 +102,49 @@ impl Cfg {
         self.basic_block_mut(id).arguments.push(arg)
     }
 
-    pub fn add_instruction(&mut self, id: BasicBlockId, instr: Instr) {
-        self.basic_block_mut(id).append_instruction(instr)
+    pub fn add_instruction(&mut self, id: BasicBlockId, ty: Type, instr: InstrKind) {
+        let bb = self.basic_block_mut(id);
+        bb.append_instruction(ty,instr);
     }
-    pub fn copy_reg_instr(&self, dest: VReg, reg: VReg) -> Instr {
+    pub fn copy_reg_instr(&self, dest: VReg, reg: VReg) -> InstrKind {
         self.copy_op_instr(
             dest,
-            Op::Value(reg),
-            self.vreg_ty_cloned(reg),
+            Op::Vreg(reg),
         )
     }
 
-    pub fn copy_op_to_temp_instr(&mut self, id: BasicBlockId, src_op: Op, src_ty: Type) -> (Instr, VReg) {
+    pub fn copy_op_to_temp_instr(&mut self, id: BasicBlockId, src_op: Op, src_ty: Type) -> (InstrKind, VReg) {
         let dest = self.new_vreg(VRegData {
             defined_in: id,
             ty: src_ty.clone(),
         });
-        let instr = self.copy_op_instr(dest, src_op, src_ty);
+        let instr = self.copy_op_instr(dest, src_op);
         (instr, dest)
     }
 
 
-    pub fn copy_op_instr(&self, dest: VReg, src_op: Op, src_ty: Type) -> Instr {
-        Instr::new(src_ty, InstrKind::Op(
+    pub fn copy_op_instr(&self, dest: VReg, src_op: Op) -> InstrKind {
+        InstrKind::Op(
             OpInstr {
                 op: src_op,
                 value: dest,
             }
-        ))
+        )
     }
 
-    pub fn set_terminator(&mut self, id: BasicBlockId, terminator: Terminator) {
+    pub fn set_terminator(&mut self, id: BasicBlockId, terminator: TerminatorKind) {
         self.set_edges_from_terminator(id, &terminator);
+        let terminator = Terminator::new(terminator, id);
         self.basic_block_mut(id).terminator = Some(terminator);
     }
 
-    fn set_edges_from_terminator(&mut self, id: BasicBlockId, terminator: &Terminator) {
+    fn set_edges_from_terminator(&mut self, id: BasicBlockId, terminator: &TerminatorKind) {
         self.graph.retain_edges(
             |graph, edge| {
                 graph.edge_endpoints(edge).unwrap().0 != id.into()
             }
         );
-        match &terminator.kind {
+        match &terminator {
             TerminatorKind::Branch(BranchTerm {
                                        target,
                                    }) => {
@@ -173,7 +178,7 @@ impl Cfg {
 
     /// Recomputes the [BasicBlock]'s successors.
     pub fn recompute_successors(&mut self, basic_block: BasicBlockId) {
-        let terminator = self.basic_block(basic_block).terminator().clone();
+        let terminator = self.basic_block(basic_block).terminator().kind.clone();
         self.set_edges_from_terminator(basic_block, &terminator);
     }
 
@@ -195,6 +200,12 @@ impl Cfg {
 
     pub fn vreg(&self, vreg: VReg) -> &VRegData {
         &self.vregs[vreg]
+    }
+    
+    pub fn dfs_postorder(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+        DfsPostOrder::new(&self.graph, self.entry_block().into())
+            .iter(&self.graph)
+            .map(|node| node.into())
     }
 }
 
@@ -233,9 +244,9 @@ mod cfg_tests {
     fn should_not_return_removed_basic_block() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
+        cfg.set_terminator(bb0, TerminatorKind::Ret(RetTerm::empty()));
         let bb1 = cfg.new_basic_block();
-        cfg.set_terminator(bb1, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
+        cfg.set_terminator(bb1, TerminatorKind::Ret(RetTerm::empty()));
         cfg.remove_basic_block(bb0);
         assert_eq!(
             cfg.basic_block_ids().collect::<Vec<_>>(),
@@ -248,16 +259,28 @@ mod cfg_tests {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
+index_vec::define_index_type! {
+    pub struct InstrId = u32;
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BasicBlock {
+    id: BasicBlockId,
     arguments: Vec<VReg>,
-    pub(crate) instructions: Option<Vec<Instr>>,
+    pub(crate) instructions: IndexVec<InstrId, Instr>,
     pub(crate) terminator: Option<Terminator>,
 }
 
 impl BasicBlock {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(
+        id: BasicBlockId,
+    ) -> Self {
+        Self {
+            id,
+            arguments: vec![],
+            instructions: IndexVec::new(),
+            terminator: None,
+        }
     }
 
     /// Returns the [`Terminator`] of the [`BasicBlock`].
@@ -309,58 +332,45 @@ impl BasicBlock {
     }
 
     /// Returns an iterator over the [`BasicBlock`]'s [`Instructions`][`Instr`].
-    pub fn instructions(&self) -> impl Iterator<Item=&Instr> {
-        match &self.instructions {
-            Some(instructions) => instructions.iter(),
-            None => [].iter()
-        }
+    pub fn instructions(&self) -> impl DoubleEndedIterator<Item=&Instr> {
+        self.instructions.iter()
     }
 
     /// Returns a mutable iterator over the [`BasicBlock`]'s [`Instructions`][`Instr`].
-    pub fn instructions_mut(&mut self) -> impl Iterator<Item=&mut Instr> {
-        match &mut self.instructions {
-            Some(instructions) => instructions.iter_mut(),
-            None => [].iter_mut()
-        }
+    pub fn instructions_mut(&mut self) -> impl DoubleEndedIterator<Item=&mut Instr> {
+        self.instructions.iter_mut()
     }
 
     pub fn remove_instructions_by_pred<P>(&mut self, p: P) where P: FnMut(&Instr) -> bool {
-        if let Some(instructions) = &mut self.instructions {
-            instructions.retain(p)
-        }
+        self.instructions.retain(p)
+    }
+
+    pub fn remove_instruction(&mut self, id: InstrId) -> Instr {
+        self.instructions.remove(id)
     }
 
     pub fn append_instructions(&mut self, e_instructions: impl Iterator<Item=Instr>) {
-        if let Some(instructions) = &mut self.instructions {
-            instructions.extend(e_instructions)
-        }
+        self.instructions.extend(e_instructions);
     }
 
     /// Appends an [instruction][`Instr`] to the end of the basic block
-    pub fn append_instruction(&mut self, instr: Instr) {
-        self.ensure_instructions_exists().push(instr);
+    pub fn append_instruction(&mut self, ty: Type, instr: InstrKind) {
+        let instr_id = self.instructions.next_idx();
+        let instr = Instr::new(ty, instr, self.id, instr_id);
+        self.instructions.push(instr);
     }
 
-    pub fn insert_instruction_at(&mut self, idx: usize, instr: Instr) {
-        self.ensure_instructions_exists().insert(idx, instr);
-    }
-
-    fn ensure_instructions_exists(&mut self) -> &mut Vec<Instr> {
-        if self.instructions.is_none() {
-            self.instructions = Some(Vec::new());
-        };
-        self.instructions.as_mut().unwrap()
-    }
 }
 
 #[cfg(test)]
 mod bb_tests {
     use cranelift_entity::EntityRef;
+    use index_vec::index_vec;
 
     use crate::{Instr, InstrKind, Type, VReg};
     use crate::instruction::{Const, Op, OpInstr};
 
-    use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, Terminator, TerminatorKind};
+    use super::{BranchTerm, Cfg, CondBranchTerm, InstrId, JumpTarget, RetTerm, Terminator, TerminatorKind};
 
     #[test]
     fn should_set_entry_block() {
@@ -376,14 +386,14 @@ mod bb_tests {
         let bb0 = cfg.new_basic_block();
         let bb1 = cfg.new_basic_block();
         let bb2 = cfg.new_basic_block();
-        cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Ret(RetTerm::empty())));
+        cfg.set_terminator(bb0, TerminatorKind::Ret(RetTerm::empty()));
         assert!(cfg.successors(bb0).eq(vec![].into_iter()));
-        cfg.set_terminator(bb0, Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
+        cfg.set_terminator(bb0, TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb1,
             vec![],
-        )))));
+        ))));
         assert!(cfg.successors(bb0).eq(vec![bb1].into_iter()));
-        cfg.set_terminator(bb0, Terminator::new(TerminatorKind::CondBranch(CondBranchTerm::new(
+        cfg.set_terminator(bb0, TerminatorKind::CondBranch(CondBranchTerm::new(
             Op::Const(Const::Int(Type::I32, 1)),
             JumpTarget::new(
                 bb1,
@@ -393,7 +403,7 @@ mod bb_tests {
                 bb2,
                 vec![],
             ),
-        ))));
+        )));
         assert!(cfg.successors(bb0).eq(vec![bb2, bb1].into_iter()));
     }
 
@@ -401,20 +411,26 @@ mod bb_tests {
     fn should_add_instruction() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let instr = Instr::new(Type::I32, InstrKind::Op(OpInstr { op: Op::Const(Const::Int(Type::I32, 3)), value: VReg::new(2) }));
-        cfg.add_instruction(bb0, instr.clone());
-        assert_eq!(cfg.basic_block(bb0).instructions, Some(vec![instr]));
+        let instr =  InstrKind::Op(OpInstr { op: Op::Const(Const::Int(Type::I32, 3)), value: VReg::new(2) });
+        cfg.add_instruction(bb0, Type::I32, instr.clone());
+        assert_eq!(cfg.basic_block(bb0).instructions, index_vec![Instr::new(
+            Type::I32,
+            instr,
+            bb0,
+            InstrId::from_raw(0),
+        )]);
     }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Terminator {
+    pub bb: BasicBlockId,
     pub kind: TerminatorKind,
 }
 
 impl Terminator {
-    pub const fn new(kind: TerminatorKind) -> Self {
-        Self { kind }
+    pub const fn new(kind: TerminatorKind, bb: BasicBlockId) -> Self {
+        Self { kind, bb }
     }
 
     pub fn clear_args<'a>(&'a mut self, target: BasicBlockId) -> Option<impl Iterator<Item=Op> + 'a> {
@@ -473,6 +489,24 @@ impl Terminator {
                         target.id = new;
                     }
                 }
+            }
+        }
+    }
+
+    pub fn used(&self) -> SmallVec<[&Op; 2]> {
+        match &self.kind {
+            TerminatorKind::Ret(ret_term) => {
+                ret_term.value.as_ref().into_iter().collect()
+            }
+            TerminatorKind::Branch(branch_term) => {
+                branch_term.target.arguments.iter().collect()
+            }
+            TerminatorKind::CondBranch(condbr_term) => {
+                [&condbr_term.cond].into_iter().chain(
+                    condbr_term.true_target.arguments.iter().chain(
+                        condbr_term.false_target.arguments.iter()
+                    )
+                ).collect()
             }
         }
     }

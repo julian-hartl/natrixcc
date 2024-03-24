@@ -28,13 +28,13 @@ impl BasicBlockPass for CSEPass {
         for instr in bb.instructions_mut() {
             let key = instr.identifying_key();
             if let Some(key) = key {
-                let produced_value = instr.produced_value();
+                let produced_value = instr.defined_vreg();
                 if let Some(produced_value) = produced_value {
                     let cached_value = expr_cache.get(&key).copied();
                     if let Some(cached_value) = cached_value {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: produced_value,
-                            op: Op::Value(cached_value),
+                            op: Op::Vreg(cached_value),
                         });
                         changes += 1;
                     } else {

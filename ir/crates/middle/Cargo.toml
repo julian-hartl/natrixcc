@@ -14,3 +14,4 @@ smallvec = "1.13.1"
 natrix_front = { path = "../front" }
 cranelift-entity = "0.105.2"
 log = "0.4.20"
+index_vec = "0.1.3"

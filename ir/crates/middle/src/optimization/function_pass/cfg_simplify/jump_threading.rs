@@ -87,7 +87,7 @@ impl basic_block_pass::BasicBlockPass for Pass {
                             ));
                             1
                         }
-                        Op::Value(_) => 0,
+                        Op::Vreg(_) => 0,
                     }
                 }
             }

@@ -1,6 +1,6 @@
 use tracing::{debug, debug_span};
 
-use crate::analysis::dataflow::{concrete_value, DFValueState};
+use crate::analysis::dataflow::{concrete_value, DFValueState, InstrWalker};
 use crate::analysis::dataflow::concrete_value::ConcreteValues;
 use crate::cfg::TerminatorKind;
 use crate::FunctionId;
@@ -168,7 +168,7 @@ impl ConstantPropagation {
         match op {
             Op::Const(_) =>
                 false,
-            Op::Value(value) => {
+            Op::Vreg(value) => {
                 match state.get(value).and_then(|s| s.as_single_value()) {
                     None => {
                         false

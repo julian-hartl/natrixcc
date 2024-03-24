@@ -35,7 +35,7 @@ impl<'func> Builder<'func> {
 
     pub fn end_bb(&mut self, terminator: TerminatorKind) {
         let current_bb = self.current_bb();
-        self.func.cfg.set_terminator(current_bb, Terminator::new(terminator));
+        self.func.cfg.set_terminator(current_bb, terminator);
         self.current_bb = None;
     }
 
@@ -45,7 +45,7 @@ impl<'func> Builder<'func> {
             value,
             num_elements,
         );
-        self.add_instr(Instr::new(ty, InstrKind::Alloca(alloca)));
+        self.add_instr(ty, InstrKind::Alloca(alloca));
         value
     }
 
@@ -56,7 +56,7 @@ impl<'func> Builder<'func> {
             lhs,
             rhs,
         };
-        self.add_instr(Instr::new(ty, InstrKind::Add(instr)));
+        self.add_instr(ty, InstrKind::Add(instr));
         value
     }
 
@@ -67,22 +67,22 @@ impl<'func> Builder<'func> {
             lhs,
             rhs,
         };
-        self.add_instr(Instr::new(ty, InstrKind::Sub(sub)));
+        self.add_instr(ty, InstrKind::Sub(sub));
         value
     }
 
     pub fn store(&mut self, ty: Type, dest: VReg, value: Op) {
-        let store = Instr::new(ty, InstrKind::Store(StoreInstr { value, dest }));
-        self.add_instr(store);
+        let store = InstrKind::Store(StoreInstr { value, dest });
+        self.add_instr(ty, store);
     }
 
     pub fn load(&mut self, ty: Type, source: Op) -> VReg {
         let value = self.next_vreg(ty.clone());
-        let load = Instr::new(ty, InstrKind::Load(LoadInstr {
+        let load = InstrKind::Load(LoadInstr {
             dest: value,
             source,
-        }));
-        self.add_instr(load);
+        });
+        self.add_instr(ty, load);
         value
     }
 
@@ -92,21 +92,21 @@ impl<'func> Builder<'func> {
             value,
             op,
         };
-        self.add_instr(Instr::new(ty, InstrKind::Op(op_instr)));
+        self.add_instr(ty, InstrKind::Op(op_instr));
         value
     }
 
     pub fn icmp(&mut self, condition: CmpOp, op1: Op, op2: Op) -> VReg {
         let ty = Type::Bool;
         let value = self.next_vreg(ty.clone());
-        self.add_instr(Instr::new(ty, InstrKind::Cmp(
+        self.add_instr(ty, InstrKind::Cmp(
             CmpInstr {
                 value,
                 op: condition,
                 lhs: op1,
                 rhs: op2,
             }
-        )));
+        ));
         value
     }
 
@@ -121,8 +121,8 @@ impl<'func> Builder<'func> {
         &self.func.cfg.basic_block(bb).arguments
     }
 
-    pub fn add_instr(&mut self, instr: Instr) {
-        self.func.cfg.add_instruction(self.current_bb(), instr);
+    pub fn add_instr(&mut self, ty: Type, instr_kind: InstrKind) {
+        self.func.cfg.add_instruction(self.current_bb(), ty, instr_kind);
     }
 
     /// Tells the builder to use this vreg for the next instruction
@@ -247,7 +247,7 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb();
         let alloca_value = cfg_builder.alloca(Type::I32, None);
-        cfg_builder.load(Type::I32, Op::Value(alloca_value));
+        cfg_builder.load(Type::I32, Op::Vreg(alloca_value));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!("bb0:
     v0 = alloca i32;
@@ -266,7 +266,7 @@ mod tests {
         let cmp_value = cfg_builder.icmp(CmpOp::Eq, Op::Const(Const::Int(Type::I32, 0)), Op::Const(Const::Int(Type::I32, 1)));
         cfg_builder.end_bb(TerminatorKind::CondBranch(
             CondBranchTerm {
-                cond: Op::Value(cmp_value),
+                cond: Op::Vreg(cmp_value),
                 true_target: JumpTarget::no_args(bb1),
                 false_target: JumpTarget::no_args(bb2),
             }
