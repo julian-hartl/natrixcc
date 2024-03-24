@@ -44,17 +44,16 @@ impl Display for InstrUid {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgPoint {
     Read(InstrNr),
     Write(InstrNr),
 }
 
 impl ProgPoint {
-    pub fn instr_nr(&self) -> InstrNr {
+    pub const fn instr_nr(&self) -> InstrNr {
         match self {
-            ProgPoint::Read(nr) => *nr,
-            ProgPoint::Write(nr) => *nr,
+            Self::Write(nr) | Self::Read(nr) => *nr,
         }
     }
 }
@@ -65,19 +64,25 @@ impl Default for ProgPoint {
     }
 }
 
+impl PartialOrd for ProgPoint {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Ord for ProgPoint {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (ProgPoint::Read(a), ProgPoint::Read(b)) => a.cmp(b),
-            (ProgPoint::Write(a), ProgPoint::Write(b)) => a.cmp(b),
-            (ProgPoint::Read(a), ProgPoint::Write(b)) => {
+            (Self::Read(a), Self::Read(b)) |
+            (Self::Write(a), Self::Write(b)) => a.cmp(b),
+            (Self::Read(a), Self::Write(b)) => {
                 if a <= b {
                     Ordering::Less
                 } else {
                     Ordering::Greater
                 }
             }
-            (ProgPoint::Write(a), ProgPoint::Read(b)) => {
+            (Self::Write(a), Self::Read(b)) => {
                 if a < b {
                     Ordering::Less
                 } else {
@@ -114,8 +119,21 @@ impl Lifetime {
         self.start <= pp && pp <= self.end
     }
 
-    pub fn overlaps(&self, other: &Self) -> bool {
-        self.start <= other.end && other.start <= self.end
+    /// Returns true if the two lifetimes overlap.
+    ///
+    /// Two lifetimes l, j overlap if the intersection of their ranges is not empty.
+    /// This is the case iff. 
+    /// - l.start <= j.end
+    /// and
+    /// - j.start <= l.end
+    /// 
+    /// Overlaps are **symmetric**.
+    pub fn are_overlapping(l: &Self, j: &Self) -> bool {   
+        l.start <= j.end && j.start <= l.end
+    }
+
+    pub fn overlaps_with(&self, other: &Self) -> bool {
+        Self::are_overlapping(self, other)
     }
 }
 
@@ -129,10 +147,104 @@ impl Display for Lifetime {
 }
 
 #[cfg(test)]
-mod lifetime_tests {
+mod prog_point_tests {
+    use super::*;
+
     #[test]
-    fn test1() {
-        todo!()
+    fn ord_should_be_correct() {
+        let inputs = [
+            (ProgPoint::Read(0), ProgPoint::Read(1), Ordering::Less),
+            (ProgPoint::Read(0), ProgPoint::Write(1), Ordering::Less),
+            (ProgPoint::Write(0), ProgPoint::Read(1), Ordering::Less),
+            (ProgPoint::Write(0), ProgPoint::Write(1), Ordering::Less),
+            (ProgPoint::Read(0), ProgPoint::Read(0), Ordering::Equal),
+            (ProgPoint::Write(0), ProgPoint::Write(0), Ordering::Equal),
+            (ProgPoint::Read(0), ProgPoint::Write(0), Ordering::Less),
+            (ProgPoint::Write(0), ProgPoint::Read(0), Ordering::Greater),
+        ];
+
+        for (a, b, expected) in inputs {
+            assert_eq!(a.cmp(&b), expected);
+        }
+    }
+}
+
+#[cfg(test)]
+mod lifetime_tests {
+    use crate::codegen::register_allocator::{Lifetime, ProgPoint};
+
+    #[test]
+    fn lifetimes_overlap() {
+        let inputs = [
+            // Both lifetimes are the same
+            (
+                Lifetime::new(0, ProgPoint::Read(2)),
+                Lifetime::new(0, ProgPoint::Read(2)),
+                true,
+            ),
+            // The second lifetime is within the first one
+            (
+                Lifetime::new(0, ProgPoint::Read(2)),
+                Lifetime::new(0, ProgPoint::Read(1)),
+                true,
+            ),
+            // The lifetimes do not overlap
+            (
+                Lifetime::new(0, ProgPoint::Read(1)),
+                Lifetime::new(2, ProgPoint::Read(3)),
+                false,
+            ),
+            // The lifetimes overlap at one point
+            (
+                Lifetime::new(0, ProgPoint::Write(2)),
+                Lifetime::new(2, ProgPoint::Read(3)),
+                true,
+            ),
+            // The lifetimes are the same but with different ProgPoints
+            (
+                Lifetime::new(0, ProgPoint::Write(2)),
+                Lifetime::new(0, ProgPoint::Read(2)),
+                true,
+            ),
+        ];
+        for (l1, l2, should_overlap) in inputs {
+            // Overlaps are symmetric
+            assert_eq!(l1.overlaps_with(&l2), should_overlap, "{:?} and {:?} should overlap: {}", l1, l2, should_overlap);
+            assert_eq!(l2.overlaps_with(&l1), should_overlap, "{:?} and {:?} should overlap: {}", l2, l1, should_overlap);
+        }
+    }
+    
+    #[test]
+    fn lifetimes_contain() {
+        let inputs = [
+            // The lifetime contains the ProgPoint
+            (
+                Lifetime::new(0, ProgPoint::Read(2)),
+                ProgPoint::Read(1),
+                true,
+            ),
+            // The lifetime does not contain the ProgPoint
+            (
+                Lifetime::new(0, ProgPoint::Read(1)),
+                ProgPoint::Write(2),
+                false,
+            ),
+            // The lifetime contains the ProgPoint at the interval end
+            (
+                Lifetime::new(0, ProgPoint::Write(2)),
+                ProgPoint::Write(2),
+                true,
+            ),
+            // The lifetime does not contain the ProgPoint at the interval start
+            (
+                Lifetime::new(0, ProgPoint::Read(1)),
+                ProgPoint::Write(0),
+                true,
+            ),
+        ];
+        for (lifetime, pp, should_contain) in inputs {
+            assert_eq!(lifetime.contains(pp), should_contain, "{:?} should contain {:?}: {}", lifetime, pp, should_contain);
+        }
     }
 }
 
@@ -427,7 +539,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
                         }
                         Some(tied_to) => {
                             debug!("{vreg} is tied to {tied_to}. Trying to put it in the same register");
-                            assert!(!lifetime.overlaps(&self.liveness_repr.lifetime(tied_to, &self.func)), "Tied register {tied_to} overlaps with {vreg}");
+                            assert!(!lifetime.overlaps_with(&self.liveness_repr.lifetime(tied_to, &self.func)), "Tied register {tied_to} overlaps with {vreg}");
                             let allocated_reg = self.allocations.get_allocated_reg(tied_to);
                             match allocated_reg {
                                 None => {
@@ -487,12 +599,12 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
             self.func.params.iter().map(|param| self.func.vregs[*param].size)
         ).collect_vec();
         for (arg, slot) in self.func.params.iter().copied().zip(slots) {
-             match slot {
-                 Slot::Register(reg) => {
-                     self.func.vregs[arg].fixed = Some(reg);
-                 }
-                 Slot::Stack => unimplemented!()
-             }
+            match slot {
+                Slot::Register(reg) => {
+                    self.func.vregs[arg].fixed = Some(reg);
+                }
+                Slot::Stack => unimplemented!()
+            }
         }
     }
 }
@@ -597,7 +709,7 @@ impl<A: Abi> Function<A> {
             //     liveins.insert(bb_id, undeclared_reg);
             //     current_intervals.get_mut(&undeclared_reg).unwrap().start = entry_pp;
             // }
-            // 
+            //
             // for (reg, interval) in current_intervals {
             //     repr.reg_lifetimes[reg].insert(interval);
             // }

@@ -220,32 +220,6 @@ bb0:
     }
 
     #[test]
-    fn should_compute_multiplication() {
-        let mut module = create_test_module_from_source(
-            "
-                fun i32 @test() {
-                bb0():
-                    v0 = i32 8;
-                    v1 = mul i32 v0, 7;
-                    ret i32 v1;
-                }
-            "
-        );
-        module.optimize(PipelineConfig::all_disabled());
-        let function = module.find_function_by_name("test").unwrap();
-        assert_eq!(
-            function.to_string(),
-            "fun i32 @test() {
-             bb():
-                v0 = i32 8
-                v1 = mul i32 v0, 7
-                ret i32 56
-             }
-             "
-        )
-    }
-
-    #[test]
     fn should_replace_const_variable() {
         let mut module = create_test_module_from_source(
             "

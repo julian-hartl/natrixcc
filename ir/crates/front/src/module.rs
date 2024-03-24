@@ -112,6 +112,7 @@ bb0(i32 v0, i32 v1):
                         instructions: vec![
                             Instruction::Add(RegId(2), Type::I32, Operand::Register(RegId(0)), Operand::Register(RegId(1))),
                             Instruction::Add(RegId(3), Type::I32, Operand::Register(RegId(2)), Operand::Register(RegId(1))),
+                            Instruction::Ret(Type::I32, Some(Operand::Register(RegId(3)))),
                         ],
                         args: vec![
                             Arg {

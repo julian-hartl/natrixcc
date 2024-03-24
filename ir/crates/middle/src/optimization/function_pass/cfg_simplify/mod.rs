@@ -61,7 +61,7 @@ mod tests {
             "
                 fun i32 @test(i32) {
                 bb0(i32 v0):
-                   condbr bool 1, bb1, bb2;
+                   condbr 1 bb1, bb2;
                 bb1:
                    br bb2;
                 bb2:

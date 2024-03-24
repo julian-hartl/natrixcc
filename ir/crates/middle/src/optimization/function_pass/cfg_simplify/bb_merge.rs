@@ -121,7 +121,7 @@ mod tests {
             fun void @test() {
             bb0:
                 v0 = bool 1;
-                condbr bool v0, bb1, bb2;
+                condbr v0 bb1, bb2;
             bb1:
                 v1 = add i32 1, 2;
                 br bb4;
@@ -145,7 +145,7 @@ mod tests {
         fun void @test() {
         bb0:
             v0 = bool 1;
-            condbr bool 1, bb1, bb2;
+            condbr 1 bb1, bb2;
         bb1:
             v1 = i32 3;
             v4 = i32 15;

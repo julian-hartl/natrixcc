@@ -181,9 +181,7 @@ pub enum Const {
     Int(Type, i64),
 }
 
-
 impl Const {
-    
     pub fn cmp(self, other: Const, op: CmpOp) -> Option<Self> {
         match (self, other) {
             (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
@@ -196,7 +194,7 @@ impl Const {
             }
         }
     }
-    
+
     pub fn sub(self, other: Const) -> Option<Self> {
         match (self, other) {
             (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
@@ -263,9 +261,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb();
-            let vreg = cfg_builder.sub(Type::I8, Op::Const(Const::Int(0)), Op::Const(Const::Int(1)));
+            let vreg = cfg_builder.sub(Type::I8, Op::Const(Const::Int(Type::I8, 0)), Op::Const(Const::Int(Type::I8, 1)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(vreg).clone(), Type::I8);
         }
 
@@ -276,7 +273,6 @@ mod tests {
             cfg_builder.start_bb();
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(alloca_value).clone(), Type::Ptr(Box::new(Type::I8)));
         }
 
@@ -285,9 +281,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb();
-            let place = cfg_builder.op(Type::I8, Op::Const(Const::Int(0)));
+            let place = cfg_builder.op(Type::I8, Op::Const(Const::Int(Type::I8, 0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(place).clone(), Type::I8);
         }
 
@@ -297,9 +292,8 @@ mod tests {
             let mut cfg_builder = cfg::Builder::new(&mut function);
             let bb = cfg_builder.start_bb();
             let alloca_value = cfg_builder.alloca(Type::I8, None);
-            cfg_builder.store(Type::I8, alloca_value, Op::Const(Const::Int(0)));
+            cfg_builder.store(Type::I8, alloca_value, Op::Const(Const::Int(Type::I8, 0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.basic_block(bb).instructions.as_ref().unwrap()[1].produced_value(), None);
         }
 
@@ -311,7 +305,6 @@ mod tests {
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             let instr = cfg_builder.load(Type::I8, alloca_value.into());
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(instr).clone(), Type::I8);
         }
     }

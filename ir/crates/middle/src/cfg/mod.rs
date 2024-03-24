@@ -266,7 +266,7 @@ impl BasicBlock {
     pub fn terminator(&self) -> &Terminator {
         self.terminator.as_ref().expect("Basic blocks must have a terminator")
     }
-    
+
     pub fn set_terminator(&mut self, term: Terminator) {
         self.terminator = Some(term);
     }
@@ -384,7 +384,7 @@ mod bb_tests {
         )))));
         assert!(cfg.successors(bb0).eq(vec![bb1].into_iter()));
         cfg.set_terminator(bb0, Terminator::new(TerminatorKind::CondBranch(CondBranchTerm::new(
-            Op::Const(Const::Int(1)),
+            Op::Const(Const::Int(Type::I32, 1)),
             JumpTarget::new(
                 bb1,
                 vec![],
@@ -401,7 +401,7 @@ mod bb_tests {
     fn should_add_instruction() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let instr = Instr::new(Type::I32, InstrKind::Op(OpInstr { op: Op::Const(Const::Int(3)), value: VReg::new(2) }));
+        let instr = Instr::new(Type::I32, InstrKind::Op(OpInstr { op: Op::Const(Const::Int(Type::I32, 3)), value: VReg::new(2) }));
         cfg.add_instruction(bb0, instr.clone());
         assert_eq!(cfg.basic_block(bb0).instructions, Some(vec![instr]));
     }
