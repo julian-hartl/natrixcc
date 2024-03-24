@@ -1,7 +1,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use crate::analysis::dataflow::{ForwardAnalysis, ForwardAnalysisRunner, lattice};
+use crate::analysis::dataflow::lattice;
 use crate::{Instr, InstrKind, VReg};
-use crate::cfg::TerminatorKind;
+use crate::analysis::dataflow::forward::ForwardAnalysisRunner;
+use crate::cfg::Terminator;
 
 use crate::instruction::{Const, Op};
 
@@ -46,21 +47,18 @@ impl lattice::Value for ConcreteValues {
 pub struct Analysis;
 pub type AnalysisRunner<'a> = ForwardAnalysisRunner<'a, Analysis>;
 
-impl ForwardAnalysis for Analysis {
+impl super::Analysis for Analysis {
     type V = FxHashMap<VReg, ConcreteValues>;
 
-    fn eval_instr(instr: &Instr) -> Option<Self::V> {
+    fn analyse_instr(instr: &Instr, values: &mut Self::V) {
         if let InstrKind::Op(instr) = &instr.kind {
             if let Op::Const(const_val) = &instr.op {
-                let mut map = FxHashMap::default();
-                map.insert(instr.value, ConcreteValues::from_single_value(const_val.clone()));
-                return Some(map);
+                values.insert(instr.value, ConcreteValues::from_single_value(const_val.clone()));
             }
         };
-        None
     }
 
-    fn eval_term(_: &TerminatorKind) -> Option<Self::V> {
-        None
+    fn analyse_term(term: &Terminator, v: &mut Self::V) {
+        // todo: add concrete branch args
     }
 }

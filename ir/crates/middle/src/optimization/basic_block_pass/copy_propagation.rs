@@ -51,7 +51,7 @@ impl BasicBlockPass for CopyPropagationPass {
                 InstrKind::Op(op_instr) => {
                    match &op_instr.op {
                        Op::Const(_) => {}
-                       Op::Value(value) => {
+                       Op::Vreg(value) => {
                            copy_graph.insert_copy(*value, op_instr.value);
                        }
                    }
@@ -94,7 +94,7 @@ impl CopyPropagationPass {
     fn apply_copy_graph_to_op(copy_graph: &CopyGraph, op: &mut Op) -> bool{
         match op {
             Op::Const(_) => false,
-            Op::Value(value) => {
+            Op::Vreg(value) => {
                 let original_value = copy_graph.find_original_value(*value);
                 if original_value != *value {
                     *value = original_value;

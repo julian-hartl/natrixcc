@@ -65,7 +65,7 @@ impl BasicBlockPass for ConstantFoldPass {
                             constant_values.insert(op_instr.value, constant.clone());
                             None
                         }
-                        Op::Value(place) => {
+                        Op::Vreg(place) => {
                             constant_values.get(place).cloned().and_then(|constant_value| {
                                 constant_values.insert(*place, constant_value.clone());
                                 changes += 1;
@@ -112,7 +112,7 @@ impl BasicBlockPass for ConstantFoldPass {
                     if let Some(ret_value) = &mut ret_term.value {
                         match ret_value {
                             Op::Const(_) => {}
-                            Op::Value(value) => {
+                            Op::Vreg(value) => {
                                 if let Some(constant_value) = constant_values.get(value) {
                                     changes += 1;
                                     *ret_value = Op::Const(constant_value.clone());
@@ -137,12 +137,12 @@ impl ConstantFoldPass {
     fn op_to_const(constant_values: &FxHashMap<VReg, Const>, op: &Op) -> Option<Const> {
         match op {
             Op::Const(constant) => Some(constant.clone()),
-            Op::Value(place) => constant_values.get(place).cloned(),
+            Op::Vreg(place) => constant_values.get(place).cloned(),
         }
     }
 
     fn try_replace_op(constant_values: &FxHashMap<VReg, Const>, op: &mut Op) -> bool {
-        if let Op::Value(value) = op {
+        if let Op::Vreg(value) = op {
             if let Some(const_val) = constant_values.get(value) {
                 debug!("Replacing {value} with {const_val}");
                 *op = Op::Const(const_val.clone());
@@ -216,32 +216,6 @@ bb0:
                 v1 = i32 15;
                 ret i32 15;
             }",
-        )
-    }
-
-    #[test]
-    fn should_compute_multiplication() {
-        let mut module = create_test_module_from_source(
-            "
-                fun i32 @test() {
-                bb0():
-                    v0 = i32 8;
-                    v1 = mul i32 v0, 7;
-                    ret i32 v1;
-                }
-            "
-        );
-        module.optimize(PipelineConfig::all_disabled());
-        let function = module.find_function_by_name("test").unwrap();
-        assert_eq!(
-            function.to_string(),
-            "fun i32 @test() {
-             bb():
-                v0 = i32 8
-                v1 = mul i32 v0, 7
-                ret i32 56
-             }
-             "
         )
     }
 

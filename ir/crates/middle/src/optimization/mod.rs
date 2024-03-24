@@ -189,6 +189,7 @@ impl<'a> Pipeline<'a> {
             loop {
                 let mut changes = 0;
                 for pass in &mut passes {
+                    debug!("Running pass {}", pass.name());
                     let name = pass.name();
                     let span = trace_span!("pass", %name);
                     span.in_scope(|| {

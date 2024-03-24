@@ -129,7 +129,7 @@ impl FrontBridge {
                 })
             }
             Operand::Register(reg) => {
-                Op::Value(reg.into())
+                Op::Vreg(reg.into())
             }
         }
     }

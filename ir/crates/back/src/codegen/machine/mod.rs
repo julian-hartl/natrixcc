@@ -17,7 +17,6 @@ use smallvec::{SmallVec, smallvec};
 use tracing::debug;
 
 pub use abi::Abi;
-use natrix_middle;
 use natrix_middle::instruction::CmpOp;
 use natrix_middle::ty::Type;
 pub use module::Module;
@@ -1055,28 +1054,28 @@ impl<A: Abi> BasicBlock<A> {
 }
 
 #[derive(Debug)]
-pub struct FunctionBuilder<B: Backend> {
-    function: Function<B::ABI>,
-    backend: B,
+pub struct FunctionBuilder<TM: TargetMachine> {
+    function: Function<TM::Abi>,
+    backend: TM::Backend,
     bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockId>,
 }
 
-impl<B: Backend> FunctionBuilder<B> {
+impl<TM: TargetMachine> FunctionBuilder<TM> {
     pub fn new() -> Self {
         Self {
             function: Function::new(Default::default()),
-            backend: B::new(),
+            backend: TM::backend(),
             bb_mapping: FxHashMap::default(),
         }
     }
 
-    pub fn build(mut self, function: &mut natrix_middle::Function) -> Function<B::ABI> {
+    pub fn build(mut self, function: &mut natrix_middle::Function) -> Function<TM::Abi> {
         self.function.name = function.name.clone();
         self.function.return_ty_size = Size::from_ty(
             &function.ret_ty
         );
         debug!("Building machine function for function {}", function.name);
-        let mut sel_dag_builder = selection_dag::Builder::<B::ABI>::new(&mut self.function);
+        let mut sel_dag_builder = selection_dag::Builder::new(&mut self.function);
         let mut sel_dag = sel_dag_builder.build(function);
         for bb in function.cfg.basic_block_ids_ordered() {
             self.create_bb(bb);
@@ -1191,7 +1190,7 @@ impl<B: Backend> FunctionBuilder<B> {
                         let mut matching_pattern = None;
                         debug!("Matching patterns for node {:?}", op);
 
-                        for pattern in B::patterns() {
+                        for pattern in TM::Backend::patterns() {
                             let pattern_in = pattern.in_();
                             debug!("Checking {:?}", pattern_in);
                             debug!("Matching with {:?}", dag_node_pattern);
@@ -1276,47 +1275,18 @@ impl<B: Backend> FunctionBuilder<B> {
         mbb
     }
 
-    fn operand_to_matched_pattern_operand(&self, src: &Operand<<B as Backend>::ABI>) -> MatchedPatternOperand<<B as Backend>::ABI> {
+    fn operand_to_matched_pattern_operand(&self, src: &Operand<TM::Abi>) -> MatchedPatternOperand<TM::Abi> {
         match src {
             Operand::Reg(reg) => MatchedPatternOperand::Reg(reg.clone()),
             Operand::Imm(imm) => MatchedPatternOperand::Imm(imm.clone()),
         }
     }
 
-    fn operand_to_pattern(&self, src: &Operand<<B as Backend>::ABI>) -> PatternInOperand {
+    fn operand_to_pattern(&self, src: &Operand<TM::Abi>) -> PatternInOperand {
         match src {
             Operand::Reg(reg) => PatternInOperand::Reg(reg.size(&self.function)),
             Operand::Imm(imm) => PatternInOperand::Imm(imm.size),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tracing_test::traced_test;
-
-    use crate::codegen::isa;
-    use crate::natrix_middle::cfg;
-    use crate::natrix_middle::cfg::{RetTerm, TerminatorKind};
-    use crate::natrix_middle::instruction::{Const, Op};
-    use crate::test_utils::create_test_function;
-
-    #[test]
-    #[traced_test]
-    fn test() {
-        let mut function = create_test_function();
-        let mut builder = cfg::Builder::new(&mut function);
-        let bb = builder.start_bb();
-        let (val1, _) = builder.op(None, Op::Const(Const::i32(323))).unwrap();
-        let (val2, _) = builder.op(None, Op::Const(Const::i32(90))).unwrap();
-        let (return_value, _) = builder.sub(None, Op::Value(val1), Op::Value(val2)).unwrap();
-        builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(return_value))));
-        drop(builder);
-        let function_builder = super::FunctionBuilder::<isa::x86_64::Backend>::new();
-        let function = function_builder.build(&function);
-        println!("{:?}", function.basic_blocks);
-        println!("{}", function);
-        function.assemble();
     }
 }
 

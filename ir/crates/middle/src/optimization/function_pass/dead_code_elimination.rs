@@ -1,4 +1,8 @@
+use cranelift_entity::SecondaryMap;
+use tracing::debug;
+
 use crate::analysis::dataflow;
+use crate::analysis::dataflow::use_def::InstrUid;
 use crate::FunctionId;
 use crate::module::Module;
 use crate::optimization::{FunctionPass, Pass};
@@ -14,27 +18,22 @@ impl Pass for DeadCodeEliminationPass {
 
 impl FunctionPass for DeadCodeEliminationPass {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
-        let mut runner = dataflow::dead_code::AnalysisRunner::new(
+        let runner = dataflow::use_def::AnalysisRunner::new(
             &mut module.functions[function]
         );
+        let state = runner.collect();
         let mut changes = 0;
-        while let Some((bb_id, instr_walker)) = runner.next_bb() {
-            instr_walker.drain();
-            let bb = runner.function.cfg.basic_block_mut(bb_id);
-            let state = runner.state.get(bb_id);
-            bb.remove_instructions_by_pred(
-                |instr| {
-                    let produced_value = instr.produced_value();
-                    if let Some(produced_value) = produced_value {
-                        if !state.contains(&produced_value) {
-                            changes += 1;
-                            return false;
-                        }
-                    }
-                    true
-                }
-            );
-        };
+        let mut removed_instr_count = SecondaryMap::new();
+        for vreg in state.unused_regs() {
+            debug!("Removing unused def {vreg}");
+            let InstrUid(bb_id, instr_id) = state.get_def(vreg).unwrap();
+            let bb = &mut module.functions[function].cfg.basic_block_mut(bb_id);
+            let removed_instrs = removed_instr_count.get(bb_id).copied().unwrap_or(0);
+            let instr_id = instr_id - removed_instrs;
+            bb.remove_instruction(instr_id);
+            removed_instr_count[bb_id] = removed_instrs + 1;
+            changes += 1;
+        }
 
         changes
     }

@@ -1,10 +1,11 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Sub;
+use smallvec::{SmallVec, smallvec};
 
 use strum_macros::{Display, EnumTryAs};
 
 use crate::{Type, VReg};
-use crate::cfg::{BasicBlockId, Cfg};
+use crate::cfg::{BasicBlockId, Cfg, InstrId};
 
 /// An instruction in a basic block.
 ///
@@ -12,6 +13,8 @@ use crate::cfg::{BasicBlockId, Cfg};
 /// We do this as we will be adding more fields to the instruction in the future, such as metadata.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Instr {
+    pub id: InstrId,
+    pub bb: BasicBlockId,
     pub ty: Type,
     pub kind: InstrKind,
 }
@@ -22,8 +25,13 @@ pub enum InstrIdentifyingKey {
 }
 
 impl Instr {
-    pub const fn new(ty: Type, kind: InstrKind) -> Self {
-        Self { ty, kind }
+    pub const fn new(ty: Type, kind: InstrKind, bb: BasicBlockId, id: InstrId) -> Self {
+        Self {
+            id,
+            bb,
+            ty,
+            kind,
+        }
     }
 
     pub fn identifying_key(&self) -> Option<InstrIdentifyingKey> {
@@ -37,7 +45,7 @@ impl Instr {
         InstrDisplay(cfg, self)
     }
 
-    pub const fn produced_value(&self) -> Option<VReg> {
+    pub const fn defined_vreg(&self) -> Option<VReg> {
         match &self.kind {
             InstrKind::Alloca(instr) => Some(instr.value),
             InstrKind::Op(op) => Some(op.value),
@@ -46,6 +54,17 @@ impl Instr {
             InstrKind::Store(_) => None,
             InstrKind::Cmp(instr) => Some(instr.value),
             InstrKind::Add(instr) => Some(instr.value),
+        }
+    }
+    
+    pub fn used(&self) -> SmallVec<[&Op; 2]> {
+        match &self.kind {
+            InstrKind::Alloca(_) => smallvec![],
+            InstrKind::Op(op) => smallvec![&op.op],
+            InstrKind::Sub(instr) | InstrKind::Add(instr) => smallvec![&instr.lhs, &instr.rhs],
+            InstrKind::Load(instr) => smallvec![&instr.source],
+            InstrKind::Store(instr) => smallvec![&instr.value],
+            InstrKind::Cmp(instr) => smallvec![&instr.lhs, &instr.rhs],
         }
     }
 }
@@ -143,15 +162,15 @@ pub struct OpInstr {
 }
 
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, EnumTryAs)]
 pub enum Op {
     Const(Const),
-    Value(VReg),
+    Vreg(VReg),
 }
 
 impl From<VReg> for Op {
     fn from(value: VReg) -> Self {
-        Self::Value(value)
+        Self::Vreg(value)
     }
 }
 
@@ -159,7 +178,7 @@ impl Op {
     pub fn referenced_value(&self) -> Option<VReg> {
         match self {
             Op::Const(_) => None,
-            Op::Value(value) => {
+            Op::Vreg(value) => {
                 Some(*value)
             }
         }
@@ -170,7 +189,7 @@ impl Display for Op {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Op::Const(c) => write!(f, "{}", c),
-            Op::Value(l) => write!(f, "{}", *l),
+            Op::Vreg(l) => write!(f, "{}", *l),
         }
     }
 }
@@ -181,9 +200,7 @@ pub enum Const {
     Int(Type, i64),
 }
 
-
 impl Const {
-    
     pub fn cmp(self, other: Const, op: CmpOp) -> Option<Self> {
         match (self, other) {
             (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
@@ -196,7 +213,7 @@ impl Const {
             }
         }
     }
-    
+
     pub fn sub(self, other: Const) -> Option<Self> {
         match (self, other) {
             (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
@@ -263,9 +280,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb();
-            let vreg = cfg_builder.sub(Type::I8, Op::Const(Const::Int(0)), Op::Const(Const::Int(1)));
+            let vreg = cfg_builder.sub(Type::I8, Op::Const(Const::Int(Type::I8, 0)), Op::Const(Const::Int(Type::I8, 1)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(vreg).clone(), Type::I8);
         }
 
@@ -276,7 +292,6 @@ mod tests {
             cfg_builder.start_bb();
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(alloca_value).clone(), Type::Ptr(Box::new(Type::I8)));
         }
 
@@ -285,9 +300,8 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb();
-            let place = cfg_builder.op(Type::I8, Op::Const(Const::Int(0)));
+            let place = cfg_builder.op(Type::I8, Op::Const(Const::Int(Type::I8, 0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(place).clone(), Type::I8);
         }
 
@@ -297,10 +311,9 @@ mod tests {
             let mut cfg_builder = cfg::Builder::new(&mut function);
             let bb = cfg_builder.start_bb();
             let alloca_value = cfg_builder.alloca(Type::I8, None);
-            cfg_builder.store(Type::I8, alloca_value, Op::Const(Const::Int(0)));
+            cfg_builder.store(Type::I8, alloca_value, Op::Const(Const::Int(Type::I8, 0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
-            assert_eq!(function.cfg.basic_block(bb).instructions.as_ref().unwrap()[1].produced_value(), None);
+            assert_eq!(function.cfg.basic_block(bb).instructions[1].defined_vreg(), None);
         }
 
         #[test]
@@ -311,7 +324,6 @@ mod tests {
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             let instr = cfg_builder.load(Type::I8, alloca_value.into());
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            drop(cfg_builder);
             assert_eq!(function.cfg.vreg_ty(instr).clone(), Type::I8);
         }
     }

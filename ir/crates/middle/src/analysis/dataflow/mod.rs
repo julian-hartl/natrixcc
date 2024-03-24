@@ -1,17 +1,19 @@
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use cranelift_entity::{EntitySet, SecondaryMap};
+use cranelift_entity::SecondaryMap;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use lattice::Value;
 
-use crate::{Function, Instr};
-use crate::cfg::{BasicBlockId, TerminatorKind};
+use crate::Instr;
+use crate::cfg::{BasicBlockId, Terminator};
 
 pub mod lattice;
 pub mod concrete_value;
-pub mod dead_code;
+pub mod use_def;
+mod forward;
+mod backward;
 
 type InstrValue = crate::VReg;
 
@@ -33,9 +35,9 @@ impl<V> DFState<V> where V: Value {
         &self.state[bb]
     }
 
-    pub fn create(&mut self, bb: BasicBlockId, preds: impl IntoIterator<Item=BasicBlockId>) -> &mut V {
-        for pred in preds {
-            let pred_state = self.get(pred).clone();
+    pub fn create(&mut self, bb: BasicBlockId, join_partners: impl IntoIterator<Item=BasicBlockId>) -> &mut V {
+        for join_partner in join_partners {
+            let pred_state = self.get(join_partner).clone();
             let entry = self.get_mut(bb);
             entry.join(pred_state);
         }
@@ -43,79 +45,21 @@ impl<V> DFState<V> where V: Value {
     }
 }
 
-pub struct ForwardAnalysisRunner<'a, A: ForwardAnalysis> {
-    pub state: DFState<A::V>,
-    visited: EntitySet<BasicBlockId>,
-    worklist: Vec<BasicBlockId>,
-    pub function: &'a mut Function,
-    _analysis: std::marker::PhantomData<A>,
-}
 
+pub trait InstrWalker<V: Value>: Sized {
+    fn walk<H>(self, h: H) where H: FnMut(&mut Instr, &V);
 
-impl<'a, A: ForwardAnalysis> ForwardAnalysisRunner<'a, A> {
-    pub fn new(function: &'a mut Function) -> Self {
-        Self {
-            worklist: vec![function.cfg.entry_block()],
-            visited: EntitySet::default(),
-            state: DFState::new(),
-            function,
-            _analysis: std::marker::PhantomData,
-        }
-    }
-
-    pub fn next_bb(&mut self) -> Option<(BasicBlockId, InstrWalker<A>)> {
-        let bb_id = self.worklist.pop()?;
-        let bb_state = self.state.create(bb_id, self.function.cfg.predecessors(bb_id));
-        assert!(self.visited.insert(bb_id), "Block has already been visited");
-        for successor in self.function.cfg.successors(bb_id) {
-            let mut predecessors = self.function.cfg.predecessors(successor);
-            let all_preds_visited = predecessors.all(|predecessor| {
-                self.visited.contains(predecessor)
-            });
-            if !all_preds_visited {
-                continue;
-            }
-            self.worklist.push(successor);
-        }
-        Some((bb_id, InstrWalker {
-            basic_block: bb_id,
-            function: self.function,
-            bb_state,
-        }))
+    fn drain(self) {
+        self.walk(|_, _| {});
     }
 }
 
-// type InstrWalkerInnerIter<'a> = impl Iterator<Item=&'a mut Instr>;
-
-pub struct InstrWalker<'a, 'b, A: ForwardAnalysis> {
-    basic_block: BasicBlockId,
-    pub function: &'b mut Function,
-    bb_state: &'a mut A::V,
-}
-
-impl<'a, 'b, A: ForwardAnalysis> InstrWalker<'a, 'b, A> {
-    pub fn walk<H>(self, mut h: H) where H: FnMut(&mut Instr, &A::V) {
-        let bb = self.function.cfg.basic_block_mut(self.basic_block);
-        for instr in bb.instructions_mut() {
-            h(instr, &*self.bb_state);
-            if let Some(val) = A::eval_instr(instr) {
-                self.bb_state.join(val);
-            }
-        }
-        A::eval_term(&bb.terminator().kind);
-    }
-
-    pub fn drain(self) {
-        self.walk(|_, _| {})
-    }
-}
-
-pub trait ForwardAnalysis {
+pub trait Analysis {
     type V: Value;
 
-    fn eval_instr(instr: &Instr) -> Option<Self::V>;
+    fn analyse_instr(instr: &Instr, v: &mut Self::V);
 
-    fn eval_term(term: &TerminatorKind) -> Option<Self::V>;
+    fn analyse_term(term: &Terminator, v: &mut Self::V);
 }
 
 pub type DFValueState<V> = FxHashMap<InstrValue, V>;

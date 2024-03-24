@@ -73,7 +73,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     func.cfg.basic_block_mut(critical_edge_split_bb).set_terminator(
                         Terminator::new(TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(
                             bb_id
-                        ))))
+                        ))), critical_edge_split_bb)
                     );
                     func.cfg.recompute_successors(critical_edge_split_bb);
                     func.cfg.basic_block_mut(pred_id).update_terminator(|term|
@@ -96,9 +96,8 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
                     let instr = func.cfg.copy_op_instr(
                         temp_reg,
                         arg,
-                        ty.clone(),
                     );
-                    func.cfg.add_instruction(copy_instr_bb, instr);
+                    func.cfg.add_instruction(copy_instr_bb, ty.clone(), instr);
                 }
             }
             let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
@@ -190,7 +189,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
 
             match &bb.terminator().kind {
                 natrix_middle::cfg::TerminatorKind::Ret(ret_term) => {
-                    let value = ret_term.value.as_ref().map(|value| self.map_op(value,  func));
+                    let value = ret_term.value.as_ref().map(|value| self.map_op(value, func));
                     self.define_term_node(bb_id, Op::Pseudo(PseudoOp::Ret(
                         value
                     )));
@@ -215,7 +214,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
 
     fn map_op(&mut self, op: &natrix_middle::instruction::Op, func: &natrix_middle::Function) -> Operand<A> {
         match op {
-            natrix_middle::instruction::Op::Value(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
+            natrix_middle::instruction::Op::Vreg(vreg) => Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func))),
             natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
                 Const::Int(ty, value) => {
                     let value = *value;
@@ -299,31 +298,3 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use natrix_middle::cfg;
-    use natrix_middle::cfg::{RetTerm, TerminatorKind};
-    use natrix_middle::instruction::{Const, Op};
-    use natrix_middle::test::create_test_module;
-
-    use crate::codegen::isa::x86_64;
-
-    #[test]
-    fn test() {
-        let (mut module, function_id) = create_test_module();
-        let function = &mut module.functions[function_id];
-        let mut cfg_builder = cfg::Builder::new(function);
-        cfg_builder.start_bb();
-        let (value, _) = cfg_builder.op(None, Op::Const(Const::i32(42))).unwrap();
-        let (value, _) = cfg_builder.op(None, Op::Value(value)).unwrap();
-        let (sub_result, _) = cfg_builder.sub(None, Op::Value(value), Op::Const(Const::i32(1))).unwrap();
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(sub_result))));
-        drop(cfg_builder);
-        // let mut op = optimization::Pipeline::new(&mut module, optimization::PipelineConfig::o1());
-        // op.run();
-        let dag_builder = super::Builder::<x86_64::Abi>::default();
-        let function = &mut module.functions[function_id];
-        let dag = dag_builder.build(function);
-        println!("{:?}", dag);
-    }
-}
