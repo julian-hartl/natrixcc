@@ -57,7 +57,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         self.function.name = function.name.clone();
         self.function.return_ty_size = Size::from_ty(&function.ret_ty);
         debug!("Building machine function for function {}", function.name);
-        let mut sel_dag_builder = selection_dag::Builder::new(&mut self.function);
+        let sel_dag_builder = selection_dag::Builder::new(&mut self.function);
         let mut sel_dag = sel_dag_builder.build(function);
         for bb in function.cfg.basic_block_ids_ordered() {
             self.create_bb(bb);

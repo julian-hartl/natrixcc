@@ -1,30 +1,20 @@
 use std::{
     cmp::Ordering,
     collections::{
-        BTreeSet,
         VecDeque,
     },
     fmt::{
         Display,
         Formatter,
     },
-    ops::{
-        Range,
-        RangeInclusive,
-    },
 };
 
 use cranelift_entity::{
-    EntityList,
-    EntitySet,
     SecondaryMap,
 };
 use daggy::{
-    petgraph::prelude::DfsPostOrder,
     Walker,
 };
-use iced_x86::CC_p::p;
-use index_vec::IndexVec;
 use iter_tools::Itertools;
 use rustc_hash::{
     FxHashMap,
@@ -45,13 +35,10 @@ use crate::codegen::{
             CallingConvention,
         },
         function::{
-            cfg::Cfg,
             Function,
         },
         instr::{
             Instr,
-            InstrOperand,
-            InstrOperandMut,
             PseudoInstr,
         },
         InstrId,
@@ -62,7 +49,6 @@ use crate::codegen::{
         },
         Size,
     },
-    register_allocator::linear_scan::RegAlloc,
 };
 use crate::codegen::machine::function::BasicBlockId;
 use crate::codegen::machine::TargetMachine;
@@ -759,11 +745,11 @@ impl<TM: TargetMachine> Function<TM> {
                 self.0[&bb].iter().copied()
             }
         }
-        let mut liveins = Liveins::default();
+        let liveins = Liveins::default();
 
         let mut repr = LivenessRepr::new(self);
         debug!("Starting liveness analysis");
-        let mut worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
+        let worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
         let mut visited = FxHashSet::default();
         for bb_id in self.cfg().ordered().into_iter().rev() {
             debug!("Looking at {bb_id}");

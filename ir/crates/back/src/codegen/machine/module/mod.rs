@@ -1,8 +1,6 @@
-use std::ops::Range;
 
 use cranelift_entity::{
     PrimaryMap,
-    SecondaryMap,
 };
 use tracing::{
     debug,

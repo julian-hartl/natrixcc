@@ -123,7 +123,7 @@ impl Cfg {
     /// 1. All predecessors of a basic block are visited before the basic block itself (except if the bb is a predecessor of itself)
     pub fn ordered(&self) -> Vec<BasicBlockId> {
         // let mut visited = FxHashSet::default();
-        let mut order = self.bfs().collect_vec();
+        let order = self.bfs().collect_vec();
         // let mut stack = VecDeque::new();
         // stack.push_back(self.entry_block);
         // while let Some(bb) = stack.pop_front() {

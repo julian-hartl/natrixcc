@@ -8,31 +8,15 @@ use cranelift_entity::{
     PrimaryMap,
 };
 use daggy::{
-    petgraph::prelude::Bfs,
     Walker,
 };
 use index_vec::IndexVec;
-use rustc_hash::FxHashMap;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use tracing::debug;
 
-use builder::{
-    MatchedAddPattern,
-    MatchedBrPattern,
-    MatchedCmpPattern,
-    MatchedCondBrPattern,
-    MatchedMovPattern,
-    MatchedPattern,
-    MatchedPatternOperand,
-    MatchedPatternOutput,
-    MatchedSubPattern,
-    PatternIn,
-    PatternInOperand,
-    PatternInOutput,
-};
 pub use cfg::{BasicBlock, BasicBlockId, Cfg};
 
 use crate::codegen::{
@@ -43,7 +27,6 @@ use crate::codegen::{
         },
         backend::{
             Backend,
-            Pattern,
         },
         instr::{
             InstrOperand,
@@ -53,17 +36,9 @@ use crate::codegen::{
         isa::PhysicalRegister,
         MachInstr,
         reg::VRegInfo,
-        Register,
         Size,
         TargetMachine,
         VReg,
-    },
-    selection_dag,
-    selection_dag::{
-        MachineOp,
-        Op,
-        Operand,
-        PseudoOp,
     },
 };
 use crate::codegen::machine::asm::Assembler;
@@ -219,7 +194,7 @@ impl<TM: TargetMachine> Function<TM> {
                     );
                     bb.instructions.remove(instr_id);
                     let expanded_len = expanded.len();
-                    if (expanded_len == 0) {
+                    if expanded_len == 0 {
                         continue;
                     }
                     for (offset, instr) in expanded.into_iter().enumerate() {

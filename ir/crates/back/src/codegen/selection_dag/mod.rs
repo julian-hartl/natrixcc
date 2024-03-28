@@ -23,8 +23,6 @@ use natrix_middle::{
 };
 
 use crate::codegen::machine::{
-    backend::Pattern,
-    isa::MachInstr,
     reg::{
         Register,
         VReg,

@@ -10,8 +10,6 @@ use tracing::{
     warn,
 };
 use unicorn_engine::{
-    RegisterARM,
-    RegisterX86,
     SECOND_SCALE,
     unicorn_const::{
         Arch,
