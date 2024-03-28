@@ -17,11 +17,10 @@ use rustc_hash::FxHashMap;
 
 use crate::codegen::{
     machine::{
-        Abi,
-        Instr,
         instr::InstrOperand,
         Instr,
         InstrId,
+        MachInstr,
     },
     register_allocator::{
         InstrNumbering,
@@ -30,7 +29,7 @@ use crate::codegen::{
         ProgPoint,
     },
 };
-use crate::codegen::machine::isa::Isa;
+use crate::codegen::machine::{Instr, TargetMachine};
 
 index_vec::define_index_type! {
     pub struct BasicBlockId = u32;
@@ -47,7 +46,7 @@ pub struct Cfg {
 }
 
 impl Cfg {
-    pub fn build<I: Isa>(bbs: &IndexVec<BasicBlockId, BasicBlock<I>>) -> Self {
+    pub fn build<TM: TargetMachine>(bbs: &IndexVec<BasicBlockId, BasicBlock<TM>>) -> Self {
         let mut cfg = Self::new(BasicBlockId::new(0));
         for bb_id in bbs.indices() {
             let node = cfg.graph.add_node(());
@@ -156,12 +155,12 @@ impl Cfg {
 }
 
 #[derive(Debug, Clone)]
-pub struct BasicBlock<I: Isa> {
+pub struct BasicBlock<TM: TargetMachine> {
     pub id: BasicBlockId,
-    pub instructions: IndexVec<InstrId, Instr<I>>,
+    pub instructions: IndexVec<InstrId, Instr<TM>>,
 }
 
-impl<I: Isa> BasicBlock<I> {
+impl<TM: TargetMachine> BasicBlock<TM> {
     pub fn new(id: BasicBlockId) -> Self {
         Self {
             id,

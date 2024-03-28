@@ -27,19 +27,16 @@ use natrix_middle::{
     instruction::CmpOp,
 };
 
-use crate::codegen::{
-    machine,
-    machine::{
-        Abi,
-        backend::Pattern,
-        isa::Instr,
-        reg::{
-            Register,
-            VReg,
-        },
-        Size,
+use crate::codegen::machine::{
+    backend::Pattern,
+    isa::MachInstr,
+    reg::{
+        Register,
+        VReg,
     },
+    Size,
 };
+use crate::codegen::machine::TargetMachine;
 
 pub mod builder;
 
@@ -100,11 +97,11 @@ pub struct SelectionDAG<TM: TargetMachine> {
     pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockDAG<TM>>,
 }
 
-impl<A: machine::Abi> SelectionDAG<A> {
+impl<TM: TargetMachine> SelectionDAG<TM> {
     pub fn get_bb_dag(
         &mut self,
         basic_block: natrix_middle::cfg::BasicBlockId,
-    ) -> &mut BasicBlockDAG<A> {
+    ) -> &mut BasicBlockDAG<TM> {
         self.basic_blocks
             .entry(basic_block)
             .or_insert_with(|| BasicBlockDAG::new(basic_block))

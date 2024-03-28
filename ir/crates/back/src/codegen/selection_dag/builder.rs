@@ -50,7 +50,6 @@ use crate::{
                 calling_convention::Slot,
                 CallingConvention,
             },
-            Abi,
             function::Function,
             reg::{
                 Register,
@@ -67,6 +66,7 @@ use crate::{
         },
     },
 };
+use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
 pub struct Builder<'func, TM: TargetMachine> {
@@ -270,7 +270,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         &mut self,
         op: &natrix_middle::instruction::Op,
         func: &natrix_middle::Function,
-    ) -> Operand<A> {
+    ) -> Operand<TM> {
         match op {
             natrix_middle::instruction::Op::Vreg(vreg) => {
                 Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func)))
@@ -335,7 +335,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
     fn define_term_node(
         &mut self,
         bb_id: natrix_middle::cfg::BasicBlockId,
-        op: Op<A>,
+        op: Op<TM>,
     ) -> NodeIndex {
         let term_node = self.define_node(bb_id, op);
         let dag = self.sel_dag.get_bb_dag(bb_id);

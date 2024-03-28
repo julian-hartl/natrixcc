@@ -16,11 +16,11 @@ use iced_x86::{
     Register,
 };
 use rustc_hash::FxHashMap;
+
 use crate::codegen::machine;
 use crate::codegen::machine::function::cfg::BasicBlockId;
 use crate::codegen::targets::x86_64;
 use crate::codegen::targets::x86_64::{CC, PhysicalRegister};
-
 
 pub struct Assembler {
     assembler: CodeAssembler,

@@ -3,15 +3,12 @@ use tracing::{
     info,
 };
 
-use crate::codegen::{
-    machine::{
-        Abi,
-        instr::{
-            Instr,
-            PseudoInstr,
-        },
-        Module,
+use crate::codegen::machine::{
+    instr::{
+        Instr,
+        PseudoInstr,
     },
+    Module,
 };
 
 pub struct Coalescer<'module, TM: TargetMachine> {

@@ -44,7 +44,6 @@ use crate::codegen::{
             calling_convention::Slot,
             CallingConvention,
         },
-        Abi,
         function::{
             cfg::Cfg,
             Function,
@@ -66,6 +65,7 @@ use crate::codegen::{
     register_allocator::linear_scan::RegAlloc,
 };
 use crate::codegen::machine::function::BasicBlockId;
+use crate::codegen::machine::TargetMachine;
 
 mod coalescer;
 pub mod linear_scan;
@@ -433,7 +433,7 @@ pub struct LivenessRepr {
 }
 
 impl LivenessRepr {
-    pub fn display<'func, 'liveness, A: Abi>(
+    pub fn display<'func, 'liveness, A: TargetMachine>(
         &'liveness self,
         func: &'func Function<A>,
     ) -> LivenessReprDisplay<'func, 'liveness, A> {
@@ -509,7 +509,7 @@ impl LivenessRepr {
     }
 }
 
-pub type RegAllocHints<A: Abi> = SmallVec<[A::Reg; 2]>;
+pub type RegAllocHints<TM> = SmallVec<[<TM as TargetMachine>::Reg; 2]>;
 
 #[derive(Debug, Clone)]
 pub struct RegAllocVReg {
@@ -545,7 +545,7 @@ pub trait RegAllocAlgorithm<'liveness, A: TargetMachine> {
     }
 }
 
-struct VRegAllocations<'liveness, A: Abi> {
+struct VRegAllocations<'liveness, A: TargetMachine> {
     map: FxHashMap<VReg, A::Reg>,
     liveness_repr: &'liveness LivenessRepr,
 }
@@ -580,10 +580,10 @@ pub struct RegisterAllocator<
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
-    RegisterAllocator<'liveness, 'func, A, RegAlloc>
+impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
+    RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 {
-    pub fn new(func: &'func mut Function<A>, liveness_repr: &'liveness LivenessRepr) -> Self {
+    pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             func,
             algo: RegAlloc::new(liveness_repr),
@@ -729,7 +729,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
     }
 
     fn insert_fixed_locations_for_function_params(&mut self) {
-        let slots = A::CallingConvention::parameter_slots(
+        let slots = TM::CallingConvention::parameter_slots(
             self.func
                 .params
                 .iter()

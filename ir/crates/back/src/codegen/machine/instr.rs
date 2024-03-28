@@ -9,14 +9,12 @@ use smallvec::{
 };
 
 use crate::codegen::{
-    machine::{
-        Abi,
-        Register,
-    },
+    machine::Register,
     selection_dag::Immediate,
 };
 use crate::codegen::machine::function::BasicBlockId;
-use crate::codegen::machine::isa::{Instr as MInstr, Isa};
+use crate::codegen::machine::isa::MachInstr as MInstr;
+use crate::codegen::machine::TargetMachine;
 
 index_vec::define_index_type! {
     pub struct InstrId = u32;
@@ -25,12 +23,12 @@ index_vec::define_index_type! {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Instr<ISA: Isa> {
-    Pseudo(PseudoInstr<ISA>),
-    Machine(ISA::Instr),
+pub enum Instr<TM: TargetMachine> {
+    Pseudo(PseudoInstr<TM>),
+    Machine(TM::Instr),
 }
 
-impl<I: Isa> Instr<I> {
+impl<TM: TargetMachine> Instr<TM> {
     pub fn name(&self) -> &'static str {
         match self {
             Instr::Pseudo(pseudo) => pseudo.name(),
@@ -38,14 +36,14 @@ impl<I: Isa> Instr<I> {
         }
     }
 
-    pub fn reads(&self) -> SmallVec<[Register<I>; 2]> {
+    pub fn reads(&self) -> SmallVec<[Register<TM>; 2]> {
         match self {
             Instr::Pseudo(pseudo) => pseudo.reads(),
             Instr::Machine(machine) => machine.reads(),
         }
     }
 
-    pub fn reads_implicitly(&self) -> SmallVec<[Register<I>; 2]> {
+    pub fn reads_implicitly(&self) -> SmallVec<[Register<TM>; 2]> {
         let writes = self.writes();
         let reg_operands = self
             .operands()
@@ -67,33 +65,33 @@ impl<I: Isa> Instr<I> {
         implicit_reads
     }
 
-    pub fn writes(&self) -> Option<Register<I>> {
+    pub fn writes(&self) -> Option<Register<TM>> {
         match self {
             Instr::Pseudo(pseudo) => pseudo.writes(),
             Instr::Machine(machine) => machine.writes().map(|reg| reg.into()),
         }
     }
 
-    pub fn operands(&self) -> SmallVec<[InstrOperand<I>; 3]> {
+    pub fn operands(&self) -> SmallVec<[InstrOperand<TM>; 3]> {
         match self {
             Instr::Pseudo(pseudo) => pseudo.operands(),
             Instr::Machine(machine) => machine.operands(),
         }
     }
 
-    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<I>; 1]> {
+    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<TM>; 1]> {
         match self {
             Instr::Pseudo(pseudo) => pseudo.written_regs_mut(),
             Instr::Machine(machine) => machine.written_regs_mut(),
         }
     }
-    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<I>; 2]> {
+    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<TM>; 2]> {
         match self {
             Instr::Pseudo(pseudo) => pseudo.read_regs_mut(),
             Instr::Machine(machine) => machine.read_regs_mut(),
         }
     }
-    pub fn try_as_machine(&self) -> Option<&I::Instr> {
+    pub fn try_as_machine(&self) -> Option<&TM::Instr> {
         match self {
             Instr::Pseudo(_) => None,
             Instr::Machine(machine) => Some(machine),
@@ -109,20 +107,20 @@ impl<I: Isa> Instr<I> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum InstrOperand<I: Isa> {
-    Reg(Register<I>),
+pub enum InstrOperand<TM: TargetMachine> {
+    Reg(Register<TM>),
     Imm(Immediate),
     Label(BasicBlockId),
 }
 
 #[derive(Debug)]
-pub enum InstrOperandMut<'a, I: Isa> {
-    Reg(&'a mut Register<I>),
+pub enum InstrOperandMut<'a, TM: TargetMachine> {
+    Reg(&'a mut Register<TM>),
     Imm(&'a mut Immediate),
     Label(&'a mut BasicBlockId),
 }
 
-impl<I: Isa> Display for InstrOperand<I> {
+impl<TM: TargetMachine> Display for InstrOperand<TM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Reg(reg) => write!(f, "{}", reg),
@@ -132,8 +130,8 @@ impl<I: Isa> Display for InstrOperand<I> {
     }
 }
 
-impl<'op, I: Isa> From<&'op mut InstrOperand<I>> for InstrOperandMut<'op, I> {
-    fn from(value: &'op mut InstrOperand<I>) -> Self {
+impl<'op, TM: TargetMachine> From<&'op mut InstrOperand<TM>> for InstrOperandMut<'op, TM> {
+    fn from(value: &'op mut InstrOperand<TM>) -> Self {
         match value {
             InstrOperand::Reg(reg) => InstrOperandMut::Reg(reg),
             InstrOperand::Imm(imm) => InstrOperandMut::Imm(imm),
@@ -143,14 +141,14 @@ impl<'op, I: Isa> From<&'op mut InstrOperand<I>> for InstrOperandMut<'op, I> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum PseudoInstr<I: Isa> {
-    Copy(Register<I>, Register<I>),
-    Ret(Option<InstrOperand<I>>),
-    Phi(Register<I>, Vec<Register<I>>),
-    Def(Register<I>),
+pub enum PseudoInstr<TM: TargetMachine> {
+    Copy(Register<TM>, Register<TM>),
+    Ret(Option<InstrOperand<TM>>),
+    Phi(Register<TM>, Vec<Register<TM>>),
+    Def(Register<TM>),
 }
 
-impl<I: Isa> PseudoInstr<I> {
+impl<TM: TargetMachine> PseudoInstr<TM> {
     pub fn name(&self) -> &'static str {
         match self {
             Self::Copy(_, _) => "COPY",
@@ -160,7 +158,7 @@ impl<I: Isa> PseudoInstr<I> {
         }
     }
 
-    pub fn reads(&self) -> SmallVec<[Register<I>; 2]> {
+    pub fn reads(&self) -> SmallVec<[Register<TM>; 2]> {
         match self {
             Self::Copy(_, to) => {
                 smallvec![*to,]
@@ -179,7 +177,7 @@ impl<I: Isa> PseudoInstr<I> {
         }
     }
 
-    pub fn operands(&self) -> SmallVec<[InstrOperand<I>; 3]> {
+    pub fn operands(&self) -> SmallVec<[InstrOperand<TM>; 3]> {
         match self {
             Self::Copy(dest, src) => {
                 smallvec![InstrOperand::Reg(*dest), InstrOperand::Reg(*src),]
@@ -199,7 +197,7 @@ impl<I: Isa> PseudoInstr<I> {
         }
     }
 
-    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<I>; 1]> {
+    pub fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<TM>; 1]> {
         match self {
             Self::Copy(dest, _) => {
                 smallvec![dest,]
@@ -216,7 +214,7 @@ impl<I: Isa> PseudoInstr<I> {
         }
     }
 
-    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<I>; 2]> {
+    pub fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<TM>; 2]> {
         match self {
             Self::Copy(_, src) => {
                 smallvec![src,]
@@ -235,7 +233,7 @@ impl<I: Isa> PseudoInstr<I> {
         }
     }
 
-    pub fn writes(&self) -> Option<Register<I>> {
+    pub fn writes(&self) -> Option<Register<TM>> {
         match self {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,

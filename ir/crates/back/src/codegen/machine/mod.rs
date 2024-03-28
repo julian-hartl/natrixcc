@@ -1,8 +1,8 @@
 use std::fmt::Debug;
 
-use cranelift_entity::EntityRef;
+pub use cranelift_entity::EntityRef;
 
-pub use abi::Abi;
+pub use backend::Backend;
 pub use function::{
     Function,
     FunctionId,
@@ -11,11 +11,10 @@ pub use instr::{
     Instr,
     InstrId,
 };
-use isa::{
-    Instr as MInstr,
+pub use isa::{
+    MachInstr,
     PhysicalRegister,
 };
-pub use isa::Isa;
 pub use module::Module;
 use natrix_middle::ty::Type;
 pub use reg::{
@@ -23,6 +22,7 @@ pub use reg::{
     VReg,
 };
 
+use crate::codegen::machine::abi::CallingConvention;
 use crate::codegen::machine::asm::Assembler;
 
 pub mod abi;
@@ -35,7 +35,6 @@ pub mod function;
 pub mod instr;
 
 pub mod backend;
-pub use backend::Backend;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Display)]
 pub enum Size {
@@ -96,14 +95,16 @@ pub enum Architecture {
     X86_64,
 }
 
-pub trait TargetMachine {
-    type Abi: Abi<Reg = <Self::Isa as Isa>::Reg>;
+pub trait TargetMachine: Debug + Default + Copy + Clone + PartialEq + Eq {
+    type Reg: PhysicalRegister;
+    
+    type Instr: MachInstr<TM=Self>;
 
-    type Isa: Isa;
+    type CallingConvention: CallingConvention<Reg = Self::Reg>;
 
-    type Backend: Backend<Isa=Self::Isa>;
+    type Backend: Backend<TM = Self>;
 
-    type ASSEMBLER: Assembler<TM=Self>;
+    type Assembler: Assembler<TM = Self>;
 
     fn endianness() -> Endianness;
 

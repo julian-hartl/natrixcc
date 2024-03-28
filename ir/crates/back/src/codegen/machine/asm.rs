@@ -1,6 +1,5 @@
 use crate::codegen::machine::{
     function::cfg::BasicBlockId,
-    isa::Isa,
     TargetMachine,
 };
 
@@ -11,7 +10,7 @@ pub trait Assembler {
 
     fn begin_basic_block(&mut self, bb_id: BasicBlockId);
 
-    fn assemble(&mut self, instr: &<<Self::TM as TargetMachine>::Isa as Isa>::Instr);
+    fn assemble(&mut self, instr: &<Self::TM as TargetMachine>::Instr);
 
     fn finish(self) -> Vec<u8>;
 
