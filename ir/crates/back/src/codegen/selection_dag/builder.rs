@@ -1,12 +1,7 @@
-use std::{
-    collections::VecDeque,
-    num::NonZeroUsize,
-};
 
 use cranelift_entity::{
     EntityRef,
     SecondaryMap,
-    SparseMap,
 };
 use daggy::{
     petgraph::visit::IntoNodeIdentifiers,
@@ -16,7 +11,6 @@ use daggy::{
 use iter_tools::Itertools;
 use rustc_hash::{
     FxHashMap,
-    FxHashSet,
 };
 use tracing::debug;
 
@@ -29,10 +23,8 @@ use natrix_middle::{
         Terminator,
         TerminatorKind,
     },
-    InstrKind,
     instruction::{
         Const,
-        OpInstr,
         VRegData,
     },
     ty::Type,
@@ -44,12 +36,7 @@ use tracing::debug;
 use crate::{
     codegen,
     codegen::{
-        machine,
         machine::{
-            abi::{
-                calling_convention::Slot,
-                CallingConvention,
-            },
             function::Function,
             reg::{
                 Register,

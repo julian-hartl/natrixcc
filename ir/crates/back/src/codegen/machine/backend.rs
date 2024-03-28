@@ -11,15 +11,14 @@ use crate::codegen::{
             },
             Function,
         },
-        MachInstr,
         TargetMachine,
     },
     selection_dag::Immediate,
 };
 use crate::codegen::machine::Instr;
 
-type Reg<B: Backend> = <B::TM as TargetMachine>::Reg;
-type BackInstr<B: Backend> = <B::TM as TargetMachine>::Instr;
+type Reg<B> = <<B as Backend>::TM as TargetMachine>::Reg;
+type BackInstr<B> = <<B as Backend>::TM as TargetMachine>::Instr;
 pub trait Backend {
     type TM: TargetMachine;
 

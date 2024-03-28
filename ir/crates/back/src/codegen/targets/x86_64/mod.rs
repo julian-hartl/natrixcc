@@ -10,7 +10,6 @@ use natrix_middle::instruction::CmpOp;
 use crate::codegen::{
     machine,
     machine::{
-        abi::CallingConvention,
         Architecture,
         backend,
         Endianness,
