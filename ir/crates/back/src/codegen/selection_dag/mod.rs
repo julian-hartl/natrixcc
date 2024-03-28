@@ -1,16 +1,40 @@
-use std::fmt::Display;
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt::Display,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 
-use daggy::petgraph::dot::{Config, Dot};
+use daggy::petgraph::dot::{
+    Config,
+    Dot,
+};
 use rustc_hash::FxHashMap;
-use smallvec::{SmallVec, smallvec};
+use smallvec::{
+    smallvec,
+    SmallVec,
+};
 
 pub use builder::Builder;
-use natrix_middle::cfg::BasicBlockId;
-use natrix_middle::instruction::CmpOp;
+use natrix_middle::{
+    cfg::BasicBlockId,
+    instruction::CmpOp,
+};
 
-use crate::codegen::machine;
-use crate::codegen::machine::{Abi, MachineInstr, Pattern, Register, Size, VReg};
+use crate::codegen::{
+    machine,
+    machine::{
+        Abi,
+        backend::Pattern,
+        isa::Instr,
+        reg::{
+            Register,
+            VReg,
+        },
+        Size,
+    },
+};
 
 pub mod builder;
 
@@ -45,7 +69,10 @@ impl<A: machine::Abi> BasicBlockDAG<A> {
 
     pub fn save_graphviz<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
         std::fs::create_dir_all(&path)?;
-        std::fs::write(format!("{}/{}.dot", path.as_ref().display(), self.bb), self.graphviz())
+        std::fs::write(
+            format!("{}/{}.dot", path.as_ref().display(), self.bb),
+            self.graphviz(),
+        )
     }
 }
 
@@ -69,11 +96,15 @@ pub struct SelectionDAG<A: machine::Abi> {
 }
 
 impl<A: machine::Abi> SelectionDAG<A> {
-    pub fn get_bb_dag(&mut self, basic_block: natrix_middle::cfg::BasicBlockId) -> &mut BasicBlockDAG<A> {
-        self.basic_blocks.entry(basic_block).or_insert_with(|| BasicBlockDAG::new(basic_block))
+    pub fn get_bb_dag(
+        &mut self,
+        basic_block: natrix_middle::cfg::BasicBlockId,
+    ) -> &mut BasicBlockDAG<A> {
+        self.basic_blocks
+            .entry(basic_block)
+            .or_insert_with(|| BasicBlockDAG::new(basic_block))
     }
 }
-
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Immediate {
@@ -225,21 +256,19 @@ impl<A: Abi> PseudoOp<A> {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
             Self::Phi(dest, _) => Some(*dest),
-            Self::Def(dest) => Some(Register::Virtual(*dest))
+            Self::Def(dest) => Some(Register::Virtual(*dest)),
         }
     }
 
     pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
             Self::Copy(_, dest) => smallvec![*dest],
-            Self::Ret(op) => {
-                match op {
-                    Some(Operand::Reg(reg)) => smallvec![*reg],
-                    _ => smallvec![]
-                }
-            }
+            Self::Ret(op) => match op {
+                Some(Operand::Reg(reg)) => smallvec![*reg],
+                _ => smallvec![],
+            },
             Self::Phi(_, regs) => regs.clone().into(),
-            Self::Def(_) => smallvec![]
+            Self::Def(_) => smallvec![],
         }
     }
 }
@@ -268,45 +297,35 @@ impl<A: Abi> MachineOp<A> {
 
     pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
         match self {
-            MachineOp::Mov(_, src) => {
-                match src {
-                    Operand::Reg(reg) =>
-                        smallvec![*reg],
-                    _ =>
-                        smallvec![]
-                }
-            }
-            MachineOp::Sub(_, src, dest) => {
-                match (src.try_as_register(), dest.try_as_register()) {
-                    (Some(src), Some(dest)) => smallvec![src, dest],
-                    (Some(src), None) => smallvec![src],
-                    (None, Some(dest)) => smallvec![dest],
-                    _ => smallvec![]
-                }
-            }
-            MachineOp::Add(_, src, dest) => {
-                match (src.try_as_register(), dest.try_as_register()) {
-                    (Some(src), Some(dest)) => smallvec![src, dest],
-                    (Some(src), None) => smallvec![src],
-                    (None, Some(dest)) => smallvec![dest],
-                    _ => smallvec![]
-                }
-            }
+            MachineOp::Mov(_, src) => match src {
+                Operand::Reg(reg) => smallvec![*reg],
+                _ => smallvec![],
+            },
+            MachineOp::Sub(_, src, dest) => match (src.try_as_register(), dest.try_as_register()) {
+                (Some(src), Some(dest)) => smallvec![src, dest],
+                (Some(src), None) => smallvec![src],
+                (None, Some(dest)) => smallvec![dest],
+                _ => smallvec![],
+            },
+            MachineOp::Add(_, src, dest) => match (src.try_as_register(), dest.try_as_register()) {
+                (Some(src), Some(dest)) => smallvec![src, dest],
+                (Some(src), None) => smallvec![src],
+                (None, Some(dest)) => smallvec![dest],
+                _ => smallvec![],
+            },
             MachineOp::Br(_) => smallvec![],
             MachineOp::Cmp(_, _, lhs, rhs) => {
                 match (lhs.try_as_register(), rhs.try_as_register()) {
                     (Some(lhs), Some(rhs)) => smallvec![lhs, rhs],
                     (Some(lhs), None) => smallvec![lhs],
                     (None, Some(rhs)) => smallvec![rhs],
-                    _ => smallvec![]
+                    _ => smallvec![],
                 }
             }
-            MachineOp::CondBr(cond, _, _) => {
-                match cond.try_as_register() {
-                    Some(cond) => smallvec![cond],
-                    None => smallvec![]
-                }
-            }
+            MachineOp::CondBr(cond, _, _) => match cond.try_as_register() {
+                Some(cond) => smallvec![cond],
+                None => smallvec![],
+            },
         }
     }
 }
@@ -325,4 +344,3 @@ impl<A: Abi> Operand<A> {
         }
     }
 }
-
