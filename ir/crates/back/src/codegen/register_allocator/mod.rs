@@ -351,7 +351,8 @@ impl InstrNumbering {
             .iter()
             .find(|(bb_id, _)| *bb_id == bb)?
             .1;
-        Some(offset + len)
+        // todo: write test for this
+        Some(offset + len - 1)
     }
 
     pub fn iter(&self) -> InstrNumberingIter<'_> {
