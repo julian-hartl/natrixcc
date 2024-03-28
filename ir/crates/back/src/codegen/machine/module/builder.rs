@@ -1,4 +1,9 @@
-use crate::codegen::machine::{Backend, FunctionBuilder, Module, TargetMachine};
+use crate::codegen::machine::{
+    backend::Backend,
+    function::builder::FunctionBuilder,
+    Module,
+};
+use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
 pub struct Builder<'module, TM: TargetMachine> {
@@ -17,9 +22,7 @@ impl<'module, TM: TargetMachine> Builder<'module, TM> {
     pub fn build(mut self) -> Module<TM> {
         for (_, function) in &mut self.module.functions {
             let builder = FunctionBuilder::<TM>::new();
-            self.mtbb.functions.push(
-                builder.build(function)
-            );
+            self.mtbb.functions.push(builder.build(function));
         }
         self.mtbb
     }

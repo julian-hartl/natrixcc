@@ -1,24 +1,47 @@
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, VecDeque};
-use std::fmt::{Display, Formatter};
-use std::ops::{Range, RangeInclusive};
+use std::{
+    cmp::Ordering,
+    collections::VecDeque,
+    fmt::{
+        Display,
+        Formatter,
+    },
+};
 
-use cranelift_entity::{EntityList, EntitySet, SecondaryMap};
-use daggy::petgraph::prelude::DfsPostOrder;
+use cranelift_entity::SecondaryMap;
 use daggy::Walker;
-use iced_x86::CC_p::p;
-use index_vec::IndexVec;
 use iter_tools::Itertools;
-use rustc_hash::{FxHashMap, FxHashSet};
-use smallvec::{smallvec, SmallVec};
+use rustc_hash::{
+    FxHashMap,
+    FxHashSet,
+};
+use smallvec::{
+    smallvec,
+    SmallVec,
+};
 use tracing::debug;
 
 pub use coalescer::Coalescer;
 
-use crate::codegen::machine::{Abi, BasicBlockId, Cfg, Function, Instr, InstrId, InstrOperand, InstrOperandMut, PhysicalRegister, PseudoInstr, Register, Size, VReg};
-use crate::codegen::machine::abi::calling_convention::Slot;
-use crate::codegen::machine::abi::CallingConvention;
-use crate::codegen::register_allocator::linear_scan::RegAlloc;
+use crate::codegen::machine::{
+    abi::{
+        calling_convention::Slot,
+        CallingConvention,
+    },
+    function::Function,
+    instr::{
+        Instr,
+        PseudoInstr,
+    },
+    InstrId,
+    isa::PhysicalRegister,
+    reg::{
+        Register,
+        VReg,
+    },
+    Size,
+};
+use crate::codegen::machine::function::BasicBlockId;
+use crate::codegen::machine::TargetMachine;
 
 mod coalescer;
 pub mod linear_scan;
@@ -31,10 +54,7 @@ pub struct InstrUid {
 
 impl InstrUid {
     pub fn new(bb: BasicBlockId, instr: InstrId) -> Self {
-        Self {
-            bb,
-            instr,
-        }
+        Self { bb, instr }
     }
 }
 
@@ -73,8 +93,7 @@ impl PartialOrd for ProgPoint {
 impl Ord for ProgPoint {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Read(a), Self::Read(b)) |
-            (Self::Write(a), Self::Write(b)) => a.cmp(b),
+            (Self::Read(a), Self::Read(b)) | (Self::Write(a), Self::Write(b)) => a.cmp(b),
             (Self::Read(a), Self::Write(b)) => {
                 if a <= b {
                     Ordering::Less
@@ -122,13 +141,13 @@ impl Lifetime {
     /// Returns true if the two lifetimes overlap.
     ///
     /// Two lifetimes l, j overlap if the intersection of their ranges is not empty.
-    /// This is the case iff. 
+    /// This is the case iff.
     /// - l.start <= j.end
     /// and
     /// - j.start <= l.end
-    /// 
+    ///
     /// Overlaps are **symmetric**.
-    pub fn are_overlapping(l: &Self, j: &Self) -> bool {   
+    pub fn are_overlapping(l: &Self, j: &Self) -> bool {
         l.start <= j.end && j.start <= l.end
     }
 
@@ -171,7 +190,10 @@ mod prog_point_tests {
 
 #[cfg(test)]
 mod lifetime_tests {
-    use crate::codegen::register_allocator::{Lifetime, ProgPoint};
+    use crate::codegen::register_allocator::{
+        Lifetime,
+        ProgPoint,
+    };
 
     #[test]
     fn lifetimes_overlap() {
@@ -209,11 +231,25 @@ mod lifetime_tests {
         ];
         for (l1, l2, should_overlap) in inputs {
             // Overlaps are symmetric
-            assert_eq!(l1.overlaps_with(&l2), should_overlap, "{:?} and {:?} should overlap: {}", l1, l2, should_overlap);
-            assert_eq!(l2.overlaps_with(&l1), should_overlap, "{:?} and {:?} should overlap: {}", l2, l1, should_overlap);
+            assert_eq!(
+                l1.overlaps_with(&l2),
+                should_overlap,
+                "{:?} and {:?} should overlap: {}",
+                l1,
+                l2,
+                should_overlap
+            );
+            assert_eq!(
+                l2.overlaps_with(&l1),
+                should_overlap,
+                "{:?} and {:?} should overlap: {}",
+                l2,
+                l1,
+                should_overlap
+            );
         }
     }
-    
+
     #[test]
     fn lifetimes_contain() {
         let inputs = [
@@ -243,7 +279,14 @@ mod lifetime_tests {
             ),
         ];
         for (lifetime, pp, should_contain) in inputs {
-            assert_eq!(lifetime.contains(pp), should_contain, "{:?} should contain {:?}: {}", lifetime, pp, should_contain);
+            assert_eq!(
+                lifetime.contains(pp),
+                should_contain,
+                "{:?} should contain {:?}: {}",
+                lifetime,
+                pp,
+                should_contain
+            );
         }
     }
 }
@@ -256,14 +299,17 @@ pub struct InstrNumbering {
 }
 
 impl InstrNumbering {
-    pub fn new<A: Abi>(func: &Function<A>) -> Self {
+    pub fn new<TM: TargetMachine>(func: &Function<TM>) -> Self {
         debug!("Creating instruction numbering");
-        let order = func.cfg().ordered().into_iter().map(
-            |bb| (bb, func.basic_blocks[bb].instructions.len_idx().raw())
-        ).collect_vec();
-        debug!("Created instruction numbering with ordering: {:?}",order);
+        let order = func
+            .cfg()
+            .ordered()
+            .into_iter()
+            .map(|bb| (bb, func.basic_blocks[bb].instructions.len_idx().raw()))
+            .collect_vec();
+        debug!("Created instruction numbering with ordering: {:?}", order);
         Self {
-            toplogical_order: order
+            toplogical_order: order,
         }
     }
 
@@ -300,7 +346,11 @@ impl InstrNumbering {
 
     pub fn end_of_bb(&self, bb: BasicBlockId) -> Option<InstrNr> {
         let offset = self.get_bb_offset(bb)?;
-        let len = self.toplogical_order.iter().find(|(bb_id, _)| *bb_id == bb)?.1;
+        let len = self
+            .toplogical_order
+            .iter()
+            .find(|(bb_id, _)| *bb_id == bb)?
+            .1;
         Some(offset + len)
     }
 
@@ -309,7 +359,9 @@ impl InstrNumbering {
     }
 
     pub fn iter_enumerated(&self) -> impl Iterator<Item=(InstrNr, InstrUid)> + '_ {
-        self.iter().enumerate().map(|(nr, instr_uid)| (nr as InstrNr, instr_uid))
+        self.iter()
+            .enumerate()
+            .map(|(nr, instr_uid)| (nr as InstrNr, instr_uid))
     }
 }
 
@@ -357,16 +409,24 @@ pub struct LivenessRepr {
 }
 
 impl LivenessRepr {
-    pub fn display<'func, 'liveness, A: Abi>(&'liveness self, func: &'func Function<A>) -> LivenessReprDisplay<'func, 'liveness, A> {
+    pub fn display<'func, 'liveness, A: TargetMachine>(
+        &'liveness self,
+        func: &'func Function<A>,
+    ) -> LivenessReprDisplay<'func, 'liveness, A> {
         LivenessReprDisplay(self, func)
     }
 }
 
-struct LivenessReprDisplay<'func, 'liveness, A: Abi>(&'liveness LivenessRepr, &'func Function<A>);
+struct LivenessReprDisplay<'func, 'liveness, A: TargetMachine>(&'liveness LivenessRepr, &'func Function<A>);
 
-impl<A: Abi> Display for LivenessReprDisplay<'_, '_, A> {
+impl<A: TargetMachine> Display for LivenessReprDisplay<'_, '_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (reg, lifetime) in self.0.defs.keys().map(|reg| (reg, self.0.lifetime(reg, self.1))) {
+        for (reg, lifetime) in self
+            .0
+            .defs
+            .keys()
+            .map(|reg| (reg, self.0.lifetime(reg, self.1)))
+        {
             writeln!(f, "{}: {}", reg, lifetime)?;
         }
         Ok(())
@@ -374,7 +434,7 @@ impl<A: Abi> Display for LivenessReprDisplay<'_, '_, A> {
 }
 
 impl LivenessRepr {
-    pub fn new<A: Abi>(func: &Function<A>) -> Self {
+    pub fn new<A: TargetMachine>(func: &Function<A>) -> Self {
         debug!("Creating liveness representation");
         Self {
             defs: SecondaryMap::default(),
@@ -388,17 +448,25 @@ impl LivenessRepr {
     }
 
     pub fn record_use(&mut self, reg: VReg, instr_nr: InstrNr) {
-        let insert_at = self.uses[reg].binary_search(&instr_nr).unwrap_or_else(|x| x);
+        let insert_at = self.uses[reg]
+            .binary_search(&instr_nr)
+            .unwrap_or_else(|x| x);
         self.uses[reg].insert(insert_at, instr_nr);
     }
 
-    pub fn lifetime<A: Abi>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
+    pub fn lifetime<A: TargetMachine>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
         let start = self.defs[reg];
         let end = self.last_use(reg).unwrap_or(start);
         let end_uid = self.instr_numbering.get_instr_uid(end).unwrap();
         if func.basic_blocks[end_uid.bb].instructions[end_uid.instr].is_phi() {
-            if let Some(second_last_use_in_bb) = Some(self.second_last_use(reg).unwrap_or(start)).and_then(|instr_nr| self.instr_numbering.get_instr_uid(instr_nr)).map(|uid| uid.bb) {
-                let end = self.instr_numbering.end_of_bb(second_last_use_in_bb).unwrap();
+            if let Some(second_last_use_in_bb) = Some(self.second_last_use(reg).unwrap_or(start))
+                .and_then(|instr_nr| self.instr_numbering.get_instr_uid(instr_nr))
+                .map(|uid| uid.bb)
+            {
+                let end = self
+                    .instr_numbering
+                    .end_of_bb(second_last_use_in_bb)
+                    .unwrap();
                 return Lifetime::new(start, ProgPoint::Write(end));
             }
         }
@@ -414,7 +482,7 @@ impl LivenessRepr {
     }
 }
 
-pub type RegAllocHints<A: Abi> = SmallVec<[A::REG; 2]>;
+pub type RegAllocHints<TM> = SmallVec<[<TM as TargetMachine>::Reg; 2]>;
 
 #[derive(Debug, Clone)]
 pub struct RegAllocVReg {
@@ -423,31 +491,39 @@ pub struct RegAllocVReg {
     pub lifetime: Lifetime,
 }
 
-pub trait RegAllocAlgorithm<'liveness, A: Abi> {
+pub trait RegAllocAlgorithm<'liveness, A: TargetMachine> {
     fn new(liveness_repr: &'liveness LivenessRepr) -> Self;
-    fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<A>) -> A::REG;
+    fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<A>) -> A::Reg;
 
-    fn try_allocate_fixed(&mut self, vreg: &RegAllocVReg, reg: A::REG) -> bool;
+    fn try_allocate_fixed(&mut self, vreg: &RegAllocVReg, reg: A::Reg) -> bool;
 
-    fn try_evict(&mut self, reg: A::REG) -> bool;
+    fn try_evict(&mut self, reg: A::Reg) -> bool;
 
     /// Returns true if a register was evicted
-    fn allocate_fixed_or_evict(&mut self, vreg: &RegAllocVReg, reg: A::REG) -> bool {
+    fn allocate_fixed_or_evict(&mut self, vreg: &RegAllocVReg, reg: A::Reg) -> bool {
         if self.try_allocate_fixed(vreg, reg) {
             return false;
         }
-        assert!(self.try_evict(reg), "{} was ensured to be allocated, but it was not", reg.name());
-        assert!(self.try_allocate_fixed(vreg, reg), "{} was ensured to be evicted, but it was not", reg.name());
+        assert!(
+            self.try_evict(reg),
+            "{} was ensured to be allocated, but it was not",
+            reg.name()
+        );
+        assert!(
+            self.try_allocate_fixed(vreg, reg),
+            "{} was ensured to be evicted, but it was not",
+            reg.name()
+        );
         true
     }
 }
 
-struct VRegAllocations<'liveness, A: Abi> {
-    map: FxHashMap<VReg, A::REG>,
+struct VRegAllocations<'liveness, A: TargetMachine> {
+    map: FxHashMap<VReg, A::Reg>,
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, A: Abi> VRegAllocations<'liveness, A> {
+impl<'liveness, A: TargetMachine> VRegAllocations<'liveness, A> {
     pub fn new(liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             map: FxHashMap::default(),
@@ -455,16 +531,16 @@ impl<'liveness, A: Abi> VRegAllocations<'liveness, A> {
         }
     }
 
-    pub fn get_allocated_reg(&self, vreg: VReg) -> Option<A::REG> {
+    pub fn get_allocated_reg(&self, vreg: VReg) -> Option<A::Reg> {
         self.map.get(&vreg).copied()
     }
 
-    pub fn start_allocation(&mut self, vreg: VReg, reg: A::REG) {
+    pub fn start_allocation(&mut self, vreg: VReg, reg: A::Reg) {
         self.map.insert(vreg, reg);
     }
 }
 
-pub struct RegisterAllocator<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> {
+pub struct RegisterAllocator<'liveness, 'func, A: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, A>> {
     algo: RegAlloc,
     func: &'func mut Function<A>,
     marker: std::marker::PhantomData<A>,
@@ -472,8 +548,10 @@ pub struct RegisterAllocator<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorit
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> RegisterAllocator<'liveness, 'func, A, RegAlloc> {
-    pub fn new(func: &'func mut Function<A>, liveness_repr: &'liveness LivenessRepr) -> Self {
+impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
+RegisterAllocator<'liveness, 'func, TM, RegAlloc>
+{
+    pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             func,
             algo: RegAlloc::new(liveness_repr),
@@ -485,37 +563,38 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
 
     pub fn run(mut self) {
         self.insert_fixed_locations_for_function_params();
-        let mut worklist = self.liveness_repr.instr_numbering.iter().filter_map(
-            |instr_uid| {
+        let mut worklist = self
+            .liveness_repr
+            .instr_numbering
+            .iter()
+            .filter_map(|instr_uid| {
                 let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
-                instr.writes().and_then(
-                    |reg| reg.try_as_virtual()
-                )
-            }
-        ).collect::<VecDeque<_>>();
+                instr.writes().and_then(|reg| reg.try_as_virtual())
+            })
+            .collect::<VecDeque<_>>();
         while let Some(vreg) = worklist.pop_front() {
             let instr_nr = self.liveness_repr.defs[vreg];
-            let instr_uid = self.liveness_repr.instr_numbering.get_instr_uid(instr_nr).unwrap_or_else(
-                || panic!("No instr uid for {}", instr_nr)
-            );
+            let instr_uid = self
+                .liveness_repr
+                .instr_numbering
+                .get_instr_uid(instr_nr)
+                .unwrap_or_else(|| panic!("No instr uid for {}", instr_nr));
             let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
             let mut hints: SmallVec<[_; 2]> = smallvec![];
             match instr {
-                Instr::Pseudo(instr) => {
-                    match instr {
-                        PseudoInstr::Copy(_, src) => {
-                            if let Some(reg) = match src {
-                                Register::Virtual(reg) => self.allocations.get_allocated_reg(*reg),
-                                Register::Physical(reg) => Some(*reg),
-                            } {
-                                hints.push(reg);
-                            }
+                Instr::Pseudo(instr) => match instr {
+                    PseudoInstr::Copy(_, src) => {
+                        if let Some(reg) = match src {
+                            Register::Virtual(reg) => self.allocations.get_allocated_reg(*reg),
+                            Register::Physical(reg) => Some(*reg),
+                        } {
+                            hints.push(reg);
                         }
-                        PseudoInstr::Ret(_) => {}
-                        PseudoInstr::Phi(_, _) => {}
-                        PseudoInstr::Def(_) => {}
                     }
-                }
+                    PseudoInstr::Ret(_) => {}
+                    PseudoInstr::Phi(_, _) => {}
+                    PseudoInstr::Def(_) => {}
+                },
                 Instr::Machine(_) => {}
             };
             if self.allocations.get_allocated_reg(vreg).is_some() {
@@ -530,37 +609,48 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
                 lifetime: lifetime.clone(),
             };
             let phys_reg = match vreg_info.fixed {
-                None => {
-                    match vreg_info.tied_to {
-                        None => {
-                            debug!("Allocating {vreg} at {instr_uid} with hints: {:?} and size {size}", hints);
+                None => match vreg_info.tied_to {
+                    None => {
+                        debug!(
+                            "Allocating {vreg} at {instr_uid} with hints: {:?} and size {size}",
+                            hints
+                        );
 
-                            Some(self.algo.allocate_arbitrary(&alloc_vreg, hints))
-                        }
-                        Some(tied_to) => {
-                            debug!("{vreg} is tied to {tied_to}. Trying to put it in the same register");
-                            assert!(!lifetime.overlaps_with(&self.liveness_repr.lifetime(tied_to, &self.func)), "Tied register {tied_to} overlaps with {vreg}");
-                            let allocated_reg = self.allocations.get_allocated_reg(tied_to);
-                            match allocated_reg {
-                                None => {
-                                    debug!("Tied register {tied_to} is not allocated yet.");
-                                    None
+                        Some(self.algo.allocate_arbitrary(&alloc_vreg, hints))
+                    }
+                    Some(tied_to) => {
+                        debug!(
+                            "{vreg} is tied to {tied_to}. Trying to put it in the same register"
+                        );
+                        assert!(
+                            !lifetime
+                                .overlaps_with(&self.liveness_repr.lifetime(tied_to, &self.func)),
+                            "Tied register {tied_to} overlaps with {vreg}"
+                        );
+                        let allocated_reg = self.allocations.get_allocated_reg(tied_to);
+                        match allocated_reg {
+                            None => {
+                                debug!("Tied register {tied_to} is not allocated yet.");
+                                None
+                            }
+                            Some(allocated_reg) => {
+                                debug!("Tied register {tied_to} is allocated at {}. Trying to allocate {vreg} there", allocated_reg.name());
+                                if self
+                                    .algo
+                                    .allocate_fixed_or_evict(&alloc_vreg, allocated_reg)
+                                {
+                                    debug!("Evicted {} to allocate {vreg}", allocated_reg.name());
                                 }
-                                Some(allocated_reg) => {
-                                    debug!("Tied register {tied_to} is allocated at {}. Trying to allocate {vreg} there", allocated_reg.name());
-                                    if self.algo.allocate_fixed_or_evict(
-                                        &alloc_vreg, allocated_reg,
-                                    ) {
-                                        debug!("Evicted {} to allocate {vreg}", allocated_reg.name());
-                                    }
-                                    Some(allocated_reg)
-                                }
+                                Some(allocated_reg)
                             }
                         }
                     }
-                }
+                },
                 Some(fixed) => {
-                    debug!("Allocating {vreg} at {instr_uid} in fixed register {}", fixed.name());
+                    debug!(
+                        "Allocating {vreg} at {instr_uid} in fixed register {}",
+                        fixed.name()
+                    );
                     self.algo.allocate_fixed_or_evict(&alloc_vreg, fixed);
                     Some(fixed)
                 }
@@ -579,15 +669,27 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
             let instr = &mut self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
             for reg in instr.read_regs_mut() {
                 if let Some(vreg) = reg.try_as_virtual() {
-                    debug!("Replacing {} with its physical register at {}", vreg, instr_uid);
-                    let phys_reg = self.allocations.get_allocated_reg(vreg).unwrap_or_else(|| panic!("{vreg} was not allocated"));
+                    debug!(
+                        "Replacing {} with its physical register at {}",
+                        vreg, instr_uid
+                    );
+                    let phys_reg = self
+                        .allocations
+                        .get_allocated_reg(vreg)
+                        .unwrap_or_else(|| panic!("{vreg} was not allocated"));
                     *reg = Register::Physical(phys_reg);
                 }
             }
             for reg in instr.written_regs_mut() {
                 if let Some(vreg) = reg.try_as_virtual() {
-                    debug!("Replacing {} with its physical register at {}", vreg, instr_uid);
-                    let phys_reg = self.allocations.get_allocated_reg(vreg).unwrap_or_else(|| panic!("{vreg} was not allocated"));
+                    debug!(
+                        "Replacing {} with its physical register at {}",
+                        vreg, instr_uid
+                    );
+                    let phys_reg = self
+                        .allocations
+                        .get_allocated_reg(vreg)
+                        .unwrap_or_else(|| panic!("{vreg} was not allocated"));
                     *reg = Register::Physical(phys_reg);
                 }
             }
@@ -595,21 +697,25 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> Regist
     }
 
     fn insert_fixed_locations_for_function_params(&mut self) {
-        let slots = A::CallingConvention::parameter_slots(
-            self.func.params.iter().map(|param| self.func.vregs[*param].size)
-        ).collect_vec();
+        let slots = TM::CallingConvention::parameter_slots(
+            self.func
+                .params
+                .iter()
+                .map(|param| self.func.vregs[*param].size),
+        )
+            .collect_vec();
         for (arg, slot) in self.func.params.iter().copied().zip(slots) {
             match slot {
                 Slot::Register(reg) => {
                     self.func.vregs[arg].fixed = Some(reg);
                 }
-                Slot::Stack => unimplemented!()
+                Slot::Stack => unimplemented!(),
             }
         }
     }
 }
 
-impl<A: Abi> Function<A> {
+impl<TM: TargetMachine> Function<TM> {
     pub fn liveness_repr(&mut self) -> LivenessRepr {
         #[derive(Default)]
         struct Liveins(FxHashMap<BasicBlockId, FxHashSet<VReg>>);
@@ -618,9 +724,7 @@ impl<A: Abi> Function<A> {
                 Self(FxHashMap::default())
             }
             fn insert(&mut self, bb: BasicBlockId, reg: VReg) {
-                self.0.entry(
-                    bb
-                ).or_default().insert(reg);
+                self.0.entry(bb).or_default().insert(reg);
             }
 
             fn ensure_exists(&mut self, bb: BasicBlockId) {
@@ -631,11 +735,11 @@ impl<A: Abi> Function<A> {
                 self.0[&bb].iter().copied()
             }
         }
-        let mut liveins = Liveins::default();
+        let liveins = Liveins::default();
 
         let mut repr = LivenessRepr::new(self);
         debug!("Starting liveness analysis");
-        let mut worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
+        let worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
         let mut visited = FxHashSet::default();
         for bb_id in self.cfg().ordered().into_iter().rev() {
             debug!("Looking at {bb_id}");
@@ -673,9 +777,7 @@ impl<A: Abi> Function<A> {
             let mut instr_nr = exit_pp.instr_nr();
             for instr in bb.instructions.iter().rev() {
                 let out = instr.writes();
-                if let Some(reg) = out.and_then(
-                    |reg| reg.try_as_virtual()
-                ) {
+                if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
                     // undeclared_regs.remove(&reg);
                     // let mut interval = current_intervals.remove(&reg).unwrap_or_else(|| {
                     //     debug!("Creating new interval for {reg} at {instr_nr}");

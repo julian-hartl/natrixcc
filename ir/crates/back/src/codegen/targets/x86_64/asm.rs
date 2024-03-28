@@ -1,13 +1,26 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{
+    Deref,
+    DerefMut,
+};
 
-use iced_x86::{Code, Formatter, Instruction, IntelFormatter, NumberBase, Register};
-use iced_x86::code_asm::{CodeAssembler, CodeLabel};
+use iced_x86::{
+    Code,
+    code_asm::{
+        CodeAssembler,
+        CodeLabel,
+    },
+    Formatter,
+    Instruction,
+    IntelFormatter,
+    NumberBase,
+    Register,
+};
 use rustc_hash::FxHashMap;
 
-use crate::codegen::isa::x86_64;
-use crate::codegen::isa::x86_64::{CC, PhysicalRegister, X86Instr};
 use crate::codegen::machine;
-use crate::codegen::machine::BasicBlockId;
+use crate::codegen::machine::function::cfg::BasicBlockId;
+use crate::codegen::targets::x86_64;
+use crate::codegen::targets::x86_64::{CC, PhysicalRegister};
 
 pub struct Assembler {
     assembler: CodeAssembler,
@@ -17,7 +30,15 @@ pub struct Assembler {
 
 impl Assembler {
     pub fn get_or_insert_label(&mut self, bb: BasicBlockId) -> CodeLabel {
-        self.bb_to_label.entry(bb).or_insert_with(|| (self.assembler.create_label(), self.assembler.instructions().len())).0
+        self.bb_to_label
+            .entry(bb)
+            .or_insert_with(|| {
+                (
+                    self.assembler.create_label(),
+                    self.assembler.instructions().len(),
+                )
+            })
+            .0
     }
 }
 
@@ -79,7 +100,8 @@ impl From<PhysicalRegister> for Register {
     }
 }
 
-impl machine::asm::Assembler<x86_64::Abi> for Assembler {
+impl machine::asm::Assembler for Assembler {
+    type TM = x86_64::Target;
     fn new(base_addr: u64) -> Self {
         Self {
             bb_to_label: FxHashMap::default(),
@@ -88,167 +110,162 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
         }
     }
 
-    fn begin_basic_block(&mut self, bb_id: machine::BasicBlockId) {
+    fn begin_basic_block(&mut self, bb_id: BasicBlockId) {
         let label = &mut self.get_or_insert_label(bb_id);
         self.assembler.set_label(label).unwrap();
     }
 
-    fn assemble(&mut self, instr: &<x86_64::Abi as machine::Abi>::I) {
+    fn assemble(&mut self, instr: &x86_64::Instr) {
         match instr {
-            X86Instr::SUB32ri { dest, immediate } => {
+            x86_64::Instr::SUB32ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Sub_rm32_imm32,
-                    dest,
-                    immediate.as_encoded_dword().unwrap()
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Sub_rm32_imm32,
+                        dest,
+                        immediate.as_encoded_dword().unwrap(),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::SUB32rr { src, dest } => {
-                let dest: Register = dest.try_as_physical().unwrap().into();
-                let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Sub_rm32_r32,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
-            }
-            X86Instr::ADD32ri { dest, immediate } => {
-                let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Add_rm32_imm32,
-                    dest,
-                    immediate.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
-            }
-            X86Instr::ADD32rr { src, dest } => {
+            x86_64::Instr::SUB32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Add_rm32_r32,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with2(Code::Sub_rm32_r32, dest, src).unwrap())
+                    .unwrap();
             }
-            X86Instr::MOV8ri { dest, immediate } => {
+            x86_64::Instr::ADD32ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm8_imm8,
-                    dest,
-                    immediate.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Add_rm32_imm32,
+                        dest,
+                        immediate.as_encoded_dword().unwrap(),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::MOV8rr { src, dest } => {
-                let dest: Register = dest.try_as_physical().unwrap().into();
-                let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm8_r8,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
-            }
-            X86Instr::MOV16ri { dest, immediate } => {
-                let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm16_imm16,
-                    dest,
-                    immediate.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
-            }
-            X86Instr::MOV16rr { src, dest } => {
+            x86_64::Instr::ADD32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm16_r16,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with2(Code::Add_rm32_r32, dest, src).unwrap())
+                    .unwrap();
             }
-            X86Instr::MOV32ri {
-                dest,
-                immediate
-            } => {
+            x86_64::Instr::MOV8ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm32_imm32,
-                    dest,
-                    immediate.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Mov_rm8_imm8,
+                        dest,
+                        immediate.as_encoded_dword().unwrap(),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::MOV32rr { src, dest } => {
+            x86_64::Instr::MOV8rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm32_r32,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with2(Code::Mov_rm8_r8, dest, src).unwrap())
+                    .unwrap();
             }
-            X86Instr::MOV64ri {
-                dest,
-                immediate
-            } => {
+            x86_64::Instr::MOV16ri { dest, immediate } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm64_imm32,
-                    dest,
-                    immediate.as_encoded_dword().expect("64-bit immediates are too large. Should be stored in memory"),
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Mov_rm16_imm16,
+                        dest,
+                        immediate.as_encoded_dword().unwrap(),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::MOV64rr { src, dest } => {
+            x86_64::Instr::MOV16rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let src: Register = src.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Mov_rm64_r64,
-                    dest,
-                    src,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with2(Code::Mov_rm16_r16, dest, src).unwrap())
+                    .unwrap();
             }
-            X86Instr::RET => {
+            x86_64::Instr::MOV32ri { dest, immediate } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Mov_rm32_imm32,
+                        dest,
+                        immediate.as_encoded_dword().unwrap(),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
+            }
+            x86_64::Instr::MOV32rr { src, dest } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let src: Register = src.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(Code::Mov_rm32_r32, dest, src).unwrap())
+                    .unwrap();
+            }
+            x86_64::Instr::MOV64ri { dest, immediate } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                self.add_instruction(
+                    Instruction::with2(
+                        Code::Mov_rm64_imm32,
+                        dest,
+                        immediate
+                            .as_encoded_dword()
+                            .expect("64-bit immediates are too large. Should be stored in memory"),
+                    )
+                        .unwrap(),
+                )
+                    .unwrap();
+            }
+            x86_64::Instr::MOV64rr { src, dest } => {
+                let dest: Register = dest.try_as_physical().unwrap().into();
+                let src: Register = src.try_as_physical().unwrap().into();
+                self.add_instruction(Instruction::with2(Code::Mov_rm64_r64, dest, src).unwrap())
+                    .unwrap();
+            }
+            x86_64::Instr::RET => {
                 self.ret().unwrap();
             }
-            X86Instr::JMP {
-                target
-            } => {
+            x86_64::Instr::JMP { target } => {
                 let label = self.get_or_insert_label(*target);
                 self.jmp(label).unwrap();
             }
-            X86Instr::CMP32rr { lhs, rhs } => {
+            x86_64::Instr::CMP32rr { lhs, rhs } => {
                 let lhs: Register = lhs.try_as_physical().unwrap().into();
                 let rhs: Register = rhs.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Cmp_rm32_r32,
-                    lhs,
-                    rhs,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with2(Code::Cmp_rm32_r32, lhs, rhs).unwrap())
+                    .unwrap();
             }
-            X86Instr::CMP32ri { lhs, rhs } => {
+            x86_64::Instr::CMP32ri { lhs, rhs } => {
                 let lhs: Register = lhs.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Cmp_rm32_imm32,
-                    lhs,
-                    rhs.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(Code::Cmp_rm32_imm32, lhs, rhs.as_encoded_dword().unwrap())
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::CMP8ri { lhs, rhs } => {
+            x86_64::Instr::CMP8ri { lhs, rhs } => {
                 let lhs: Register = lhs.try_as_physical().unwrap().into();
-                self.add_instruction(Instruction::with2(
-                    Code::Cmp_rm8_imm8,
-                    lhs,
-                    rhs.as_encoded_dword().unwrap(),
-                ).unwrap()).unwrap();
+                self.add_instruction(
+                    Instruction::with2(Code::Cmp_rm8_imm8, lhs, rhs.as_encoded_dword().unwrap())
+                        .unwrap(),
+                )
+                    .unwrap();
             }
-            X86Instr::SETCC { dest, cc } => {
+            x86_64::Instr::SETCC { dest, cc } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
                 let code: Code = match cc {
                     CC::Eq => Code::Sete_rm8,
                     CC::Gt => Code::Setg_rm8,
                 };
-                self.add_instruction(Instruction::with1(
-                    code,
-                    dest,
-                ).unwrap()).unwrap();
+                self.add_instruction(Instruction::with1(code, dest).unwrap())
+                    .unwrap();
             }
-            X86Instr::JCC { target, cc } => {
+            x86_64::Instr::JCC { target, cc } => {
                 let label = self.get_or_insert_label(*target);
                 match cc {
                     CC::Eq => {
@@ -283,4 +300,3 @@ impl machine::asm::Assembler<x86_64::Abi> for Assembler {
         output
     }
 }
-
