@@ -4,6 +4,7 @@ use smallvec::SmallVec;
 
 use crate::codegen::{
     machine::{
+        Abi,
         function::{
             builder::{
                 MatchedPattern,
@@ -11,19 +12,18 @@ use crate::codegen::{
             },
             Function,
         },
-        Instr,
-        TargetMachine,
     },
     selection_dag::Immediate,
 };
-
-type Reg<B> = <<B as Backend>::TM as TargetMachine>::Reg;
-type BackInstr<B> = <<B as Backend>::TM as TargetMachine>::Instr;
-
+use crate::codegen::machine::Instr;
+use crate::codegen::machine::isa::Isa;
+type Reg<B: Backend> = <B::Isa as Isa>::Reg;
+type BackInstr<B: Backend> = <B::Isa as Isa>::Instr;
 pub trait Backend {
-    type TM: TargetMachine;
+    type Isa: Isa;
 
-    type P: Pattern<TM = Self::TM>;
+    type P: Pattern<Isa = Self::Isa>;
+    
 
     fn patterns() -> &'static [Self::P];
 
@@ -37,13 +37,13 @@ pub trait Backend {
 }
 
 pub trait Pattern: Sized + Debug + Clone + PartialEq + Eq + 'static {
-    type TM: TargetMachine;
+    type Isa: Isa;
 
     fn in_(&self) -> PatternIn;
 
     fn into_instr(
         self,
-        function: &mut Function<Self::TM>,
-        matched: MatchedPattern<Self::TM>,
-    ) -> SmallVec<[Instr<Self::TM>; 2]>;
+        function: &mut Function<Self::Isa>,
+        matched: MatchedPattern<Self::Isa>,
+    ) -> SmallVec<[Instr<<Self as Pattern>::Isa>; 2]>;
 }

@@ -10,6 +10,9 @@ use tracing::{
     warn,
 };
 use unicorn_engine::{
+    RegisterARM,
+    RegisterX86,
+    SECOND_SCALE,
     unicorn_const::{
         uc_error,
         Arch,
@@ -19,17 +22,19 @@ use unicorn_engine::{
     SECOND_SCALE,
 };
 
-use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
+use crate::codegen::{
+    machine::{
+        abi::{
+            calling_convention::Slot,
+            CallingConvention,
+        },
+        Abi,
+        function::FunctionId,
+        isa::PhysicalRegister,
     },
-    function::FunctionId,
-    isa::PhysicalRegister,
-    module::asm::AsmModule,
-    Architecture,
-    TargetMachine,
 };
+use crate::codegen::machine::module::asm::AsmModule;
+use crate::codegen::machine::{Architecture, TargetMachine};
 
 pub struct Emulator<'module, 'code, 'unicorn, TM: TargetMachine> {
     emu: unicorn_engine::Unicorn<'unicorn, ()>,
@@ -79,7 +84,8 @@ impl<'module, 'code, TM: TargetMachine> Emulator<'module, 'code, '_, TM> {
             .module
             .code_range_of(func_id)
             .ok_or_else(|| anyhow!("Function not found"))?;
-        let param_slots = TM::CallingConvention::parameter_slots(parameters);
+        let param_slots =
+            <<TM as TargetMachine>::Abi as Abi>::CallingConvention::parameter_slots(parameters);
         for (param_slot, arg) in param_slots.zip(arguments.iter().copied()) {
             match param_slot {
                 Slot::Register(reg) => {
@@ -102,7 +108,9 @@ impl<'module, 'code, TM: TargetMachine> Emulator<'module, 'code, '_, TM> {
                 _ => bail!("Failed to run function: {:?}", err),
             }
         }
-        let ret_slot = TM::CallingConvention::return_slot(function.return_ty_size);
+        let ret_slot = <<TM as TargetMachine>::Abi as Abi>::CallingConvention::return_slot(
+            function.return_ty_size,
+        );
         match ret_slot {
             Slot::Register(reg) => Ok(self
                 .emu

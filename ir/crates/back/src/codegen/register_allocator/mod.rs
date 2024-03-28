@@ -1,15 +1,30 @@
 use std::{
     cmp::Ordering,
-    collections::VecDeque,
+    collections::{
+        BTreeSet,
+        VecDeque,
+    },
     fmt::{
         Display,
         Formatter,
     },
+    ops::{
+        Range,
+        RangeInclusive,
+    },
 };
 
-pub use coalescer::Coalescer;
-use cranelift_entity::SecondaryMap;
-use daggy::Walker;
+use cranelift_entity::{
+    EntityList,
+    EntitySet,
+    SecondaryMap,
+};
+use daggy::{
+    petgraph::prelude::DfsPostOrder,
+    Walker,
+};
+use iced_x86::CC_p::p;
+use index_vec::IndexVec;
 use iter_tools::Itertools;
 use rustc_hash::{
     FxHashMap,
@@ -21,28 +36,36 @@ use smallvec::{
 };
 use tracing::debug;
 
-use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
+pub use coalescer::Coalescer;
+
+use crate::codegen::{
+    machine::{
+        abi::{
+            calling_convention::Slot,
+            CallingConvention,
+        },
+        Abi,
+        function::{
+            cfg::Cfg,
+            Function,
+        },
+        instr::{
+            Instr,
+            InstrOperand,
+            InstrOperandMut,
+            PseudoInstr,
+        },
+        InstrId,
+        isa::PhysicalRegister,
+        reg::{
+            Register,
+            VReg,
+        },
+        Size,
     },
-    function::{
-        BasicBlockId,
-        Function,
-    },
-    instr::{
-        Instr,
-        PseudoInstr,
-    },
-    isa::PhysicalRegister,
-    reg::{
-        Register,
-        VReg,
-    },
-    InstrId,
-    Size,
-    TargetMachine,
+    register_allocator::linear_scan::RegAlloc,
 };
+use crate::codegen::machine::function::BasicBlockId;
 
 mod coalescer;
 pub mod linear_scan;
@@ -410,7 +433,7 @@ pub struct LivenessRepr {
 }
 
 impl LivenessRepr {
-    pub fn display<'func, 'liveness, A: TargetMachine>(
+    pub fn display<'func, 'liveness, A: Abi>(
         &'liveness self,
         func: &'func Function<A>,
     ) -> LivenessReprDisplay<'func, 'liveness, A> {
@@ -486,7 +509,7 @@ impl LivenessRepr {
     }
 }
 
-pub type RegAllocHints<TM> = SmallVec<[<TM as TargetMachine>::Reg; 2]>;
+pub type RegAllocHints<A: Abi> = SmallVec<[A::Reg; 2]>;
 
 #[derive(Debug, Clone)]
 pub struct RegAllocVReg {
@@ -522,7 +545,7 @@ pub trait RegAllocAlgorithm<'liveness, A: TargetMachine> {
     }
 }
 
-struct VRegAllocations<'liveness, A: TargetMachine> {
+struct VRegAllocations<'liveness, A: Abi> {
     map: FxHashMap<VReg, A::Reg>,
     liveness_repr: &'liveness LivenessRepr,
 }
@@ -557,10 +580,10 @@ pub struct RegisterAllocator<
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
-    RegisterAllocator<'liveness, 'func, TM, RegAlloc>
+impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
+    RegisterAllocator<'liveness, 'func, A, RegAlloc>
 {
-    pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
+    pub fn new(func: &'func mut Function<A>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             func,
             algo: RegAlloc::new(liveness_repr),
@@ -706,7 +729,7 @@ impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness,
     }
 
     fn insert_fixed_locations_for_function_params(&mut self) {
-        let slots = TM::CallingConvention::parameter_slots(
+        let slots = A::CallingConvention::parameter_slots(
             self.func
                 .params
                 .iter()

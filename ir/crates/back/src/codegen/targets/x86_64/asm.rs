@@ -16,18 +16,11 @@ use iced_x86::{
     Register,
 };
 use rustc_hash::FxHashMap;
+use crate::codegen::machine;
+use crate::codegen::machine::function::cfg::BasicBlockId;
+use crate::codegen::targets::x86_64;
+use crate::codegen::targets::x86_64::{CC, PhysicalRegister};
 
-use crate::codegen::{
-    machine,
-    machine::function::cfg::BasicBlockId,
-    targets::{
-        x86_64,
-        x86_64::{
-            PhysicalRegister,
-            CC,
-        },
-    },
-};
 
 pub struct Assembler {
     assembler: CodeAssembler,
@@ -106,7 +99,6 @@ impl From<PhysicalRegister> for Register {
         }
     }
 }
-
 impl machine::asm::Assembler for Assembler {
     type TM = x86_64::Target;
     fn new(base_addr: u64) -> Self {

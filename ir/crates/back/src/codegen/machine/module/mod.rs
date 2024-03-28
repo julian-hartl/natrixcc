@@ -1,17 +1,18 @@
-pub use asm::AsmModule;
-use asm::{
-    FunctionSymbolTable,
-    FunctionSymbolTableEntry,
+use std::ops::Range;
+
+use cranelift_entity::{
+    PrimaryMap,
+    SecondaryMap,
 };
-pub use builder::Builder;
-use cranelift_entity::PrimaryMap;
 use tracing::{
     debug,
     info,
 };
+use asm::{ FunctionSymbolTable, FunctionSymbolTableEntry};
 
 use crate::codegen::{
     machine::{
+        Abi,
         backend::Backend,
         function::{
             Function,
@@ -24,7 +25,7 @@ use crate::codegen::{
 };
 
 pub mod asm;
-mod builder;
+pub use asm::AsmModule;
 
 #[derive(Debug, Clone)]
 pub struct Module<TM: TargetMachine> {
@@ -44,7 +45,7 @@ impl<TM: TargetMachine> Module<TM> {
         self.functions.push(function)
     }
 
-    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM>)> {
+    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM::Abi>)> {
         self.functions.iter()
     }
 
@@ -78,7 +79,7 @@ impl<TM: TargetMachine> Module<TM> {
             let liveness_repr = function.liveness_repr();
             let allocator = register_allocator::RegisterAllocator::<
                 _,
-                register_allocator::linear_scan::RegAlloc<TM>,
+                register_allocator::linear_scan::RegAlloc<TM::Abi>,
             >::new(function, &liveness_repr);
             allocator.run();
             debug!("Register allocator finished for function {:?}", function_id);

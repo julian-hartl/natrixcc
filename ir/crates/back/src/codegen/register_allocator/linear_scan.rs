@@ -3,6 +3,7 @@ use tracing::debug;
 
 use crate::codegen::{
     machine::{
+        Abi,
         isa::PhysicalRegister,
         Size,
         TargetMachine,
@@ -22,14 +23,14 @@ pub struct RegAlloc<'liveness, TM: TargetMachine> {
     /// Liveness representation.
     liveness_repr: &'liveness LivenessRepr,
     /// List of free registers.
-    free_regs: Vec<TM::Reg>,
-    active: Vec<(Lifetime, TM::Reg)>,
-    inactive: Vec<(Lifetime, TM::Reg)>,
+    free_regs: Vec<A::Reg>,
+    active: Vec<(Lifetime, A::Reg)>,
+    inactive: Vec<(Lifetime, A::Reg)>,
 }
 
 impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc<'liveness, TM> {
     fn new(liveness_repr: &'liveness LivenessRepr) -> Self {
-        let free_regs = TM::Reg::all()
+        let free_regs = A::Reg::all()
             .iter()
             .copied()
             .filter(PhysicalRegister::is_gp)
@@ -42,7 +43,7 @@ impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc
             inactive: Vec::new(),
         }
     }
-    fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<TM>) -> TM::Reg {
+    fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<A>) -> A::Reg {
         self.set_cursor(vreg.lifetime.start);
         let reg = hints
             .into_iter()
@@ -58,7 +59,7 @@ impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc
         reg
     }
 
-    fn try_allocate_fixed(&mut self, vreg: &RegAllocVReg, reg: TM::Reg) -> bool {
+    fn try_allocate_fixed(&mut self, vreg: &RegAllocVReg, reg: A::Reg) -> bool {
         self.set_cursor(vreg.lifetime.start);
         if self.is_free(reg) {
             self.insert_active(vreg.lifetime.clone(), reg);
@@ -68,7 +69,7 @@ impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc
         }
     }
 
-    fn try_evict(&mut self, reg: TM::Reg) -> bool {
+    fn try_evict(&mut self, reg: A::Reg) -> bool {
         if self.is_free(reg) {
             return false;
         }
@@ -91,7 +92,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
     }
 
     /// Inserts a new live interval into the active list.
-    fn insert_active(&mut self, interval: Lifetime, reg: TM::Reg) {
+    fn insert_active(&mut self, interval: Lifetime, reg: A::Reg) {
         self.free_regs.retain(|r| {
             if reg.interferes_with(*r) {
                 debug!("Removing {} from free list", r.name());
@@ -109,7 +110,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         self.active.push((interval, reg));
     }
 
-    fn remove_active(&mut self, i: usize) -> (Lifetime, TM::Reg) {
+    fn remove_active(&mut self, i: usize) -> (Lifetime, A::Reg) {
         let (lifetime, reg) = self.active.remove(i);
         debug!("Removing active interval: {}", lifetime);
         for reg in reg.regclass().filter(|r| reg.interferes_with(*r)) {
@@ -118,17 +119,17 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         (lifetime, reg)
     }
 
-    fn free_reg(&mut self, reg: TM::Reg) {
+    fn free_reg(&mut self, reg: <A as Abi>::Reg) {
         debug!("Freeing register {}", reg.name());
         self.free_regs.push(reg);
     }
 
-    fn insert_inactive(&mut self, interval: Lifetime, reg: TM::Reg) {
+    fn insert_inactive(&mut self, interval: Lifetime, reg: A::Reg) {
         debug!("Inserting inactive interval: {}", interval);
         self.inactive.push((interval, reg));
     }
 
-    fn remove_inactive(&mut self, i: usize) -> (Lifetime, TM::Reg) {
+    fn remove_inactive(&mut self, i: usize) -> (Lifetime, A::Reg) {
         let (lifetime, reg) = self.inactive.remove(i);
         debug!("Removing inactive interval: {}", lifetime);
         (lifetime, reg)
@@ -161,7 +162,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
     }
 
     /// Finds a free register with the given size
-    fn find_reg_with_size(&self, size: Size) -> Option<TM::Reg> {
+    fn find_reg_with_size(&self, size: Size) -> Option<A::Reg> {
         for reg in &self.free_regs {
             if reg.size() == size {
                 return Some(*reg);
@@ -170,7 +171,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         None
     }
 
-    fn is_free(&self, reg: TM::Reg) -> bool {
+    fn is_free(&self, reg: A::Reg) -> bool {
         self.free_regs.contains(&reg)
     }
 }

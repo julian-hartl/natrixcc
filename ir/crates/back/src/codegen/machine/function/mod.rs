@@ -3,43 +3,70 @@ use std::fmt::{
     Formatter,
 };
 
-pub use cfg::{
-    BasicBlock,
-    BasicBlockId,
-    Cfg,
+use builder::{
+    MatchedAddPattern,
+    MatchedBrPattern,
+    MatchedCmpPattern,
+    MatchedCondBrPattern,
+    MatchedMovPattern,
+    MatchedPattern,
+    MatchedPatternOperand,
+    MatchedPatternOutput,
+    MatchedSubPattern,
+    PatternIn,
+    PatternInOperand,
+    PatternInOutput,
 };
+pub use cfg::{Cfg, BasicBlock, BasicBlockId};
 use cranelift_entity::{
     entity_impl,
     PrimaryMap,
 };
-use daggy::Walker;
+use daggy::{
+    petgraph::prelude::Bfs,
+    Walker,
+};
 use index_vec::IndexVec;
+use rustc_hash::FxHashMap;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use tracing::debug;
 
-use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
+use crate::codegen::{
+    machine::{
+        abi::{
+            calling_convention::Slot,
+            CallingConvention,
+        },
+        backend::{
+            Backend,
+            Pattern,
+        },
+        instr::{
+            InstrOperand,
+            PseudoInstr,
+        },
+        isa::PhysicalRegister,
+        reg::VRegInfo,
+        Abi,
+        Instr,
+        InstrId,
+        Register,
+        Size,
+        TargetMachine,
+        VReg,
     },
-    asm::Assembler,
-    backend::Backend,
-    instr::{
-        InstrOperand,
-        PseudoInstr,
+    selection_dag,
+    selection_dag::{
+        MachineOp,
+        Op,
+        Operand,
+        PseudoOp,
     },
-    isa::PhysicalRegister,
-    reg::VRegInfo,
-    Instr,
-    InstrId,
-    MachInstr,
-    Size,
-    TargetMachine,
-    VReg,
 };
+use crate::codegen::machine::isa::Isa;
 
 pub mod builder;
 pub mod cfg;
@@ -50,16 +77,16 @@ pub struct FunctionId(u32);
 entity_impl!(FunctionId, "fun");
 
 #[derive(Debug, Clone)]
-pub struct Function<TM: TargetMachine> {
+pub struct Function<I: Isa> {
     pub name: String,
-    pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<TM>>,
-    pub(crate) vregs: PrimaryMap<VReg, VRegInfo<TM>>,
+    pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<I>>,
+    pub(crate) vregs: PrimaryMap<VReg, VRegInfo<I>>,
     pub(crate) params: SmallVec<[VReg; 2]>,
     pub(crate) return_ty_size: Size,
     cfg: Option<Cfg>,
 }
 
-impl<TM: TargetMachine> Function<TM> {
+impl<I: Isa> Function<I> {
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -79,7 +106,7 @@ impl<TM: TargetMachine> Function<TM> {
         })
     }
 
-    pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo<TM> {
+    pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo<I> {
         &self.vregs[vreg]
     }
     pub fn tie_vreg(&mut self, vreg: VReg, to: VReg) {
@@ -87,7 +114,7 @@ impl<TM: TargetMachine> Function<TM> {
         self.vregs[vreg].tied_to = Some(to);
     }
 
-    pub fn fix_vreg(&mut self, vreg: VReg, to: TM::Reg) {
+    pub fn fix_vreg(&mut self, vreg: VReg, to: I::Reg) {
         debug!("Fixing {vreg} to {}", to.name());
         self.vregs[vreg].fixed = Some(to);
     }
@@ -99,7 +126,7 @@ impl<TM: TargetMachine> Function<TM> {
 
     pub fn assemble(&self, base_addr: u64) -> Vec<u8> {
         debug!("Assembling function {}", self.name);
-        let mut asm = TM::Assembler::new(base_addr);
+        let mut asm = I::get_assembler(base_addr);
         for bb_id in self.cfg().ordered() {
             let bb = &self.basic_blocks[bb_id];
             debug!("Assembling basic block {}", bb_id);
@@ -118,7 +145,7 @@ impl<TM: TargetMachine> Function<TM> {
 
     pub fn expand_pseudo_instructions<B>(&mut self)
     where
-        B: Backend<TM = TM>,
+        B: Backend<Isa=I>,
     {
         debug!("Expanding pseudo instructions for function {}", self.name);
         for bb in &mut self.basic_blocks {
@@ -142,11 +169,14 @@ impl<TM: TargetMachine> Function<TM> {
                                 smallvec![B::ret()]
                             }
                             Some(value) => {
-                                let return_slot = TM::CallingConvention::return_slot(match value {
-                                    InstrOperand::Reg(reg) => reg.try_as_physical().unwrap().size(),
-                                    InstrOperand::Imm(imm) => imm.size,
-                                    InstrOperand::Label(_) => unreachable!(),
-                                });
+                                let return_slot =
+                                    <B::ABI as Abi>::CallingConvention::return_slot(match value {
+                                        InstrOperand::Reg(reg) => {
+                                            reg.try_as_physical().unwrap().size()
+                                        }
+                                        InstrOperand::Imm(imm) => imm.size,
+                                        InstrOperand::Label(_) => unreachable!(),
+                                    });
                                 match return_slot {
                                     Slot::Register(dest) => {
                                         let instr = match value {
@@ -188,7 +218,7 @@ impl<TM: TargetMachine> Function<TM> {
                     );
                     bb.instructions.remove(instr_id);
                     let expanded_len = expanded.len();
-                    if expanded_len == 0 {
+                    if (expanded_len == 0) {
                         continue;
                     }
                     for (offset, instr) in expanded.into_iter().enumerate() {
@@ -230,7 +260,7 @@ impl<TM: TargetMachine> Function<TM> {
     }
 }
 
-impl<TM: TargetMachine> Display for Function<TM> {
+impl<I: Isa> Display for Function<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
         let bbs: Box<dyn Iterator<Item = BasicBlockId>> = match &self.cfg {

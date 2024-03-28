@@ -1,8 +1,9 @@
-use crate::codegen::machine::{
-    backend::Backend,
-    function::builder::FunctionBuilder,
-    Module,
-    TargetMachine,
+use crate::codegen::{
+    machine::{
+        backend::Backend,
+        function::builder::FunctionBuilder,
+        Module,
+    },
 };
 
 #[derive(Debug)]

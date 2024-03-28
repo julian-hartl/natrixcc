@@ -4,6 +4,7 @@ use crate::codegen::{
 };
 
 pub trait CallingConvention {
+    
     type Reg: machine::PhysicalRegister;
 
     fn parameter_slots(params: impl Iterator<Item = Size>)

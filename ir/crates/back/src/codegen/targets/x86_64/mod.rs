@@ -1,14 +1,18 @@
-use machine::instr::Instr as MInstr;
 use natrix_middle::instruction::CmpOp;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use strum::VariantArray;
+use machine::instr::Instr as MInstr;
 
 use crate::codegen::{
     machine,
     machine::{
+        abi::{
+            calling_convention::Slot,
+            CallingConvention,
+        },
         backend,
         function::{
             builder::{
@@ -36,15 +40,13 @@ use crate::codegen::{
 
 mod asm;
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
 pub struct Target;
 
 impl TargetMachine for Target {
-    type Reg = PhysicalRegister;
-    type Instr = Instr;
-    type CallingConvention = SystemV;
+    type Abi = Abi;
+    type Isa = ();
     type Backend = Backend;
-    type Assembler = asm::Assembler;
+    type ASSEMBLER = asm::Assembler;
 
     fn endianness() -> Endianness {
         Endianness::Little
@@ -55,7 +57,7 @@ impl TargetMachine for Target {
     }
 }
 
-pub type Register = machine::Register<Target>;
+pub type Register = machine::Register<Isa>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumTryAs, IntoStaticStr)]
 pub enum CC {
@@ -420,8 +422,15 @@ impl MachPhysicalRegister for PhysicalRegister {
     }
 }
 
-impl machine::isa::MachInstr for Instr {
-    type TM = Target;
+pub struct Isa;
+
+impl machine::Isa for Isa {
+    type Reg = PhysicalRegister;
+    type Instr = Instr;
+}
+
+impl machine::isa::Instr for Instr {
+    type Isa = Isa;
 
     fn name(&self) -> &'static str {
         self.into()
@@ -451,7 +460,7 @@ impl machine::isa::MachInstr for Instr {
         }
     }
 
-    fn reads(&self) -> SmallVec<[machine::Register<Self::TM>; 2]> {
+    fn reads(&self) -> SmallVec<[machine::Register<Self::Isa>; 2]> {
         match self {
             Self::MOV8ri { .. }
             | Self::MOV16ri { .. }
@@ -475,7 +484,7 @@ impl machine::isa::MachInstr for Instr {
         }
     }
 
-    fn operands(&self) -> SmallVec<[InstrOperand<Self::TM>; 3]> {
+    fn operands(&self) -> SmallVec<[InstrOperand<Self::Isa>; 3]> {
         match self {
             Self::MOV8ri { dest, immediate }
             | Self::MOV16ri { dest, immediate }
@@ -512,7 +521,7 @@ impl machine::isa::MachInstr for Instr {
             Self::JCC { target, .. } => smallvec![InstrOperand::Label(*target),],
         }
     }
-    fn written_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::TM>; 1]> {
+    fn written_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::Isa>; 1]> {
         match self {
             Self::MOV8ri { dest, .. }
             | Self::MOV8rr { dest, .. }
@@ -536,7 +545,7 @@ impl machine::isa::MachInstr for Instr {
         }
     }
 
-    fn read_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::TM>; 2]> {
+    fn read_regs_mut(&mut self) -> SmallVec<[&mut machine::Register<Self::Isa>; 2]> {
         match self {
             Self::MOV8ri { .. }
             | Self::MOV16ri { .. }
@@ -563,6 +572,14 @@ impl machine::isa::MachInstr for Instr {
 
 impl backend::Pattern for Pattern {
     type TM = Target;
+
+impl machine::Abi for Abi {
+    type Reg = PhysicalRegister;
+    type CallingConvention = SystemV;
+}
+
+impl backend::Pattern for Pattern {
+    type Isa = Isa;
 
     fn in_(&self) -> PatternIn {
         match self {
@@ -637,9 +654,9 @@ impl backend::Pattern for Pattern {
 
     fn into_instr(
         self,
-        function: &mut Function<Self::TM>,
-        matched: MatchedPattern<Self::TM>,
-    ) -> SmallVec<[MInstr<Self::TM>; 2]> {
+        function: &mut Function<Self::Isa>,
+        matched: MatchedPattern<Self::Isa>,
+    ) -> SmallVec<[Instr; 2]> {
         match self {
             Self::Mov8rr | Self::Mov16rr | Self::Mov32rr | Self::Mov64rr => {
                 let pattern = matched.try_as_mov().unwrap();
@@ -772,13 +789,13 @@ impl backend::Pattern for Pattern {
 pub struct Backend {}
 
 impl machine::Backend for Backend {
-    type TM = Target;
+    type Isa = Isa;
     type P = Pattern;
 
     fn patterns() -> &'static [Self::P] {
         Self::P::VARIANTS
     }
-    fn mov(dest: PhysicalRegister, src: PhysicalRegister) -> Instr {
+    fn mov(dest: PhysicalRegister, src: PhysicalRegister) -> <Self::Isa as machine::Isa>::Instr {
         let dest_size = dest.size();
         assert_eq!(dest_size, src.size());
         let dest = Register::Physical(dest);

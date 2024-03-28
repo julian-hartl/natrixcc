@@ -1,7 +1,12 @@
-use codegen::selection_dag;
+use std::{
+    collections::VecDeque,
+    num::NonZeroUsize,
+};
+
 use cranelift_entity::{
     EntityRef,
     SecondaryMap,
+    SparseMap,
 };
 use daggy::{
     petgraph::visit::IntoNodeIdentifiers,
@@ -9,6 +14,13 @@ use daggy::{
     Walker,
 };
 use iter_tools::Itertools;
+use rustc_hash::{
+    FxHashMap,
+    FxHashSet,
+};
+use tracing::debug;
+
+use codegen::selection_dag;
 use natrix_middle::{
     cfg::{
         BasicBlockId,
@@ -17,8 +29,10 @@ use natrix_middle::{
         Terminator,
         TerminatorKind,
     },
+    InstrKind,
     instruction::{
         Const,
+        OpInstr,
         VRegData,
     },
     ty::Type,
@@ -30,7 +44,13 @@ use tracing::debug;
 use crate::{
     codegen,
     codegen::{
+        machine,
         machine::{
+            abi::{
+                calling_convention::Slot,
+                CallingConvention,
+            },
+            Abi,
             function::Function,
             reg::{
                 Register,
@@ -250,7 +270,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         &mut self,
         op: &natrix_middle::instruction::Op,
         func: &natrix_middle::Function,
-    ) -> Operand<TM> {
+    ) -> Operand<A> {
         match op {
             natrix_middle::instruction::Op::Vreg(vreg) => {
                 Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func)))
@@ -315,7 +335,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
     fn define_term_node(
         &mut self,
         bb_id: natrix_middle::cfg::BasicBlockId,
-        op: Op<TM>,
+        op: Op<A>,
     ) -> NodeIndex {
         let term_node = self.define_node(bb_id, op);
         let dag = self.sel_dag.get_bb_dag(bb_id);

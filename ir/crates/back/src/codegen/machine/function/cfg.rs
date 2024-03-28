@@ -17,11 +17,11 @@ use rustc_hash::FxHashMap;
 
 use crate::codegen::{
     machine::{
+        Abi,
+        Instr,
         instr::InstrOperand,
         Instr,
         InstrId,
-        MachInstr,
-        TargetMachine,
     },
     register_allocator::{
         InstrNumbering,
@@ -30,6 +30,7 @@ use crate::codegen::{
         ProgPoint,
     },
 };
+use crate::codegen::machine::isa::Isa;
 
 index_vec::define_index_type! {
     pub struct BasicBlockId = u32;
@@ -46,7 +47,7 @@ pub struct Cfg {
 }
 
 impl Cfg {
-    pub fn build<TM: TargetMachine>(bbs: &IndexVec<BasicBlockId, BasicBlock<TM>>) -> Self {
+    pub fn build<I: Isa>(bbs: &IndexVec<BasicBlockId, BasicBlock<I>>) -> Self {
         let mut cfg = Self::new(BasicBlockId::new(0));
         for bb_id in bbs.indices() {
             let node = cfg.graph.add_node(());
@@ -124,7 +125,7 @@ impl Cfg {
     /// 1. All predecessors of a basic block are visited before the basic block itself (except if the bb is a predecessor of itself)
     pub fn ordered(&self) -> Vec<BasicBlockId> {
         // let mut visited = FxHashSet::default();
-        let order = self.bfs().collect_vec();
+        let mut order = self.bfs().collect_vec();
         // let mut stack = VecDeque::new();
         // stack.push_back(self.entry_block);
         // while let Some(bb) = stack.pop_front() {
@@ -155,12 +156,12 @@ impl Cfg {
 }
 
 #[derive(Debug, Clone)]
-pub struct BasicBlock<TM: TargetMachine> {
+pub struct BasicBlock<I: Isa> {
     pub id: BasicBlockId,
-    pub instructions: IndexVec<InstrId, Instr<TM>>,
+    pub instructions: IndexVec<InstrId, Instr<I>>,
 }
 
-impl<TM: TargetMachine> BasicBlock<TM> {
+impl<I: Isa> BasicBlock<I> {
     pub fn new(id: BasicBlockId) -> Self {
         Self {
             id,

@@ -6,7 +6,6 @@ use crate::codegen::{
         },
         Size,
     },
-    targets::x86_64,
 };
 
 #[derive(Default)]
