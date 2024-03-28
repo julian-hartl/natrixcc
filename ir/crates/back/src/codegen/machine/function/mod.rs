@@ -7,9 +7,7 @@ use cranelift_entity::{
     entity_impl,
     PrimaryMap,
 };
-use daggy::{
-    Walker,
-};
+use daggy::Walker;
 use index_vec::IndexVec;
 use smallvec::{
     smallvec,
@@ -19,27 +17,23 @@ use tracing::debug;
 
 pub use cfg::{BasicBlock, BasicBlockId, Cfg};
 
-use crate::codegen::{
-    machine::{
-        abi::{
-            calling_convention::Slot,
-            CallingConvention,
-        },
-        backend::{
-            Backend,
-        },
-        instr::{
-            InstrOperand,
-            PseudoInstr,
-        },
-        InstrId,
-        isa::PhysicalRegister,
-        MachInstr,
-        reg::VRegInfo,
-        Size,
-        TargetMachine,
-        VReg,
+use crate::codegen::machine::{
+    abi::{
+        calling_convention::Slot,
+        CallingConvention,
     },
+    backend::Backend,
+    instr::{
+        InstrOperand,
+        PseudoInstr,
+    },
+    InstrId,
+    isa::PhysicalRegister,
+    MachInstr,
+    reg::VRegInfo,
+    Size,
+    TargetMachine,
+    VReg,
 };
 use crate::codegen::machine::asm::Assembler;
 use crate::codegen::machine::Instr;
@@ -120,8 +114,8 @@ impl<TM: TargetMachine> Function<TM> {
     }
 
     pub fn expand_pseudo_instructions<B>(&mut self)
-    where
-        B: Backend<TM=TM>,
+        where
+            B: Backend<TM=TM>,
     {
         debug!("Expanding pseudo instructions for function {}", self.name);
         for bb in &mut self.basic_blocks {
@@ -239,7 +233,7 @@ impl<TM: TargetMachine> Function<TM> {
 impl<TM: TargetMachine> Display for Function<TM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
-        let bbs: Box<dyn Iterator<Item = BasicBlockId>> = match &self.cfg {
+        let bbs: Box<dyn Iterator<Item=BasicBlockId>> = match &self.cfg {
             Some(cfg) => Box::new(cfg.ordered().into_iter()),
             None => Box::new(self.basic_blocks.indices().into_iter()),
         };

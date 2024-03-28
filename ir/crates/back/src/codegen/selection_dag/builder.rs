@@ -1,4 +1,3 @@
-
 use cranelift_entity::{
     EntityRef,
     SecondaryMap,
@@ -9,9 +8,7 @@ use daggy::{
     Walker,
 };
 use iter_tools::Itertools;
-use rustc_hash::{
-    FxHashMap,
-};
+use rustc_hash::FxHashMap;
 use tracing::debug;
 
 use codegen::selection_dag;

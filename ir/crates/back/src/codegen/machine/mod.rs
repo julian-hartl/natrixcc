@@ -97,14 +97,14 @@ pub enum Architecture {
 
 pub trait TargetMachine: Debug + Default + Copy + Clone + PartialEq + Eq {
     type Reg: PhysicalRegister;
-    
+
     type Instr: MachInstr<TM=Self>;
 
-    type CallingConvention: CallingConvention<Reg = Self::Reg>;
+    type CallingConvention: CallingConvention<Reg=Self::Reg>;
 
-    type Backend: Backend<TM = Self>;
+    type Backend: Backend<TM=Self>;
 
-    type Assembler: Assembler<TM = Self>;
+    type Assembler: Assembler<TM=Self>;
 
     fn endianness() -> Endianness;
 

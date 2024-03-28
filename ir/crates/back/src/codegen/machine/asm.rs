@@ -5,7 +5,7 @@ use crate::codegen::machine::{
 
 pub trait Assembler {
     type TM: TargetMachine;
-    
+
     fn new(base_addr: u64) -> Self;
 
     fn begin_basic_block(&mut self, bb_id: BasicBlockId);
