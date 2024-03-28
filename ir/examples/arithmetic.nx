@@ -10,5 +10,5 @@ bb2:
     br bb1(v5, v6);
 bb3:
     v7 = add i32 v2, v2;
-    ret i32 v7;
+    br bb1(v7, v3);
 }

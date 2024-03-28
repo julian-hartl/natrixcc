@@ -149,7 +149,8 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                         let mapped = self.map_vreg(reg, func);
                         // Ensure that the temp reg and arg reg will be placed in the same location => we can trivially remove the phi instruction later on
                         self.function.tie_vreg(mapped, mapped_arg);
-                        Register::Virtual(mapped)
+                        // Using defined_in here is fine, because the reg that we use here is always defined in the immediate pred of bb_id 
+                        (Register::Virtual(mapped), func.cfg.vreg(reg).defined_in)
                     })
                     .collect_vec();
                 let pseudo_op = PseudoOp::Phi(Register::Virtual(mapped_arg), operands);

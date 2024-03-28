@@ -3,40 +3,45 @@ use std::fmt::{
     Formatter,
 };
 
+pub use cfg::{
+    BasicBlock,
+    BasicBlockId,
+    Cfg,
+};
 use cranelift_entity::{
     entity_impl,
     PrimaryMap,
 };
 use daggy::Walker;
 use index_vec::IndexVec;
+use iter_tools::Itertools;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use tracing::debug;
 
-pub use cfg::{BasicBlock, BasicBlockId, Cfg};
-
 use crate::codegen::machine::{
     abi::{
         calling_convention::Slot,
         CallingConvention,
     },
+    asm::Assembler,
     backend::Backend,
     instr::{
         InstrOperand,
         PseudoInstr,
     },
-    InstrId,
     isa::PhysicalRegister,
-    MachInstr,
     reg::VRegInfo,
+    Instr,
+    InstrId,
+    MachInstr,
+    Register,
     Size,
     TargetMachine,
     VReg,
 };
-use crate::codegen::machine::asm::Assembler;
-use crate::codegen::machine::Instr;
 
 pub mod builder;
 pub mod cfg;
@@ -114,8 +119,8 @@ impl<TM: TargetMachine> Function<TM> {
     }
 
     pub fn expand_pseudo_instructions<B>(&mut self)
-        where
-            B: Backend<TM=TM>,
+    where
+        B: Backend<TM = TM>,
     {
         debug!("Expanding pseudo instructions for function {}", self.name);
         for bb in &mut self.basic_blocks {
@@ -139,14 +144,11 @@ impl<TM: TargetMachine> Function<TM> {
                                 smallvec![B::ret()]
                             }
                             Some(value) => {
-                                let return_slot =
-                                    TM::CallingConvention::return_slot(match value {
-                                        InstrOperand::Reg(reg) => {
-                                            reg.try_as_physical().unwrap().size()
-                                        }
-                                        InstrOperand::Imm(imm) => imm.size,
-                                        InstrOperand::Label(_) => unreachable!(),
-                                    });
+                                let return_slot = TM::CallingConvention::return_slot(match value {
+                                    InstrOperand::Reg(reg) => reg.try_as_physical().unwrap().size(),
+                                    InstrOperand::Imm(imm) => imm.size,
+                                    InstrOperand::Label(_) => unreachable!(),
+                                });
                                 match return_slot {
                                     Slot::Register(dest) => {
                                         let instr = match value {
@@ -171,9 +173,6 @@ impl<TM: TargetMachine> Function<TM> {
                                 }
                             }
                         },
-                        PseudoInstr::Phi(_, _) => {
-                            unreachable!("Phi should have been coalesced away by now")
-                        }
                         PseudoInstr::Def(reg) => {
                             assert!(
                                 reg.try_as_physical().is_some(),
@@ -233,13 +232,23 @@ impl<TM: TargetMachine> Function<TM> {
 impl<TM: TargetMachine> Display for Function<TM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "function {}:", self.name)?;
-        let bbs: Box<dyn Iterator<Item=BasicBlockId>> = match &self.cfg {
+        let bbs: Box<dyn Iterator<Item = BasicBlockId>> = match &self.cfg {
             Some(cfg) => Box::new(cfg.ordered().into_iter()),
             None => Box::new(self.basic_blocks.indices().into_iter()),
         };
         for bb_id in bbs {
             let bb = &self.basic_blocks[bb_id];
             writeln!(f, "{bb_id}: ")?;
+            for (dest, operands) in &bb.phis {
+                write!(f, "  {dest} = phi ")?;
+                for (i, (reg, bb)) in operands.iter().enumerate() {
+                    write!(f, "{reg}:{bb}")?;
+                    if i < operands.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                writeln!(f)?;
+            }
             for instr in &bb.instructions {
                 write!(f, "  ")?;
                 if let Some(out) = instr.writes() {

@@ -128,9 +128,9 @@ pub struct Lifetime {
 }
 
 impl Lifetime {
-    pub fn new(start: InstrNr, end: ProgPoint) -> Self {
+    pub fn new(start: ProgPoint, end: ProgPoint) -> Self {
         Self {
-            start: ProgPoint::Write(start),
+            start,
             end,
         }
     }
@@ -200,32 +200,32 @@ mod lifetime_tests {
         let inputs = [
             // Both lifetimes are the same
             (
-                Lifetime::new(0, ProgPoint::Read(2)),
-                Lifetime::new(0, ProgPoint::Read(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 true,
             ),
             // The second lifetime is within the first one
             (
-                Lifetime::new(0, ProgPoint::Read(2)),
-                Lifetime::new(0, ProgPoint::Read(1)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 true,
             ),
             // The lifetimes do not overlap
             (
-                Lifetime::new(0, ProgPoint::Read(1)),
-                Lifetime::new(2, ProgPoint::Read(3)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
+                Lifetime::new(ProgPoint::Write(2), ProgPoint::Read(3)),
                 false,
             ),
             // The lifetimes overlap at one point
             (
-                Lifetime::new(0, ProgPoint::Write(2)),
-                Lifetime::new(2, ProgPoint::Read(3)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
+                Lifetime::new(ProgPoint::Write(2), ProgPoint::Read(3)),
                 true,
             ),
             // The lifetimes are the same but with different ProgPoints
             (
-                Lifetime::new(0, ProgPoint::Write(2)),
-                Lifetime::new(0, ProgPoint::Read(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 true,
             ),
         ];
@@ -255,25 +255,25 @@ mod lifetime_tests {
         let inputs = [
             // The lifetime contains the ProgPoint
             (
-                Lifetime::new(0, ProgPoint::Read(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 ProgPoint::Read(1),
                 true,
             ),
             // The lifetime does not contain the ProgPoint
             (
-                Lifetime::new(0, ProgPoint::Read(1)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 ProgPoint::Write(2),
                 false,
             ),
             // The lifetime contains the ProgPoint at the interval end
             (
-                Lifetime::new(0, ProgPoint::Write(2)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
                 ProgPoint::Write(2),
                 true,
             ),
             // The lifetime does not contain the ProgPoint at the interval start
             (
-                Lifetime::new(0, ProgPoint::Read(1)),
+                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 ProgPoint::Write(0),
                 true,
             ),
@@ -404,9 +404,9 @@ impl Iterator for InstrNumberingIter<'_> {
 #[derive(Debug)]
 pub struct LivenessRepr {
     pub instr_numbering: InstrNumbering,
-    defs: SecondaryMap<VReg, InstrNr>,
+    defs: SecondaryMap<VReg, ProgPoint>,
     /// Map of register to a sorted list of instruction numbers where the register is used
-    uses: SecondaryMap<VReg, Vec<InstrNr>>,
+    uses: SecondaryMap<VReg, Vec<ProgPoint>>,
 }
 
 impl LivenessRepr {
@@ -447,41 +447,28 @@ impl LivenessRepr {
         }
     }
 
-    pub fn record_def(&mut self, reg: VReg, instr_nr: InstrNr) {
-        self.defs[reg] = instr_nr;
+    pub fn record_def(&mut self, reg: VReg, pp: ProgPoint) {
+        self.defs[reg] = pp;
     }
 
-    pub fn record_use(&mut self, reg: VReg, instr_nr: InstrNr) {
+    pub fn record_use(&mut self, reg: VReg, pp: ProgPoint) {
         let insert_at = self.uses[reg]
-            .binary_search(&instr_nr)
+            .binary_search(&pp)
             .unwrap_or_else(|x| x);
-        self.uses[reg].insert(insert_at, instr_nr);
+        self.uses[reg].insert(insert_at, pp);
     }
-
+    
     pub fn lifetime<A: TargetMachine>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
         let start = self.defs[reg];
         let end = self.last_use(reg).unwrap_or(start);
-        let end_uid = self.instr_numbering.get_instr_uid(end).unwrap();
-        if func.basic_blocks[end_uid.bb].instructions[end_uid.instr].is_phi() {
-            if let Some(second_last_use_in_bb) = Some(self.second_last_use(reg).unwrap_or(start))
-                .and_then(|instr_nr| self.instr_numbering.get_instr_uid(instr_nr))
-                .map(|uid| uid.bb)
-            {
-                let end = self
-                    .instr_numbering
-                    .end_of_bb(second_last_use_in_bb)
-                    .unwrap();
-                return Lifetime::new(start, ProgPoint::Write(end));
-            }
-        }
-        Lifetime::new(start, ProgPoint::Read(end))
+        Lifetime::new(start, end)
     }
 
-    pub fn second_last_use(&self, reg: VReg) -> Option<InstrNr> {
+    pub fn second_last_use(&self, reg: VReg) -> Option<ProgPoint> {
         self.uses[reg].iter().copied().rev().nth(1)
     }
 
-    pub fn last_use(&self, reg: VReg) -> Option<InstrNr> {
+    pub fn last_use(&self, reg: VReg) -> Option<ProgPoint> {
         self.uses[reg].last().copied()
     }
 }
@@ -586,7 +573,7 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
             let instr_uid = self
                 .liveness_repr
                 .instr_numbering
-                .get_instr_uid(instr_nr)
+                .get_instr_uid(instr_nr.instr_nr())
                 .unwrap_or_else(|| panic!("No instr uid for {}", instr_nr));
             let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
             let mut hints: SmallVec<[_; 2]> = smallvec![];
@@ -601,7 +588,6 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                         }
                     }
                     PseudoInstr::Ret(_) => {}
-                    PseudoInstr::Phi(_, _) => {}
                     PseudoInstr::Def(_) => {}
                 },
                 Instr::Machine(_) => {}
@@ -726,105 +712,66 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 
 impl<TM: TargetMachine> Function<TM> {
     pub fn liveness_repr(&mut self) -> LivenessRepr {
-        #[derive(Default)]
+        #[derive(Default, Debug)]
         struct Liveins(FxHashMap<BasicBlockId, FxHashSet<VReg>>);
         impl Liveins {
-            fn new() -> Self {
-                Self(FxHashMap::default())
-            }
             fn insert(&mut self, bb: BasicBlockId, reg: VReg) {
                 self.0.entry(bb).or_default().insert(reg);
             }
 
-            fn ensure_exists(&mut self, bb: BasicBlockId) {
-                self.0.entry(bb).or_default();
-            }
-
             fn liveins(&self, bb: BasicBlockId) -> impl Iterator<Item=VReg> + '_ {
-                self.0[&bb].iter().copied()
+                self.0.get(&bb).map(|regs|regs.iter().copied()).into_iter().flatten()
             }
         }
-        let liveins = Liveins::default();
+        let mut liveins = Liveins::default();
 
         let mut repr = LivenessRepr::new(self);
         debug!("Starting liveness analysis");
-        let worklist = self.cfg().dfs_postorder().collect::<VecDeque<_>>();
-        let mut visited = FxHashSet::default();
         for bb_id in self.cfg().ordered().into_iter().rev() {
-            debug!("Looking at {bb_id}");
-            // if visited.contains(&bb_id) {
-            //     debug!("Already visited");
-            //     continue;
-            // }
-            // let mut all_visited = true;
-            // for succ in self.cfg().successors(bb_id) {
-            //     if succ != bb_id && !visited.contains(&succ) {
-            //         debug!("Successor {succ} has not been visited yet. Queueing");
-            //         all_visited = false;
-            //         worklist.push_front(succ);
-            //     }
-            // }
-            // if !all_visited {
-            //     debug!("Not all successors have been visited. Queueing {bb_id} for later");
-            //     worklist.push_back(bb_id);
-            //     continue;
-            // }
             debug!("Analysing liveness in {bb_id}");
-            visited.insert(bb_id);
             let bb = &self.basic_blocks[bb_id];
-            // let mut current_intervals = FxHashMap::default();
-            // let mut undeclared_regs = FxHashSet::default();
-            let entry_pp = bb.entry_pp(&repr);
+            let mut undeclared_regs = FxHashSet::default();
+            let entry_pp = bb.entry_pp(&repr.instr_numbering);
             let exit_pp = bb.exit_pp(&repr.instr_numbering);
-            // for liveout in self.cfg().successors(bb_id).flat_map(|pred| liveins.liveins(pred)) {
-            //     debug!("{liveout} is in liveins of some succ. Extending its lifetime to the end of {bb_id}");
-            //     current_intervals.insert(
-            //         liveout,
-            //         Lifetime::new(entry_pp, exit_pp),
-            //     );
-            // }
+            for liveout in self.cfg().successors(bb_id).flat_map(|succ| liveins.liveins(succ)) {
+                undeclared_regs.insert(liveout);
+            }
             let mut instr_nr = exit_pp.instr_nr();
+            for (def, operands) in &bb.phis {
+                if let Some(def) = def.try_as_virtual() {
+                    repr.record_def(def, entry_pp);
+                }
+                for (used, defined_in) in operands {
+                    if let Some(used) = used.try_as_virtual() {
+                        repr.record_use(used, self.basic_blocks[*defined_in].exit_pp(&repr.instr_numbering));
+                    }
+                }
+            } 
             for instr in bb.instructions.iter().rev() {
                 let out = instr.writes();
                 if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
-                    // undeclared_regs.remove(&reg);
-                    // let mut interval = current_intervals.remove(&reg).unwrap_or_else(|| {
-                    //     debug!("Creating new interval for {reg} at {instr_nr}");
-                    //     Lifetime::new(ProgPoint::Write(instr_nr), ProgPoint::Write(instr_nr))
-                    // });
-                    // debug!("Finished interval for {reg} at {instr_nr}");
-                    repr.record_def(reg, instr_nr);
+                    undeclared_regs.remove(&reg);
+                    repr.record_def(reg, ProgPoint::Write(instr_nr));
                 }
                 let read = instr.reads();
                 for reg in read {
                     let Register::Virtual(reg) = reg else {
                         continue;
                     };
-                    // undeclared_regs.insert(reg);
-                    // current_intervals.entry(reg).or_insert_with(
-                    //     || {
-                    //         debug!("Setting interval end of {reg} to {instr_nr}");
-                    //         Lifetime::new(ProgPoint::Read(instr_nr), ProgPoint::Read(instr_nr))
-                    //     }
-                    // );
-                    repr.record_use(reg, instr_nr);
+                    undeclared_regs.insert(reg);
+                    repr.record_use(reg, ProgPoint::Read(instr_nr));
                 }
                 if let Some(val) = instr_nr.checked_sub(1) {
                     instr_nr = val;
                 }
             }
-            // liveins.ensure_exists(bb_id);
-
-            // for undeclared_reg in undeclared_regs {
-            //     debug!("Inserting {undeclared_reg} in liveins set of {bb_id} and extending its lifetime to the start of the basic block");
-            //     liveins.insert(bb_id, undeclared_reg);
-            //     current_intervals.get_mut(&undeclared_reg).unwrap().start = entry_pp;
-            // }
-            //
-            // for (reg, interval) in current_intervals {
-            //     repr.reg_lifetimes[reg].insert(interval);
-            // }
+            for undeclared_reg in undeclared_regs {
+                debug!("Inserting {undeclared_reg} in liveins set of {bb_id} and extending its lifetime to the start of the basic block");
+                liveins.insert(bb_id, undeclared_reg);
+            }
         }
+        
+        debug!("{:?}", liveins);
 
         debug!("{}", repr.display(self));
         repr

@@ -98,12 +98,6 @@ impl<TM: TargetMachine> Instr<TM> {
         }
     }
 
-    pub fn is_phi(&self) -> bool {
-        match self {
-            Instr::Pseudo(PseudoInstr::Phi(_, _)) => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -144,7 +138,6 @@ impl<'op, TM: TargetMachine> From<&'op mut InstrOperand<TM>> for InstrOperandMut
 pub enum PseudoInstr<TM: TargetMachine> {
     Copy(Register<TM>, Register<TM>),
     Ret(Option<InstrOperand<TM>>),
-    Phi(Register<TM>, Vec<Register<TM>>),
     Def(Register<TM>),
 }
 
@@ -153,7 +146,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
         match self {
             Self::Copy(_, _) => "COPY",
             Self::Ret(_) => "RET",
-            Self::Phi(_, _) => "PHI",
             Self::Def(_) => "DEF",
         }
     }
@@ -170,7 +162,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
                 }
                 reads
             }
-            Self::Phi(_, operands) => operands.clone().into(),
             Self::Def(_) => {
                 smallvec![]
             }
@@ -186,11 +177,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
                 None => smallvec![],
                 Some(value) => smallvec![value.clone()],
             },
-            Self::Phi(dest, operands) => {
-                let mut ops = smallvec![InstrOperand::Reg(*dest),];
-                ops.extend(operands.iter().map(|reg| InstrOperand::Reg(*reg)));
-                ops
-            }
             Self::Def(reg) => {
                 smallvec![InstrOperand::Reg(*reg),]
             }
@@ -204,9 +190,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
             }
             Self::Ret(_) => {
                 smallvec![]
-            }
-            Self::Phi(dest, _) => {
-                smallvec![dest,]
             }
             Self::Def(reg) => {
                 smallvec![reg,]
@@ -226,7 +209,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
                 }
                 reads
             }
-            Self::Phi(_, operands) => operands.iter_mut().collect(),
             Self::Def(_) => {
                 smallvec![]
             }
@@ -237,7 +219,6 @@ impl<TM: TargetMachine> PseudoInstr<TM> {
         match self {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
-            Self::Phi(dest, _) => Some(*dest),
             Self::Def(dest) => Some(*dest),
         }
     }
