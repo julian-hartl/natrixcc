@@ -737,16 +737,6 @@ impl<TM: TargetMachine> Function<TM> {
                 undeclared_regs.insert(liveout);
             }
             let mut instr_nr = exit_pp.instr_nr();
-            for (def, operands) in &bb.phis {
-                if let Some(def) = def.try_as_virtual() {
-                    repr.record_def(def, entry_pp);
-                }
-                for (used, defined_in) in operands {
-                    if let Some(used) = used.try_as_virtual() {
-                        repr.record_use(used, self.basic_blocks[*defined_in].exit_pp(&repr.instr_numbering));
-                    }
-                }
-            } 
             for instr in bb.instructions.iter().rev() {
                 let out = instr.writes();
                 if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
@@ -765,12 +755,24 @@ impl<TM: TargetMachine> Function<TM> {
                     instr_nr = val;
                 }
             }
+            for (def, operands) in &bb.phis {
+                if let Some(def) = def.try_as_virtual() {
+                    undeclared_regs.remove(&def);
+                    repr.record_def(def, entry_pp);
+                }
+                for (used, defined_in) in operands {
+                    if let Some(used) = used.try_as_virtual() {
+                        repr.record_use(used, self.basic_blocks[*defined_in].exit_pp(&repr.instr_numbering));
+                    }
+                }
+            }
             for undeclared_reg in undeclared_regs {
                 debug!("Inserting {undeclared_reg} in liveins set of {bb_id} and extending its lifetime to the start of the basic block");
                 liveins.insert(bb_id, undeclared_reg);
             }
         }
         
+        // todo: split lifetimes to basic block level
         debug!("{:?}", liveins);
 
         debug!("{}", repr.display(self));
