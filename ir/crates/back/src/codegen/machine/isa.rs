@@ -5,22 +5,14 @@ use std::{
 
 use smallvec::SmallVec;
 
-use crate::codegen::{
-    machine::{
-        instr::InstrOperand,
-        reg::Register,
-        Abi,
-        Size,
-    },
+use crate::codegen::machine::{
+    instr::InstrOperand,
+    reg::Register,
+    Size,
 };
+use crate::codegen::machine::TargetMachine;
 
-pub trait Isa {
-    type Reg: PhysicalRegister + 'static + Hash + Copy + Clone;
-
-    type Instr: Instr;
-}
-
-pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
+pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized + Hash + 'static {
     fn name(&self) -> &'static str;
 
     fn all() -> &'static [Self];
@@ -72,17 +64,17 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized {
     }
 }
 
-pub trait Instr: Debug + PartialEq + Eq + Clone {
-    type Isa: Isa;
+pub trait MachInstr: Debug + PartialEq + Eq + Clone {
+    type TM: TargetMachine;
     fn name(&self) -> &'static str;
 
-    fn writes(&self) -> Option<Register<Self::Isa>>;
+    fn writes(&self) -> Option<Register<Self::TM>>;
 
-    fn reads(&self) -> SmallVec<[Register<Self::Isa>; 2]>;
+    fn reads(&self) -> SmallVec<[Register<Self::TM>; 2]>;
 
-    fn operands(&self) -> SmallVec<[InstrOperand<Self::Isa>; 3]>;
+    fn operands(&self) -> SmallVec<[InstrOperand<Self::TM>; 3]>;
 
-    fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::Isa>; 1]>;
+    fn written_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::TM>; 1]>;
 
-    fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::Isa>; 2]>;
+    fn read_regs_mut(&mut self) -> SmallVec<[&mut Register<Self::TM>; 2]>;
 }

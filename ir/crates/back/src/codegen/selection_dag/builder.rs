@@ -48,7 +48,6 @@ use crate::{
                 calling_convention::Slot,
                 CallingConvention,
             },
-            Abi,
             function::Function,
             reg::{
                 Register,
@@ -64,17 +63,18 @@ use crate::{
         },
     },
 };
+use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
-pub struct Builder<'func, A: machine::Abi> {
-    function: &'func mut Function<A>,
-    sel_dag: SelectionDAG<A>,
+pub struct Builder<'func, TM: TargetMachine> {
+    function: &'func mut Function<TM>,
+    sel_dag: SelectionDAG<TM>,
     reg_mapping: SecondaryMap<natrix_middle::VReg, Option<VReg>>,
     defining_nodes: FxHashMap<(VReg, BasicBlockId), NodeIndex>,
 }
 
-impl<'func, A: machine::Abi> Builder<'func, A> {
-    pub fn new(function: &'func mut Function<A>) -> Self {
+impl<'func, TM: TargetMachine> Builder<'func, TM> {
+    pub fn new(function: &'func mut Function<TM>) -> Self {
         Self {
             function,
             reg_mapping: SecondaryMap::new(),
@@ -83,7 +83,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         }
     }
 
-    pub fn build(mut self, func: &mut natrix_middle::Function) -> SelectionDAG<A> {
+    pub fn build(mut self, func: &mut natrix_middle::Function) -> SelectionDAG<TM> {
         debug!("Building SelectionDAGs for function {}", func.name);
         let basic_blocks = func
             .cfg
@@ -267,7 +267,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
         &mut self,
         op: &natrix_middle::instruction::Op,
         func: &natrix_middle::Function,
-    ) -> Operand<A> {
+    ) -> Operand<TM> {
         match op {
             natrix_middle::instruction::Op::Vreg(vreg) => {
                 Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func)))
@@ -306,7 +306,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
             .unwrap();
     }
 
-    fn define_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockId, op: Op<A>) -> NodeIndex {
+    fn define_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockId, op: Op<TM>) -> NodeIndex {
         let used_regs = op.consumed_regs();
         let out_reg = op.out().and_then(|reg| reg.try_as_virtual());
         debug!(
@@ -332,7 +332,7 @@ impl<'func, A: machine::Abi> Builder<'func, A> {
     fn define_term_node(
         &mut self,
         bb_id: natrix_middle::cfg::BasicBlockId,
-        op: Op<A>,
+        op: Op<TM>,
     ) -> NodeIndex {
         let term_node = self.define_node(bb_id, op);
         let dag = self.sel_dag.get_bb_dag(bb_id);

@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::Parser;
 use tracing::debug;
-use natrix_back::codegen::isa::{Architecture, Endianness};
 
 use natrix_back::codegen::register_allocator;
+use natrix_back::codegen::targets::x86_64;
 use natrix_back::emu::Emulator;
 use natrix_middle::{FrontBridge, optimization};
 
@@ -42,7 +42,7 @@ fn main() -> Result<()> {
     config.dead_code_elimination = false;
     // module.optimize(config);
     println!("{module}");
-    let mut x86_mod = natrix_back::codegen::machine::module::Builder::<natrix_back::codegen::isa::x86_64::DefaultTarget>::new(&mut module).build();
+    let mut x86_mod = natrix_back::codegen::machine::module::Builder::<x86_64::Target>::new(&mut module).build();
     x86_mod.run_register_allocator();
     x86_mod.run_register_coalescer();
     x86_mod.remove_fallthrough_jumps();

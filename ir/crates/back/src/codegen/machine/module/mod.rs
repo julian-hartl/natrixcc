@@ -8,13 +8,13 @@ use tracing::{
     debug,
     info,
 };
-use asm::{ FunctionSymbolTable, FunctionSymbolTableEntry};
 
+use asm::{FunctionSymbolTable, FunctionSymbolTableEntry};
+pub use asm::AsmModule;
 pub use builder::Builder;
 
 use crate::codegen::{
     machine::{
-        Abi,
         backend::Backend,
         function::{
             Function,
@@ -28,11 +28,10 @@ use crate::codegen::machine::TargetMachine;
 
 mod builder;
 pub mod asm;
-pub use asm::AsmModule;
 
 #[derive(Debug, Clone)]
 pub struct Module<TM: TargetMachine> {
-    pub(crate) functions: PrimaryMap<FunctionId, Function<TM::Abi>>,
+    pub(crate) functions: PrimaryMap<FunctionId, Function<TM>>,
 }
 
 impl<TM: TargetMachine> Default for Module<TM> {
@@ -44,11 +43,11 @@ impl<TM: TargetMachine> Default for Module<TM> {
 }
 
 impl<TM: TargetMachine> Module<TM> {
-    pub fn add_function(&mut self, function: Function<TM::Abi>) -> FunctionId {
+    pub fn add_function(&mut self, function: Function<TM>) -> FunctionId {
         self.functions.push(function)
     }
 
-    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM::Abi>)> {
+    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM>)> {
         self.functions.iter()
     }
 
@@ -82,7 +81,7 @@ impl<TM: TargetMachine> Module<TM> {
             let liveness_repr = function.liveness_repr();
             let allocator = register_allocator::RegisterAllocator::<
                 _,
-                register_allocator::linear_scan::RegAlloc<TM::Abi>,
+                register_allocator::linear_scan::RegAlloc<TM>,
             >::new(function, &liveness_repr);
             allocator.run();
             debug!("Register allocator finished for function {:?}", function_id);

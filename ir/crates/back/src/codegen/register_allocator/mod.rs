@@ -44,7 +44,6 @@ use crate::codegen::{
             calling_convention::Slot,
             CallingConvention,
         },
-        Abi,
         function::{
             cfg::Cfg,
             Function,
@@ -66,6 +65,7 @@ use crate::codegen::{
     register_allocator::linear_scan::RegAlloc,
 };
 use crate::codegen::machine::function::BasicBlockId;
+use crate::codegen::machine::TargetMachine;
 
 mod coalescer;
 pub mod linear_scan;
@@ -323,7 +323,7 @@ pub struct InstrNumbering {
 }
 
 impl InstrNumbering {
-    pub fn new<A: Abi>(func: &Function<A>) -> Self {
+    pub fn new<TM: TargetMachine>(func: &Function<TM>) -> Self {
         debug!("Creating instruction numbering");
         let order = func
             .cfg()
@@ -433,7 +433,7 @@ pub struct LivenessRepr {
 }
 
 impl LivenessRepr {
-    pub fn display<'func, 'liveness, A: Abi>(
+    pub fn display<'func, 'liveness, A: TargetMachine>(
         &'liveness self,
         func: &'func Function<A>,
     ) -> LivenessReprDisplay<'func, 'liveness, A> {
@@ -441,9 +441,9 @@ impl LivenessRepr {
     }
 }
 
-struct LivenessReprDisplay<'func, 'liveness, A: Abi>(&'liveness LivenessRepr, &'func Function<A>);
+struct LivenessReprDisplay<'func, 'liveness, A: TargetMachine>(&'liveness LivenessRepr, &'func Function<A>);
 
-impl<A: Abi> Display for LivenessReprDisplay<'_, '_, A> {
+impl<A: TargetMachine> Display for LivenessReprDisplay<'_, '_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (reg, lifetime) in self
             .0
@@ -458,7 +458,7 @@ impl<A: Abi> Display for LivenessReprDisplay<'_, '_, A> {
 }
 
 impl LivenessRepr {
-    pub fn new<A: Abi>(func: &Function<A>) -> Self {
+    pub fn new<A: TargetMachine>(func: &Function<A>) -> Self {
         debug!("Creating liveness representation");
         Self {
             defs: SecondaryMap::default(),
@@ -478,7 +478,7 @@ impl LivenessRepr {
         self.uses[reg].insert(insert_at, instr_nr);
     }
 
-    pub fn lifetime<A: Abi>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
+    pub fn lifetime<A: TargetMachine>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
         let start = self.defs[reg];
         let end = self.last_use(reg).unwrap_or(start);
         let end_uid = self.instr_numbering.get_instr_uid(end).unwrap();
@@ -506,7 +506,7 @@ impl LivenessRepr {
     }
 }
 
-pub type RegAllocHints<A: Abi> = SmallVec<[A::Reg; 2]>;
+pub type RegAllocHints<TM> = SmallVec<[<TM as TargetMachine>::Reg; 2]>;
 
 #[derive(Debug, Clone)]
 pub struct RegAllocVReg {
@@ -515,7 +515,7 @@ pub struct RegAllocVReg {
     pub lifetime: Lifetime,
 }
 
-pub trait RegAllocAlgorithm<'liveness, A: Abi> {
+pub trait RegAllocAlgorithm<'liveness, A: TargetMachine> {
     fn new(liveness_repr: &'liveness LivenessRepr) -> Self;
     fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<A>) -> A::Reg;
 
@@ -542,12 +542,12 @@ pub trait RegAllocAlgorithm<'liveness, A: Abi> {
     }
 }
 
-struct VRegAllocations<'liveness, A: Abi> {
+struct VRegAllocations<'liveness, A: TargetMachine> {
     map: FxHashMap<VReg, A::Reg>,
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, A: Abi> VRegAllocations<'liveness, A> {
+impl<'liveness, A: TargetMachine> VRegAllocations<'liveness, A> {
     pub fn new(liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             map: FxHashMap::default(),
@@ -564,7 +564,7 @@ impl<'liveness, A: Abi> VRegAllocations<'liveness, A> {
     }
 }
 
-pub struct RegisterAllocator<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>> {
+pub struct RegisterAllocator<'liveness, 'func, A: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, A>> {
     algo: RegAlloc,
     func: &'func mut Function<A>,
     marker: std::marker::PhantomData<A>,
@@ -572,10 +572,10 @@ pub struct RegisterAllocator<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorit
     liveness_repr: &'liveness LivenessRepr,
 }
 
-impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
-    RegisterAllocator<'liveness, 'func, A, RegAlloc>
+impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
+    RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 {
-    pub fn new(func: &'func mut Function<A>, liveness_repr: &'liveness LivenessRepr) -> Self {
+    pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
             func,
             algo: RegAlloc::new(liveness_repr),
@@ -721,7 +721,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
     }
 
     fn insert_fixed_locations_for_function_params(&mut self) {
-        let slots = A::CallingConvention::parameter_slots(
+        let slots = TM::CallingConvention::parameter_slots(
             self.func
                 .params
                 .iter()
@@ -739,7 +739,7 @@ impl<'liveness, 'func, A: Abi, RegAlloc: RegAllocAlgorithm<'liveness, A>>
     }
 }
 
-impl<A: Abi> Function<A> {
+impl<TM: TargetMachine> Function<TM> {
     pub fn liveness_repr(&mut self) -> LivenessRepr {
         #[derive(Default)]
         struct Liveins(FxHashMap<BasicBlockId, FxHashSet<VReg>>);

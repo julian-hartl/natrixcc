@@ -5,27 +5,21 @@ use std::fmt::{
 
 use cranelift_entity::entity_impl;
 
-use crate::codegen::machine::{
-    Abi,
-    function::Function,
-    isa::PhysicalRegister,
-    Size,
-};
-use crate::codegen::machine::isa::Isa;
+use crate::codegen::machine::{function::Function, isa::PhysicalRegister, Size, TargetMachine};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Register<I: Isa> {
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum Register<TM: TargetMachine> {
     Virtual(VReg),
-    Physical(I::Reg),
+    Physical(TM::Reg)
 }
 
-impl<I: Isa> From<VReg> for Register<I> {
+impl<TM: TargetMachine> From<VReg> for Register<TM> {
     fn from(vreg: VReg) -> Self {
         Self::Virtual(vreg)
     }
 }
 
-impl<I: Isa> Register<I> {
+impl<TM: TargetMachine> Register<TM> {
     pub fn try_as_virtual(&self) -> Option<VReg> {
         match self {
             Register::Virtual(virt_reg) => Some(*virt_reg),
@@ -40,14 +34,14 @@ impl<I: Isa> Register<I> {
         }
     }
 
-    pub fn try_as_physical(&self) -> Option<I::Reg> {
+    pub fn try_as_physical(&self) -> Option<TM::Reg> {
         match self {
             Register::Virtual(_) => None,
             Register::Physical(phys_reg) => Some(*phys_reg),
         }
     }
 
-    pub fn size(&self, func: &Function<I>) -> Size {
+    pub fn size(&self, func: &Function<TM>) -> Size {
         match self {
             Register::Virtual(vreg) => vreg.size(func),
             Register::Physical(phys_reg) => phys_reg.size(),
@@ -55,9 +49,9 @@ impl<I: Isa> Register<I> {
     }
 }
 
-impl<I: Isa> Copy for Register<I> {}
+// impl<TM: TargetMachine> Copy for Register<TM> {}
 
-impl<A: Isa> Display for Register<A> {
+impl<TM: TargetMachine> Display for Register<TM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Register::Virtual(virt_reg) => write!(f, "{}", virt_reg),
@@ -70,7 +64,7 @@ impl<A: Isa> Display for Register<A> {
 pub struct VReg(u32);
 
 impl VReg {
-    pub fn size<I: Isa>(self, func: &Function<I>) -> Size {
+    pub fn size<TM: TargetMachine>(self, func: &Function<TM>) -> Size {
         func.get_vreg(self).size
     }
 }
@@ -78,10 +72,10 @@ impl VReg {
 entity_impl!(VReg, "v");
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct VRegInfo<I: Isa> {
+pub struct VRegInfo<TM: TargetMachine> {
     pub size: Size,
     /// If set, the vreg will be placed in the same location as tied_to
     pub tied_to: Option<VReg>,
     /// If set, the vreg is ensured to be placed in the same location as fixed
-    pub fixed: Option<I::Reg>,
+    pub fixed: Option<TM::Reg>,
 }

@@ -1,11 +1,9 @@
-use crate::codegen::{
-    machine::{
-        abi::{
-            calling_convention::Slot,
-            CallingConvention,
-        },
-        Size,
+use crate::codegen::machine::{
+    abi::{
+        calling_convention::Slot,
+        CallingConvention,
     },
+    Size,
 };
 use crate::codegen::targets::x86_64;
 

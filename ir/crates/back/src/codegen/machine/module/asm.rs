@@ -1,5 +1,7 @@
-use cranelift_entity::SecondaryMap;
 use std::ops::Range;
+
+use cranelift_entity::SecondaryMap;
+
 use crate::codegen::machine::{FunctionId, Module, TargetMachine};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]

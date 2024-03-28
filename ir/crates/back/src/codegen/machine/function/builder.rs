@@ -9,7 +9,6 @@ use natrix_middle::instruction::CmpOp;
 
 use crate::codegen::{
     machine::{
-        Abi,
         backend::{
             Backend,
             Pattern,
@@ -22,7 +21,7 @@ use crate::codegen::{
             InstrOperand,
             PseudoInstr,
         },
-        Instr,
+        MachInstr,
         Register,
         Size,
         TargetMachine,
@@ -36,11 +35,11 @@ use crate::codegen::{
         PseudoOp,
     },
 };
-use crate::codegen::machine::Isa;
+use crate::codegen::machine::Instr;
 
 #[derive(Debug)]
 pub struct FunctionBuilder<TM: TargetMachine> {
-    function: Function<TM::Abi>,
+    function: Function<TM>,
     backend: TM::Backend,
     bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockId>,
 }
@@ -54,7 +53,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         }
     }
 
-    pub fn build(mut self, function: &mut natrix_middle::Function) -> Function<TM::Abi> {
+    pub fn build(mut self, function: &mut natrix_middle::Function) -> Function<TM> {
         self.function.name = function.name.clone();
         self.function.return_ty_size = Size::from_ty(&function.ret_ty);
         debug!("Building machine function for function {}", function.name);
@@ -229,15 +228,15 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
 
     fn operand_to_matched_pattern_operand(
         &self,
-        src: &Operand<TM::Isa>,
-    ) -> MatchedPatternOperand<TM::Isa> {
+        src: &Operand<TM>,
+    ) -> MatchedPatternOperand<TM> {
         match src {
-            Operand::Reg(reg) => MatchedPatternOperand::Reg(reg.clone()),
+            Operand::Reg(reg) => MatchedPatternOperand::Reg(*reg),
             Operand::Imm(imm) => MatchedPatternOperand::Imm(imm.clone()),
         }
     }
 
-    fn operand_to_pattern(&self, src: &Operand<TM::Isa>) -> PatternInOperand {
+    fn operand_to_pattern(&self, src: &Operand<TM>) -> PatternInOperand {
         match src {
             Operand::Reg(reg) => PatternInOperand::Reg(reg.size(&self.function)),
             Operand::Imm(imm) => PatternInOperand::Imm(imm.size),
@@ -267,23 +266,23 @@ pub enum PatternInOperand {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedMovPattern<I: Isa> {
-    pub dest: MatchedPatternOutput<I>,
-    pub src: MatchedPatternOperand<I>,
+pub struct MatchedMovPattern<TM: TargetMachine> {
+    pub dest: MatchedPatternOutput<TM>,
+    pub src: MatchedPatternOperand<TM>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedSubPattern<I: Isa> {
-    pub dest: MatchedPatternOutput<I>,
-    pub lhs: MatchedPatternOperand<I>,
-    pub rhs: MatchedPatternOperand<I>,
+pub struct MatchedSubPattern<TM: TargetMachine> {
+    pub dest: MatchedPatternOutput<TM>,
+    pub lhs: MatchedPatternOperand<TM>,
+    pub rhs: MatchedPatternOperand<TM>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedAddPattern<I: Isa> {
-    pub dest: MatchedPatternOutput<I>,
-    pub lhs: MatchedPatternOperand<I>,
-    pub rhs: MatchedPatternOperand<I>,
+pub struct MatchedAddPattern<TM: TargetMachine> {
+    pub dest: MatchedPatternOutput<TM>,
+    pub lhs: MatchedPatternOperand<TM>,
+    pub rhs: MatchedPatternOperand<TM>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -292,46 +291,46 @@ pub struct MatchedBrPattern {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedCmpPattern<I: Isa> {
-    pub dest: MatchedPatternOutput<I>,
+pub struct MatchedCmpPattern<TM: TargetMachine> {
+    pub dest: MatchedPatternOutput<TM>,
     pub cmp_op: CmpOp,
-    pub lhs: MatchedPatternOperand<I>,
-    pub rhs: MatchedPatternOperand<I>,
+    pub lhs: MatchedPatternOperand<TM>,
+    pub rhs: MatchedPatternOperand<TM>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct MatchedCondBrPattern<I: Isa> {
-    pub cond: MatchedPatternOperand<I>,
+pub struct MatchedCondBrPattern<TM: TargetMachine> {
+    pub cond: MatchedPatternOperand<TM>,
     pub true_target: BasicBlockId,
     pub false_target: BasicBlockId,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum MatchedPattern<I: Isa> {
-    Mov(MatchedMovPattern<I>),
-    Sub(MatchedSubPattern<I>),
-    Add(MatchedAddPattern<I>),
-    Cmp(MatchedCmpPattern<I>),
-    CondBr(MatchedCondBrPattern<I>),
+pub enum MatchedPattern<TM: TargetMachine> {
+    Mov(MatchedMovPattern<TM>),
+    Sub(MatchedSubPattern<TM>),
+    Add(MatchedAddPattern<TM>),
+    Cmp(MatchedCmpPattern<TM>),
+    CondBr(MatchedCondBrPattern<TM>),
     Br(MatchedBrPattern),
 }
 
-impl<I: Isa> MatchedPattern<I> {
-    pub fn try_as_mov(&self) -> Option<&MatchedMovPattern<I>> {
+impl<TM: TargetMachine> MatchedPattern<TM> {
+    pub fn try_as_mov(&self) -> Option<&MatchedMovPattern<TM>> {
         match self {
             MatchedPattern::Mov(mov) => Some(mov),
             _ => None,
         }
     }
 
-    pub fn try_as_sub(&self) -> Option<&MatchedSubPattern<I>> {
+    pub fn try_as_sub(&self) -> Option<&MatchedSubPattern<TM>> {
         match self {
             MatchedPattern::Sub(sub) => Some(sub),
             _ => None,
         }
     }
 
-    pub fn try_as_add(&self) -> Option<&MatchedAddPattern<I>> {
+    pub fn try_as_add(&self) -> Option<&MatchedAddPattern<TM>> {
         match self {
             MatchedPattern::Add(add) => Some(add),
             _ => None,
@@ -345,14 +344,14 @@ impl<I: Isa> MatchedPattern<I> {
         }
     }
 
-    pub fn try_as_cmp(&self) -> Option<&MatchedCmpPattern<I>> {
+    pub fn try_as_cmp(&self) -> Option<&MatchedCmpPattern<TM>> {
         match self {
             MatchedPattern::Cmp(cmp) => Some(cmp),
             _ => None,
         }
     }
 
-    pub fn try_as_cond_br(&self) -> Option<&MatchedCondBrPattern<I>> {
+    pub fn try_as_cond_br(&self) -> Option<&MatchedCondBrPattern<TM>> {
         match self {
             MatchedPattern::CondBr(cond_br) => Some(cond_br),
             _ => None,
@@ -360,8 +359,8 @@ impl<I: Isa> MatchedPattern<I> {
     }
 }
 
-impl<I: Isa> MatchedPatternOutput<I> {
-    pub fn try_as_reg(&self) -> Option<&Register<I>> {
+impl<TM: TargetMachine> MatchedPatternOutput<TM> {
+    pub fn try_as_reg(&self) -> Option<&Register<TM>> {
         match self {
             MatchedPatternOutput::Reg(reg) => Some(reg),
         }
@@ -369,13 +368,13 @@ impl<I: Isa> MatchedPatternOutput<I> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum MatchedPatternOperand<I: Isa> {
-    Reg(Register<I>),
+pub enum MatchedPatternOperand<TM: TargetMachine> {
+    Reg(Register<TM>),
     Imm(Immediate),
 }
 
-impl<I: Isa> MatchedPatternOperand<I> {
-    pub fn try_as_reg(&self) -> Option<&Register<I>> {
+impl<TM: TargetMachine> MatchedPatternOperand<TM> {
+    pub fn try_as_reg(&self) -> Option<&Register<TM>> {
         match self {
             MatchedPatternOperand::Reg(reg) => Some(reg),
             _ => None,
@@ -391,6 +390,6 @@ impl<I: Isa> MatchedPatternOperand<I> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum MatchedPatternOutput<I: Isa> {
-    Reg(Register<I>),
+pub enum MatchedPatternOutput<TM: TargetMachine> {
+    Reg(Register<TM>),
 }

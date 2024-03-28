@@ -22,32 +22,29 @@ use natrix_middle::{
     instruction::CmpOp,
 };
 
-use crate::codegen::{
-    machine,
-    machine::{
-        Abi,
-        backend::Pattern,
-        isa::Instr,
-        reg::{
-            Register,
-            VReg,
-        },
-        Size,
+use crate::codegen::machine::{
+    backend::Pattern,
+    isa::MachInstr,
+    reg::{
+        Register,
+        VReg,
     },
+    Size,
 };
+use crate::codegen::machine::TargetMachine;
 
 pub mod builder;
 
 type Dag<A> = daggy::Dag<Op<A>, Edge>;
 
 #[derive(Debug, Clone)]
-pub struct BasicBlockDAG<A: machine::Abi> {
-    dag: Dag<A>,
+pub struct BasicBlockDAG<TM: TargetMachine> {
+    dag: Dag<TM>,
     term_node: Option<daggy::NodeIndex>,
     bb: natrix_middle::cfg::BasicBlockId,
 }
 
-impl<A: machine::Abi> BasicBlockDAG<A> {
+impl<TM: TargetMachine> BasicBlockDAG<TM> {
     pub fn new(bb: natrix_middle::cfg::BasicBlockId) -> Self {
         Self {
             dag: Dag::new(),
@@ -76,30 +73,30 @@ impl<A: machine::Abi> BasicBlockDAG<A> {
     }
 }
 
-impl<A: machine::Abi> Deref for BasicBlockDAG<A> {
-    type Target = Dag<A>;
+impl<TM: TargetMachine> Deref for BasicBlockDAG<TM> {
+    type Target = Dag<TM>;
 
     fn deref(&self) -> &Self::Target {
         &self.dag
     }
 }
 
-impl<A: machine::Abi> DerefMut for BasicBlockDAG<A> {
+impl<TM: TargetMachine> DerefMut for BasicBlockDAG<TM> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.dag
     }
 }
 
 #[derive(Debug, Default)]
-pub struct SelectionDAG<A: machine::Abi> {
-    pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockDAG<A>>,
+pub struct SelectionDAG<TM: TargetMachine> {
+    pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockDAG<TM>>,
 }
 
-impl<A: machine::Abi> SelectionDAG<A> {
+impl<TM: TargetMachine> SelectionDAG<TM> {
     pub fn get_bb_dag(
         &mut self,
         basic_block: natrix_middle::cfg::BasicBlockId,
-    ) -> &mut BasicBlockDAG<A> {
+    ) -> &mut BasicBlockDAG<TM> {
         self.basic_blocks
             .entry(basic_block)
             .or_insert_with(|| BasicBlockDAG::new(basic_block))
@@ -221,20 +218,20 @@ impl Display for Edge {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Op<A: Abi> {
-    Machine(MachineOp<A>),
-    Pseudo(PseudoOp<A>),
+pub enum Op<TM: TargetMachine> {
+    Machine(MachineOp<TM>),
+    Pseudo(PseudoOp<TM>),
 }
 
-impl<A: Abi> Op<A> {
-    pub fn out(&self) -> Option<Register<A>> {
+impl<TM: TargetMachine> Op<TM> {
+    pub fn out(&self) -> Option<Register<TM>> {
         match self {
             Op::Machine(op) => op.out(),
             Op::Pseudo(op) => op.out(),
         }
     }
 
-    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+    pub fn consumed_regs(&self) -> SmallVec<[Register<TM>; 2]> {
         match self {
             Op::Machine(op) => op.consumed_regs(),
             Op::Pseudo(op) => op.consumed_regs(),
@@ -243,15 +240,15 @@ impl<A: Abi> Op<A> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum PseudoOp<A: Abi> {
+pub enum PseudoOp<TM: TargetMachine> {
     Def(VReg),
-    Copy(Register<A>, Register<A>),
-    Ret(Option<Operand<A>>),
-    Phi(Register<A>, Vec<Register<A>>),
+    Copy(Register<TM>, Register<TM>),
+    Ret(Option<Operand<TM>>),
+    Phi(Register<TM>, Vec<Register<TM>>),
 }
 
-impl<A: Abi> PseudoOp<A> {
-    pub fn out(&self) -> Option<Register<A>> {
+impl<TM: TargetMachine> PseudoOp<TM> {
+    pub fn out(&self) -> Option<Register<TM>> {
         match self {
             Self::Copy(dest, _) => Some(*dest),
             Self::Ret(_) => None,
@@ -260,7 +257,7 @@ impl<A: Abi> PseudoOp<A> {
         }
     }
 
-    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+    pub fn consumed_regs(&self) -> SmallVec<[Register<TM>; 2]> {
         match self {
             Self::Copy(_, dest) => smallvec![*dest],
             Self::Ret(op) => match op {
@@ -274,17 +271,17 @@ impl<A: Abi> PseudoOp<A> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum MachineOp<A: Abi> {
-    Mov(Register<A>, Operand<A>),
-    Sub(Register<A>, Operand<A>, Operand<A>),
-    Add(Register<A>, Operand<A>, Operand<A>),
-    Cmp(Register<A>, CmpOp, Operand<A>, Operand<A>),
+pub enum MachineOp<TM: TargetMachine> {
+    Mov(Register<TM>, Operand<TM>),
+    Sub(Register<TM>, Operand<TM>, Operand<TM>),
+    Add(Register<TM>, Operand<TM>, Operand<TM>),
+    Cmp(Register<TM>, CmpOp, Operand<TM>, Operand<TM>),
     Br(BasicBlockId),
-    CondBr(Operand<A>, BasicBlockId, BasicBlockId),
+    CondBr(Operand<TM>, BasicBlockId, BasicBlockId),
 }
 
-impl<A: Abi> MachineOp<A> {
-    pub fn out(&self) -> Option<Register<A>> {
+impl<TM: TargetMachine> MachineOp<TM> {
+    pub fn out(&self) -> Option<Register<TM>> {
         match self {
             Self::Mov(dest, _) => Some(*dest),
             Self::Sub(dest, _, _) => Some(*dest),
@@ -295,7 +292,7 @@ impl<A: Abi> MachineOp<A> {
         }
     }
 
-    pub fn consumed_regs(&self) -> SmallVec<[Register<A>; 2]> {
+    pub fn consumed_regs(&self) -> SmallVec<[Register<TM>; 2]> {
         match self {
             MachineOp::Mov(_, src) => match src {
                 Operand::Reg(reg) => smallvec![*reg],
@@ -331,13 +328,13 @@ impl<A: Abi> MachineOp<A> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Operand<A: Abi> {
-    Reg(Register<A>),
+pub enum Operand<TM: TargetMachine> {
+    Reg(Register<TM>),
     Imm(Immediate),
 }
 
-impl<A: Abi> Operand<A> {
-    pub fn try_as_register(&self) -> Option<Register<A>> {
+impl<TM: TargetMachine> Operand<TM> {
+    pub fn try_as_register(&self) -> Option<Register<TM>> {
         match self {
             Operand::Reg(reg) => Some(*reg),
             Operand::Imm(_) => None,
