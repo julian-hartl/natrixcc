@@ -30,9 +30,9 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized + Hash
 
     fn superregs(&self) -> Option<&'static [Self]>;
 
-    fn regclass(&self) -> impl Iterator<Item = Self>
-    where
-        Self: 'static,
+    fn regclass(&self) -> impl Iterator<Item=Self>
+        where
+            Self: 'static,
     {
         self.subregs()
             .into_iter()
@@ -43,16 +43,16 @@ pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized + Hash
     }
 
     fn has_subreg(&self, other: Self) -> bool
-    where
-        Self: 'static,
+        where
+            Self: 'static,
     {
         self.subregs()
             .map_or(false, |subregs| subregs.contains(&other))
     }
 
     fn interferes_with(self, other: Self) -> bool
-    where
-        Self: 'static,
+        where
+            Self: 'static,
     {
         if self == other {
             return true;

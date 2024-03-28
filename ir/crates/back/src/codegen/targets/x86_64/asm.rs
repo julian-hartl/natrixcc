@@ -99,6 +99,7 @@ impl From<PhysicalRegister> for Register {
         }
     }
 }
+
 impl machine::asm::Assembler for Assembler {
     type TM = x86_64::Target;
     fn new(base_addr: u64) -> Self {
@@ -124,9 +125,9 @@ impl machine::asm::Assembler for Assembler {
                         dest,
                         immediate.as_encoded_dword().unwrap(),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::SUB32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -142,9 +143,9 @@ impl machine::asm::Assembler for Assembler {
                         dest,
                         immediate.as_encoded_dword().unwrap(),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::ADD32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -160,9 +161,9 @@ impl machine::asm::Assembler for Assembler {
                         dest,
                         immediate.as_encoded_dword().unwrap(),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::MOV8rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -178,9 +179,9 @@ impl machine::asm::Assembler for Assembler {
                         dest,
                         immediate.as_encoded_dword().unwrap(),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::MOV16rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -196,9 +197,9 @@ impl machine::asm::Assembler for Assembler {
                         dest,
                         immediate.as_encoded_dword().unwrap(),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::MOV32rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -216,9 +217,9 @@ impl machine::asm::Assembler for Assembler {
                             .as_encoded_dword()
                             .expect("64-bit immediates are too large. Should be stored in memory"),
                     )
-                    .unwrap(),
+                        .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::MOV64rr { src, dest } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();
@@ -245,7 +246,7 @@ impl machine::asm::Assembler for Assembler {
                     Instruction::with2(Code::Cmp_rm32_imm32, lhs, rhs.as_encoded_dword().unwrap())
                         .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::CMP8ri { lhs, rhs } => {
                 let lhs: Register = lhs.try_as_physical().unwrap().into();
@@ -253,7 +254,7 @@ impl machine::asm::Assembler for Assembler {
                     Instruction::with2(Code::Cmp_rm8_imm8, lhs, rhs.as_encoded_dword().unwrap())
                         .unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
             x86_64::Instr::SETCC { dest, cc } => {
                 let dest: Register = dest.try_as_physical().unwrap().into();

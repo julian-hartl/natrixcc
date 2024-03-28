@@ -1,7 +1,4 @@
-
-use cranelift_entity::{
-    PrimaryMap,
-};
+use cranelift_entity::PrimaryMap;
 use tracing::{
     debug,
     info,
@@ -45,7 +42,7 @@ impl<TM: TargetMachine> Module<TM> {
         self.functions.push(function)
     }
 
-    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM>)> {
+    pub fn functions(&self) -> impl ExactSizeIterator<Item=(FunctionId, &Function<TM>)> {
         self.functions.iter()
     }
 

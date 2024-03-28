@@ -10,7 +10,7 @@ use crate::codegen::machine::{function::Function, isa::PhysicalRegister, Size, T
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Register<TM: TargetMachine> {
     Virtual(VReg),
-    Physical(TM::Reg)
+    Physical(TM::Reg),
 }
 
 impl<TM: TargetMachine> From<VReg> for Register<TM> {
