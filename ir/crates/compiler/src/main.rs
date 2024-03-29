@@ -56,7 +56,7 @@ fn main() -> Result<()> {
     println!("{:?}", module);
     let mut module = FrontBridge::new().bridge(module);
     println!("{:?}", module);
-    for (_, function)in &module.functions {
+    for (_, function) in &module.functions {
         let verifier = Verifier::new(function);
         let verify_result = verifier.verify();
         println!("{:?}", verify_result);
