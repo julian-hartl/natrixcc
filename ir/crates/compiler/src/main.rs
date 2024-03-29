@@ -60,6 +60,8 @@ fn main() -> Result<()> {
             println!("{error}");
         }
     }
+    debug!("Took {:?} to bridge module", start.elapsed());
+    let start = std::time::Instant::now();
     let mut config = optimization::PipelineConfig::o1();
     config.dead_code_elimination = false;
     // module.optimize(config);
