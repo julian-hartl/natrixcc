@@ -101,7 +101,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
                             }
                             PseudoOp::Phi(dest, operands) => {
                                 self.function.basic_blocks[mbb_id].add_phi(*dest, operands.iter().map(
-                                    |(reg, bb)| (*reg, self.bb_mapping[bb]) 
+                                    |(reg, bb)| (*reg, self.bb_mapping[bb])
                                 ).collect());
                             }
                             PseudoOp::Def(reg) => {
