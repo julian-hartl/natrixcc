@@ -22,3 +22,21 @@ See [here](./lang/README.md) for more information.
 ## Example Package Manager
 
 Yet to be implemented.
+
+## Project setup
+
+### Setup git commit hooks
+
+To manage git hooks, we use [Rusty Hook](https://github.com/swellaby/rusty-hook).
+
+To install Rusty Hook, run the following command:
+
+```bash
+cargo install rusty-hook
+```
+
+To install the git hooks, run the following command:
+
+```bash
+rusty-hook init
+```

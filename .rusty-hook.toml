@@ -1,0 +1,7 @@
+[hooks]
+pre-commit = "cargo build"
+pre-push = "cargo fmt --all --allow-dirty"
+post-commit = "Ran pre-commit hook"
+
+[logging]
+verbose = true

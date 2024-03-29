@@ -809,7 +809,7 @@ mod test {
 
     use fusion_compiler::Idx;
 
-    use crate::mir::{BasicBlockIdx, MIR};
+    use crate::mir::{BasicBlockIdx, FunctionIdx, MIR};
 
     pub fn assert_mir(input: &str, expected_mir: &str) -> MIR {
         let mut compilation_unit = crate::compilation_unit::CompilationUnit::compile(input).unwrap();
@@ -856,7 +856,7 @@ bb5():
     return %0
 "#;
         let mir = assert_mir(input, expected);
-        let predecessors = mir.functions[mir.functions.first_index()].predecessors();
+        let predecessors = mir.functions[FunctionIdx(0)].predecessors();
         assert_eq!(predecessors.get_all(BasicBlockIdx::new(0)), HashSet::new());
         assert_eq!(predecessors.get_all(BasicBlockIdx::new(1)), HashSet::from([BasicBlockIdx::new(0), BasicBlockIdx::new(4)]));
         assert_eq!(predecessors.get_all(BasicBlockIdx::new(2)), HashSet::from([BasicBlockIdx::new(1)]));
