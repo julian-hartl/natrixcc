@@ -9,10 +9,7 @@ use natrix_back::{
     },
     emu::Emulator,
 };
-use natrix_middle::{
-    optimization,
-    FrontBridge,
-};
+use natrix_middle::{optimization, FrontBridge, Verifier};
 use tracing::debug;
 use natrix_back::codegen::isa::{Architecture, Endianness};
 
