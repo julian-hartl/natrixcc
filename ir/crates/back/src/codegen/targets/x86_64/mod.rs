@@ -508,8 +508,8 @@ impl machine::isa::MachInstr for Instr {
             Self::CMP32rr { lhs, rhs } => {
                 smallvec![InstrOperand::Reg(*lhs), InstrOperand::Reg(*rhs)]
             }
-            Self::CMP32ri { lhs, .. } => smallvec![InstrOperand::Reg(*lhs),],
-            Self::CMP8ri { lhs, .. } => smallvec![InstrOperand::Reg(*lhs),],
+            Self::CMP32ri { lhs, rhs } => smallvec![InstrOperand::Reg(*lhs),InstrOperand::Imm(*rhs)],
+            Self::CMP8ri { lhs, rhs } => smallvec![InstrOperand::Reg(*lhs),InstrOperand::Imm(*rhs)],
             Self::SETCC { dest, .. } => smallvec![InstrOperand::Reg(*dest)],
             Self::JCC { target, .. } => smallvec![InstrOperand::Label(*target),],
         }

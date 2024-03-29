@@ -36,21 +36,27 @@ fn valid_source_file_extension(file_path: &str) -> Result<PathBuf, String> {
     Ok(file_path)
 }
 
-fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .init();
+fn main() -> Result<()> {   
+    let start = std::time::Instant::now();
+    tracing_subscriber::fmt().with_max_level(tracing::Level::DEBUG).init();
     let args = Args::parse();
     let file_path = args.source_file;
     let file_contents = std::fs::read_to_string(file_path)?;
-    let module = natrix_front::module::parse(&file_contents)
-        .map_err(|e| anyhow::anyhow!("Failed to parse module: {}", e))?;
+    let module = natrix_front::module::parse(&file_contents).map_err(
+        |e| anyhow::anyhow!("Failed to parse module: {}", e)
+    )?;
+    debug!("Took {:?} to parse module", start.elapsed());
+    let start = std::time::Instant::now();
     println!("{:?}", module);
     let mut module = FrontBridge::new().bridge(module);
     println!("{:?}", module);
+    debug!("Took {:?} to bridge module", start.elapsed());
+    let start = std::time::Instant::now();
     let mut config = optimization::PipelineConfig::o1();
     config.dead_code_elimination = false;
     // module.optimize(config);
+    debug!("Took {:?} to optimize module", start.elapsed());
+    let start = std::time::Instant::now();
     println!("{module}");
     let mut x86_mod =
         natrix_back::codegen::machine::module::Builder::<x86_64::Target>::new(&mut module).build();
@@ -58,13 +64,22 @@ fn main() -> Result<()> {
     x86_mod.run_register_coalescer();
     x86_mod.remove_fallthrough_jumps();
     x86_mod.expand_pseudo_instructions();
+    debug!("Took {:?} to generate x86 module", start.elapsed());
+    let start = std::time::Instant::now();
     debug!("{x86_mod}");
     let base_addr = 0x1000;
     let asm_module = x86_mod.assemble(base_addr);
-    let mut emu = Emulator::new(&asm_module);
-    let result = emu
-        .run_function(x86_mod.functions().next().unwrap().0, &[30000, 20000])
-        .unwrap();
+    debug!("Took {:?} to assemble x86 module", start.elapsed());
+    let mut emu = Emulator::new(
+        &asm_module
+    );
+    let result = emu.run_function(
+        x86_mod.functions().next().unwrap().0,
+        &[
+            30000,
+            20000
+        ]
+    ).unwrap();
     println!("Result: {}", result);
     Ok(())
 }

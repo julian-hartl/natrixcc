@@ -134,11 +134,26 @@ impl Lifetime {
     ///
     /// Keeps the ranges sorted by start point.
     pub fn add_range(&mut self, range: LiveRange) {
-        let index = self
-            .ranges
-            .binary_search_by(|existing_range| existing_range.start.cmp(&range.start))
-            .unwrap_or_else(|index| index);
-        self.ranges.insert(index, range);
+        // todo: improve performance
+        let mut new_ranges = SmallVec::new();
+        let mut added = false;
+        for existing_range in &self.ranges {
+            if LiveRange::are_adjacent(existing_range, &range) {
+                let new_range = LiveRange {
+                    start: std::cmp::min(existing_range.start, range.start),
+                    end: std::cmp::max(existing_range.end, range.end),
+                };
+                new_ranges.push(new_range);
+                added = true;
+            } else {
+                new_ranges.push(existing_range.clone());
+            }
+        }
+        if !added {
+            new_ranges.push(range);
+        }
+        new_ranges.sort_by(|a: &LiveRange, b| a.start.cmp(&b.start));
+        self.ranges = new_ranges;
     }
 
     pub fn start(&self) -> ProgPoint {
@@ -695,7 +710,6 @@ impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness,
             } else {
                 debug!("No register available for {vreg}. Retrying later");
                 worklist.push_back((vreg, instr_uid));
-                debug!("Worklist: {:?}", worklist);
             }
         }
 
