@@ -7,9 +7,9 @@ use std::{
     },
 };
 
-use cranelift_entity::SecondaryMap;
-use daggy::Walker;
-use iter_tools::Itertools;
+pub use cranelift_entity::SecondaryMap;
+pub use daggy::Walker;
+pub use iter_tools::Itertools;
 use rustc_hash::{
     FxHashMap,
     FxHashSet,
@@ -27,7 +27,10 @@ use crate::codegen::machine::{
         calling_convention::Slot,
         CallingConvention,
     },
-    function::Function,
+    function::{
+        BasicBlockId,
+        Function,
+    },
     instr::{
         Instr,
         PseudoInstr,
@@ -39,9 +42,8 @@ use crate::codegen::machine::{
         VReg,
     },
     Size,
+    TargetMachine,
 };
-use crate::codegen::machine::function::BasicBlockId;
-use crate::codegen::machine::TargetMachine;
 
 mod coalescer;
 pub mod linear_scan;
@@ -123,24 +125,74 @@ impl Display for ProgPoint {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Lifetime {
+    /// List of ranges in which the variable is live, sorted by start point.
+    pub ranges: SmallVec<[LiveRange; 3]>,
+}
+
+impl Lifetime {
+    /// Adds a new range to the lifetime, potentially merging it with existing ranges.
+    ///
+    /// Keeps the ranges sorted by start point.
+    pub fn add_range(&mut self, range: LiveRange) {
+        let index = self
+            .ranges
+            .binary_search_by(|existing_range| existing_range.start.cmp(&range.start))
+            .unwrap_or_else(|index| index);
+        self.ranges.insert(index, range);
+    }
+
+    pub fn start(&self) -> ProgPoint {
+        self.ranges
+            .first()
+            .map(|range| range.start)
+            .expect("Lifetime has no ranges")
+    }
+
+    pub fn overlaps_with(&self, other: &Self) -> bool {
+        self.ranges.iter().any(|range| {
+            other
+                .ranges
+                .iter()
+                .any(|other_range| LiveRange::are_overlapping(range, other_range))
+        })
+    }
+
+    pub fn contains(&self, pp: ProgPoint) -> bool {
+        self.ranges.iter().any(|range| range.contains(pp))
+    }
+}
+
+impl Display for Lifetime {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[")?;
+        for (index, range) in self.ranges.iter().enumerate() {
+            write!(f, "{}", range)?;
+            if index < self.ranges.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct LiveRange {
     pub start: ProgPoint,
     pub end: ProgPoint,
 }
 
-impl Lifetime {
+impl LiveRange {
     pub fn new(start: ProgPoint, end: ProgPoint) -> Self {
-        Self {
-            start,
-            end,
-        }
+        Self { start, end }
     }
     pub fn contains(&self, pp: ProgPoint) -> bool {
         self.start <= pp && pp <= self.end
     }
 
-    /// Returns true if the two lifetimes overlap.
+    /// Returns true if the two live ranges overlap.
     ///
-    /// Two lifetimes l, j overlap if the intersection of their ranges is not empty.
+    /// Two live ranges l, j overlap if the intersection of their ranges is not empty.
     /// This is the case iff.
     /// - l.start <= j.end
     /// and
@@ -151,12 +203,21 @@ impl Lifetime {
         l.start <= j.end && j.start <= l.end
     }
 
+    pub fn are_adjacent(l: &Self, j: &Self) -> bool {
+        let are_adjacent = |j: &Self, l: &Self| match (l.end, j.start) {
+            (ProgPoint::Read(a), ProgPoint::Write(b)) => a == b,
+            (ProgPoint::Write(a), ProgPoint::Read(b)) => a + 1 == b,
+            _ => false,
+        };
+        are_adjacent(l, j) || are_adjacent(j, l)
+    }
+
     pub fn overlaps_with(&self, other: &Self) -> bool {
         Self::are_overlapping(self, other)
     }
 }
 
-impl Display for Lifetime {
+impl Display for LiveRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "({}", self.start)?;
         write!(f, ", ")?;
@@ -191,7 +252,7 @@ mod prog_point_tests {
 #[cfg(test)]
 mod lifetime_tests {
     use crate::codegen::register_allocator::{
-        Lifetime,
+        LiveRange,
         ProgPoint,
     };
 
@@ -200,32 +261,32 @@ mod lifetime_tests {
         let inputs = [
             // Both lifetimes are the same
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 true,
             ),
             // The second lifetime is within the first one
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 true,
             ),
             // The lifetimes do not overlap
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
-                Lifetime::new(ProgPoint::Write(2), ProgPoint::Read(3)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(1)),
+                LiveRange::new(ProgPoint::Write(2), ProgPoint::Read(3)),
                 false,
             ),
             // The lifetimes overlap at one point
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
-                Lifetime::new(ProgPoint::Write(2), ProgPoint::Read(3)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Write(2)),
+                LiveRange::new(ProgPoint::Write(2), ProgPoint::Read(3)),
                 true,
             ),
             // The lifetimes are the same but with different ProgPoints
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Write(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 true,
             ),
         ];
@@ -255,25 +316,25 @@ mod lifetime_tests {
         let inputs = [
             // The lifetime contains the ProgPoint
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(2)),
                 ProgPoint::Read(1),
                 true,
             ),
             // The lifetime does not contain the ProgPoint
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 ProgPoint::Write(2),
                 false,
             ),
             // The lifetime contains the ProgPoint at the interval end
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Write(2)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Write(2)),
                 ProgPoint::Write(2),
                 true,
             ),
             // The lifetime does not contain the ProgPoint at the interval start
             (
-                Lifetime::new(ProgPoint::Write(0), ProgPoint::Read(1)),
+                LiveRange::new(ProgPoint::Write(0), ProgPoint::Read(1)),
                 ProgPoint::Write(0),
                 true,
             ),
@@ -359,7 +420,7 @@ impl InstrNumbering {
         InstrNumberingIter::new(self)
     }
 
-    pub fn iter_enumerated(&self) -> impl Iterator<Item=(InstrNr, InstrUid)> + '_ {
+    pub fn iter_enumerated(&self) -> impl Iterator<Item = (InstrNr, InstrUid)> + '_ {
         self.iter()
             .enumerate()
             .map(|(nr, instr_uid)| (nr as InstrNr, instr_uid))
@@ -401,75 +462,52 @@ impl Iterator for InstrNumberingIter<'_> {
     }
 }
 
+#[derive(Default, Debug)]
+pub struct LiveSets(FxHashMap<BasicBlockId, FxHashSet<VReg>>);
+impl LiveSets {
+    fn insert(&mut self, bb: BasicBlockId, reg: VReg) {
+        self.0.entry(bb).or_default().insert(reg);
+    }
+
+    fn remove(&mut self, bb: BasicBlockId, reg: VReg) {
+        self.0.entry(bb).or_default().remove(&reg);
+    }
+
+    fn get(&self, bb: BasicBlockId) -> impl Iterator<Item = VReg> + '_ {
+        self.0
+            .get(&bb)
+            .map(|regs| regs.iter().copied())
+            .into_iter()
+            .flatten()
+    }
+}
+
 #[derive(Debug)]
 pub struct LivenessRepr {
     pub instr_numbering: InstrNumbering,
-    defs: SecondaryMap<VReg, ProgPoint>,
-    /// Map of register to a sorted list of instruction numbers where the register is used
-    uses: SecondaryMap<VReg, Vec<ProgPoint>>,
-}
-
-impl LivenessRepr {
-    pub fn display<'func, 'liveness, A: TargetMachine>(
-        &'liveness self,
-        func: &'func Function<A>,
-    ) -> LivenessReprDisplay<'func, 'liveness, A> {
-        LivenessReprDisplay(self, func)
-    }
-}
-
-struct LivenessReprDisplay<'func, 'liveness, A: TargetMachine>(
-    &'liveness LivenessRepr,
-    &'func Function<A>,
-);
-
-impl<A: TargetMachine> Display for LivenessReprDisplay<'_, '_, A> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for (reg, lifetime) in self
-            .0
-            .defs
-            .keys()
-            .map(|reg| (reg, self.0.lifetime(reg, self.1)))
-        {
-            writeln!(f, "{}: {}", reg, lifetime)?;
-        }
-        Ok(())
-    }
+    pub lifetimes: SecondaryMap<VReg, Lifetime>,
 }
 
 impl LivenessRepr {
     pub fn new<A: TargetMachine>(func: &Function<A>) -> Self {
         debug!("Creating liveness representation");
         Self {
-            defs: SecondaryMap::default(),
-            uses: SecondaryMap::default(),
             instr_numbering: InstrNumbering::new(func),
+            lifetimes: SecondaryMap::default(),
         }
     }
 
-    pub fn record_def(&mut self, reg: VReg, pp: ProgPoint) {
-        self.defs[reg] = pp;
+    pub fn add_range(&mut self, vreg: VReg, range: LiveRange) {
+        self.lifetimes[vreg].add_range(range);
     }
+}
 
-    pub fn record_use(&mut self, reg: VReg, pp: ProgPoint) {
-        let insert_at = self.uses[reg]
-            .binary_search(&pp)
-            .unwrap_or_else(|x| x);
-        self.uses[reg].insert(insert_at, pp);
-    }
-    
-    pub fn lifetime<A: TargetMachine>(&self, reg: VReg, func: &Function<A>) -> Lifetime {
-        let start = self.defs[reg];
-        let end = self.last_use(reg).unwrap_or(start);
-        Lifetime::new(start, end)
-    }
-
-    pub fn second_last_use(&self, reg: VReg) -> Option<ProgPoint> {
-        self.uses[reg].iter().copied().rev().nth(1)
-    }
-
-    pub fn last_use(&self, reg: VReg) -> Option<ProgPoint> {
-        self.uses[reg].last().copied()
+impl Display for LivenessRepr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for (vreg, lifetime) in self.lifetimes.iter() {
+            writeln!(f, "{}: {}", vreg, lifetime)?;
+        }
+        Ok(())
     }
 }
 
@@ -479,7 +517,6 @@ pub type RegAllocHints<TM> = SmallVec<[<TM as TargetMachine>::Reg; 2]>;
 pub struct RegAllocVReg {
     pub id: VReg,
     pub size: Size,
-    pub lifetime: Lifetime,
 }
 
 pub trait RegAllocAlgorithm<'liveness, A: TargetMachine> {
@@ -545,7 +582,7 @@ pub struct RegisterAllocator<
 }
 
 impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
-RegisterAllocator<'liveness, 'func, TM, RegAlloc>
+    RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 {
     pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
@@ -559,55 +596,56 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 
     pub fn run(mut self) {
         self.insert_fixed_locations_for_function_params();
-        let mut worklist = self
-            .liveness_repr
-            .instr_numbering
-            .iter()
-            .filter_map(|instr_uid| {
-                let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
-                instr.writes().and_then(|reg| reg.try_as_virtual())
-            })
-            .collect::<VecDeque<_>>();
-        while let Some(vreg) = worklist.pop_front() {
-            let instr_nr = self.liveness_repr.defs[vreg];
-            let instr_uid = self
-                .liveness_repr
-                .instr_numbering
-                .get_instr_uid(instr_nr.instr_nr())
-                .unwrap_or_else(|| panic!("No instr uid for {}", instr_nr));
-            let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
-            let mut hints: SmallVec<[_; 2]> = smallvec![];
-            match instr {
-                Instr::Pseudo(instr) => match instr {
-                    PseudoInstr::Copy(_, src) => {
-                        if let Some(reg) = match src {
-                            Register::Virtual(reg) => self.allocations.get_allocated_reg(*reg),
-                            Register::Physical(reg) => Some(*reg),
-                        } {
-                            hints.push(reg);
-                        }
+        let mut worklist = VecDeque::new();
+        for instr_uid in self.liveness_repr.instr_numbering.iter() {
+            if instr_uid.instr == InstrId::new(0) {
+                let bb = instr_uid.bb;
+                for (phi, _) in self.func.basic_blocks[bb].phis.iter() {
+                    if let Some(vreg) = phi.try_as_virtual() {
+                        worklist.push_back((vreg, None));
                     }
-                    PseudoInstr::Ret(_) => {}
-                    PseudoInstr::Def(_) => {}
-                },
-                Instr::Machine(_) => {}
-            };
+                }
+            }
+            let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
+            if let Some(writes) = instr.writes() {
+                if let Some(vreg) = writes.try_as_virtual() {
+                    worklist.push_back((vreg, Some(instr_uid)));
+                }
+            }
+        }
+        while let Some((vreg, instr_uid)) = worklist.pop_front() {
             if self.allocations.get_allocated_reg(vreg).is_some() {
                 continue;
             }
-            let lifetime = self.liveness_repr.lifetime(vreg, &self.func);
+            let mut hints: SmallVec<[_; 2]> = smallvec![];
+            if let Some(instr_uid) = instr_uid {
+                let instr = &self.func.basic_blocks[instr_uid.bb].instructions[instr_uid.instr];
+                match instr {
+                    Instr::Pseudo(instr) => match instr {
+                        PseudoInstr::Copy(_, src) => {
+                            if let Some(reg) = match src {
+                                Register::Virtual(reg) => self.allocations.get_allocated_reg(*reg),
+                                Register::Physical(reg) => Some(*reg),
+                            } {
+                                hints.push(reg);
+                            }
+                        }
+                        PseudoInstr::Ret(_) => {}
+                        PseudoInstr::Def(_) => {}
+                    },
+                    Instr::Machine(_) => {}
+                };
+            }
+            let lifetime = &self.liveness_repr.lifetimes[vreg];
             let vreg_info = &self.func.vregs[vreg];
             let size = vreg_info.size;
-            let alloc_vreg = RegAllocVReg {
-                id: vreg,
-                size,
-                lifetime: lifetime.clone(),
-            };
+            let alloc_vreg = RegAllocVReg { id: vreg, size };
             let phys_reg = match vreg_info.fixed {
                 None => match vreg_info.tied_to {
                     None => {
                         debug!(
-                            "Allocating {vreg} at {instr_uid} with hints: {:?} and size {size}",
+                            "Allocating {vreg} at {:?} with hints: {:?} and size {size}",
+                            instr_uid,
                             hints
                         );
 
@@ -618,8 +656,7 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                             "{vreg} is tied to {tied_to}. Trying to put it in the same register"
                         );
                         assert!(
-                            !lifetime
-                                .overlaps_with(&self.liveness_repr.lifetime(tied_to, &self.func)),
+                            !lifetime.overlaps_with(&self.liveness_repr.lifetimes[tied_to]),
                             "Tied register {tied_to} overlaps with {vreg}"
                         );
                         let allocated_reg = self.allocations.get_allocated_reg(tied_to);
@@ -643,7 +680,8 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                 },
                 Some(fixed) => {
                     debug!(
-                        "Allocating {vreg} at {instr_uid} in fixed register {}",
+                        "Allocating {vreg} at {:?} in fixed register {}",
+                        instr_uid,
                         fixed.name()
                     );
                     self.algo.allocate_fixed_or_evict(&alloc_vreg, fixed);
@@ -656,7 +694,8 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                 self.allocations.start_allocation(vreg, phys_reg);
             } else {
                 debug!("No register available for {vreg}. Retrying later");
-                worklist.push_back(vreg);
+                worklist.push_back((vreg, instr_uid));
+                debug!("Worklist: {:?}", worklist);
             }
         }
 
@@ -698,7 +737,7 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                 .iter()
                 .map(|param| self.func.vregs[*param].size),
         )
-            .collect_vec();
+        .collect_vec();
         for (arg, slot) in self.func.params.iter().copied().zip(slots) {
             match slot {
                 Slot::Register(reg) => {
@@ -712,70 +751,86 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 
 impl<TM: TargetMachine> Function<TM> {
     pub fn liveness_repr(&mut self) -> LivenessRepr {
-        #[derive(Default, Debug)]
-        struct Liveins(FxHashMap<BasicBlockId, FxHashSet<VReg>>);
-        impl Liveins {
-            fn insert(&mut self, bb: BasicBlockId, reg: VReg) {
-                self.0.entry(bb).or_default().insert(reg);
-            }
+        #[derive(Default, Clone)]
+        struct IncompleteLiveRange {
+            start: Option<ProgPoint>,
+            end: Option<ProgPoint>,
+        }
 
-            fn liveins(&self, bb: BasicBlockId) -> impl Iterator<Item=VReg> + '_ {
-                self.0.get(&bb).map(|regs|regs.iter().copied()).into_iter().flatten()
+        impl IncompleteLiveRange {
+            fn set_start(&mut self, pp: ProgPoint) {
+                self.start = Some(pp);
+            }
+            fn maybe_set_end(&mut self, pp: ProgPoint) {
+                if self.end.is_none() {
+                    self.end = Some(pp);
+                }
             }
         }
-        let mut liveins = Liveins::default();
 
         let mut repr = LivenessRepr::new(self);
         debug!("Starting liveness analysis");
+        let mut live_sets = LiveSets::default();
         for bb_id in self.cfg().ordered().into_iter().rev() {
             debug!("Analysing liveness in {bb_id}");
             let bb = &self.basic_blocks[bb_id];
-            let mut undeclared_regs = FxHashSet::default();
             let entry_pp = bb.entry_pp(&repr.instr_numbering);
             let exit_pp = bb.exit_pp(&repr.instr_numbering);
-            for liveout in self.cfg().successors(bb_id).flat_map(|succ| liveins.liveins(succ)) {
-                undeclared_regs.insert(liveout);
+            let mut local_live_ranges = SecondaryMap::default();
+            for succ in self.cfg().successors(bb_id) {
+                let liveset = live_sets.get(succ).collect::<SmallVec<[_; 3]>>();
+                for liveout in liveset {
+                    live_sets.insert(bb_id, liveout);
+                    local_live_ranges[liveout] = Some(IncompleteLiveRange {
+                        start: None,
+                        end: Some(exit_pp),
+                    });
+                }
             }
             let mut instr_nr = exit_pp.instr_nr();
             for instr in bb.instructions.iter().rev() {
                 let out = instr.writes();
                 if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
-                    undeclared_regs.remove(&reg);
-                    repr.record_def(reg, ProgPoint::Write(instr_nr));
+                    live_sets.remove(bb_id, reg);
+                    local_live_ranges[reg]
+                        .get_or_insert_default()
+                        .set_start(ProgPoint::Write(instr_nr));
                 }
                 let read = instr.reads();
                 for reg in read {
                     let Register::Virtual(reg) = reg else {
                         continue;
                     };
-                    undeclared_regs.insert(reg);
-                    repr.record_use(reg, ProgPoint::Read(instr_nr));
+                    live_sets.insert(bb_id, reg);
+                    local_live_ranges[reg]
+                        .get_or_insert_default()
+                        .maybe_set_end(ProgPoint::Read(instr_nr));
                 }
                 if let Some(val) = instr_nr.checked_sub(1) {
                     instr_nr = val;
                 }
             }
-            for (def, operands) in &bb.phis {
+            for (def, _) in &bb.phis {
                 if let Some(def) = def.try_as_virtual() {
-                    undeclared_regs.remove(&def);
-                    repr.record_def(def, entry_pp);
-                }
-                for (used, defined_in) in operands {
-                    if let Some(used) = used.try_as_virtual() {
-                        repr.record_use(used, self.basic_blocks[*defined_in].exit_pp(&repr.instr_numbering));
-                    }
+                    live_sets.remove(bb_id, def);
+                    local_live_ranges[def]
+                        .get_or_insert_default()
+                        .set_start(entry_pp);
                 }
             }
-            for undeclared_reg in undeclared_regs {
-                debug!("Inserting {undeclared_reg} in liveins set of {bb_id} and extending its lifetime to the start of the basic block");
-                liveins.insert(bb_id, undeclared_reg);
+            for (vreg, range) in local_live_ranges
+                .iter()
+                .filter_map(|(vreg, range)| range.as_ref().map(|range| (vreg, range)))
+            {
+                let start = range.start.unwrap_or(entry_pp);
+                let range = LiveRange::new(start, range.end.unwrap_or(start));
+                repr.add_range(vreg, range);
             }
         }
-        
-        // todo: split lifetimes to basic block level
-        debug!("{:?}", liveins);
 
-        debug!("{}", repr.display(self));
+        debug!("{:?}", live_sets);
+
+        debug!("{}", repr);
         repr
     }
 }
