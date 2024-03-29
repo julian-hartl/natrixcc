@@ -15,11 +15,6 @@ use natrix_middle::{
     Verifier,
 };
 use tracing::debug;
-use natrix_back::codegen::isa::{Architecture, Endianness};
-
-use natrix_back::codegen::register_allocator;
-use natrix_back::emu::Emulator;
-use natrix_middle::{FrontBridge, optimization, Verifier};
 
 #[derive(Parser, Debug)]
 #[clap(name = "natrix")]
