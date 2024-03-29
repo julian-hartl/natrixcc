@@ -1,9 +1,22 @@
-use std::fmt::{Display, Formatter};
-use std::io::Write;
+use std::{
+    fmt::{
+        Display,
+        Formatter,
+    },
+    io::Write,
+};
+
 use anyhow::Result;
 
-use crate::ast::{BinOperator, BinOpKind, UnOperator, UnOpKind};
-use crate::typings::Type;
+use crate::{
+    ast::{
+        BinOpKind,
+        BinOperator,
+        UnOpKind,
+        UnOperator,
+    },
+    typings::Type,
+};
 
 pub struct CAst {
     pub items: Vec<CItem>,
@@ -11,9 +24,7 @@ pub struct CAst {
 
 impl CAst {
     pub fn new(items: Vec<CItem>) -> Self {
-        Self {
-            items,
-        }
+        Self { items }
     }
 }
 

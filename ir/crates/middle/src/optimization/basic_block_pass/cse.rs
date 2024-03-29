@@ -1,11 +1,21 @@
 use rustc_hash::FxHashMap;
 
-use crate::{FunctionId, VReg};
-use crate::cfg::BasicBlockId;
-use crate::instruction::{InstrIdentifyingKey, InstrKind, Op, OpInstr};
-use crate::module::Module;
-use crate::optimization::basic_block_pass::BasicBlockPass;
-use crate::optimization::Pass;
+use crate::{
+    cfg::BasicBlockId,
+    instruction::{
+        InstrIdentifyingKey,
+        InstrKind,
+        Op,
+        OpInstr,
+    },
+    module::Module,
+    optimization::{
+        basic_block_pass::BasicBlockPass,
+        Pass,
+    },
+    FunctionId,
+    VReg,
+};
 
 /// # Common Subexpression Elimination
 ///
@@ -20,7 +30,12 @@ impl Pass for CSEPass {
 }
 
 impl BasicBlockPass for CSEPass {
-    fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block: BasicBlockId) -> usize {
+    fn run_on_basic_block(
+        &mut self,
+        module: &mut Module,
+        function: FunctionId,
+        basic_block: BasicBlockId,
+    ) -> usize {
         let cfg = &mut module.functions[function].cfg;
         let bb = cfg.basic_block_mut(basic_block);
         let mut changes = 0;
@@ -49,11 +64,26 @@ impl BasicBlockPass for CSEPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cfg, optimization};
-    use crate::cfg::{RetTerm, TerminatorKind};
-    use crate::instruction::{Const, Op};
-    use crate::optimization::{Pipeline, PipelineConfig};
-    use crate::test::{create_test_module, create_test_module_from_source};
+    use crate::{
+        cfg,
+        cfg::{
+            RetTerm,
+            TerminatorKind,
+        },
+        instruction::{
+            Const,
+            Op,
+        },
+        optimization,
+        optimization::{
+            Pipeline,
+            PipelineConfig,
+        },
+        test::{
+            create_test_module,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     fn should_replace_duplicate_subtraction() {
@@ -66,17 +96,20 @@ mod tests {
                     v3 = sub i32 v2, v1;
                     ret i32 v3;
                 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::cse_only());
         let function = module.find_function_by_name("test").unwrap();
-        assert_eq!("fun i32 @test(i32) {
+        assert_eq!(
+            "fun i32 @test(i32) {
 bb0(i32 v0):
     v1 = sub i32 v0, 3;
     v2 = i32 v1;
     v3 = sub i32 v2, v1;
     ret i32 v3;
 }
-", function.to_string());
+",
+            function.to_string()
+        );
     }
 }

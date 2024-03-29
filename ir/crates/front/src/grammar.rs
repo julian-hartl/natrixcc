@@ -1,13 +1,27 @@
 // auto-generated: "lalrpop 0.20.2"
 // sha3: 3da911f4b02d38610275c87137f6513578343b93a23eb2ce9725bf48b56e6208
 use std::str::FromStr;
-use crate::module::{Instruction, Operand, Literal, BasicBlock, Function, Type, Arg, Module, RegId, Target, BasicBlockId, CmpOp};
+
+use crate::module::{
+    Arg,
+    BasicBlock,
+    BasicBlockId,
+    CmpOp,
+    Function,
+    Instruction,
+    Literal,
+    Module,
+    Operand,
+    RegId,
+    Target,
+    Type,
+};
 #[allow(unused_extern_crates)]
 extern crate lalrpop_util as __lalrpop_util;
 #[allow(unused_imports)]
 use self::__lalrpop_util::state_machine as __state_machine;
-extern crate core;
 extern crate alloc;
+extern crate core;
 
 #[rustfmt::skip]
 #[allow(non_snake_case, non_camel_case_types, unused_mut, unused_variables, unused_imports, unused_parens, clippy::needless_lifetimes, clippy::type_complexity, clippy::needless_return, clippy::too_many_arguments, clippy::never_loop, clippy::match_single_binding, clippy::needless_raw_string_hashes)]
@@ -29503,120 +29517,105 @@ mod __intern_token {
 pub(crate) use self::__lalrpop_util::lexer::Token;
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action0<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Module, usize),
-) -> Module
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action0<'input>(input: &'input str, (_, __0, _): (usize, Module, usize)) -> Module {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action1<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Function, usize),
-) -> Function
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action1<'input>(input: &'input str, (_, __0, _): (usize, Function, usize)) -> Function {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action2<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, BasicBlock, usize),
-) -> BasicBlock
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action2<'input>(input: &'input str, (_, __0, _): (usize, BasicBlock, usize)) -> BasicBlock {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action3<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Instruction, usize),
-) -> Instruction
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action3<'input>(input: &'input str, (_, __0, _): (usize, Instruction, usize)) -> Instruction {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action4<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Instruction, usize),
-) -> Instruction
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action4<'input>(input: &'input str, (_, __0, _): (usize, Instruction, usize)) -> Instruction {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action5<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, CmpOp, usize),
-) -> CmpOp
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action5<'input>(input: &'input str, (_, __0, _): (usize, CmpOp, usize)) -> CmpOp {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action6<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Target, usize),
-) -> Target
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action6<'input>(input: &'input str, (_, __0, _): (usize, Target, usize)) -> Target {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action7<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Operand, usize),
-) -> Operand
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action7<'input>(input: &'input str, (_, __0, _): (usize, Operand, usize)) -> Operand {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action8<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action8<'input>(
     input: &'input str,
     (_, functions, _): (usize, alloc::vec::Vec<Function>, usize),
-) -> Module
-{
-    Module {
-        functions,
-    }
+) -> Module {
+    Module { functions }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action9<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action9<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, ret_ty, _): (usize, Type, usize),
@@ -29627,8 +29626,7 @@ fn __action9<
     (_, _, _): (usize, &'input str, usize),
     (_, blocks, _): (usize, alloc::vec::Vec<BasicBlock>, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Function
-{
+) -> Function {
     Function {
         name,
         ret_ty,
@@ -29638,17 +29636,18 @@ fn __action9<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action10<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action10<'input>(
     input: &'input str,
     (_, id, _): (usize, BasicBlockId, usize),
     (_, args, _): (usize, core::option::Option<Vec<Arg>>, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, instructions, _): (usize, alloc::vec::Vec<Instruction>, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     BasicBlock {
         args: args.unwrap_or_default(),
         id,
@@ -29657,53 +29656,55 @@ fn __action10<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action11<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action11<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, args, _): (usize, Vec<Arg>, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Vec<Arg>
-{
+) -> Vec<Arg> {
     args
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action12<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action12<'input>(
     input: &'input str,
     (_, ty, _): (usize, Type, usize),
     (_, id, _): (usize, RegId, usize),
-) -> Arg
-{
-    Arg {
-        ty,
-        id,
-    }
+) -> Arg {
+    Arg { ty, id }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action13<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action13<'input>(
     input: &'input str,
     (_, instr, _): (usize, Instruction, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Instruction
-{
+) -> Instruction {
     instr
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action14<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action14<'input>(
     input: &'input str,
     (_, decl, _): (usize, RegId, usize),
     (_, _, _): (usize, &'input str, usize),
@@ -29712,16 +29713,17 @@ fn __action14<
     (_, op1, _): (usize, Operand, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, op2, _): (usize, Operand, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Add(decl, ty, op1, op2)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action15<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action15<'input>(
     input: &'input str,
     (_, decl, _): (usize, RegId, usize),
     (_, _, _): (usize, &'input str, usize),
@@ -29730,31 +29732,33 @@ fn __action15<
     (_, op1, _): (usize, Operand, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, op2, _): (usize, Operand, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Sub(decl, ty, op1, op2)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action16<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action16<'input>(
     input: &'input str,
     (_, decl, _): (usize, RegId, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, ty, _): (usize, Type, usize),
     (_, op, _): (usize, Operand, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Op(decl, ty, op)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action17<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action17<'input>(
     input: &'input str,
     (_, decl, _): (usize, RegId, usize),
     (_, _, _): (usize, &'input str, usize),
@@ -29764,372 +29768,340 @@ fn __action17<
     (_, op1, _): (usize, Operand, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, op2, _): (usize, Operand, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::ICmp(decl, op, ty, op1, op2)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action18<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action18<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, condition, _): (usize, Operand, usize),
     (_, true_target, _): (usize, Target, usize),
     (_, _, _): (usize, &'input str, usize),
     (_, false_target, _): (usize, Target, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Condbr(condition, true_target, false_target)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action19<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action19<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, target, _): (usize, Target, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Br(target)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action20<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action20<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, ty, _): (usize, Type, usize),
     (_, op, _): (usize, core::option::Option<Operand>, usize),
-) -> Instruction
-{
+) -> Instruction {
     Instruction::Ret(ty, op)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action21<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> CmpOp
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action21<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> CmpOp {
     CmpOp::Eq
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action22<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> CmpOp
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action22<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> CmpOp {
     CmpOp::Gt
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action23<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action23<'input>(
     input: &'input str,
     (_, id, _): (usize, BasicBlockId, usize),
     (_, args, _): (usize, core::option::Option<Vec<Operand>>, usize),
-) -> Target
-{
+) -> Target {
     Target(id, args)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action24<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action24<'input>(
     input: &'input str,
     (_, _, _): (usize, &'input str, usize),
     (_, args, _): (usize, Vec<Operand>, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     args
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action25<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, Literal, usize),
-) -> Operand
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action25<'input>(input: &'input str, (_, __0, _): (usize, Literal, usize)) -> Operand {
     Operand::Literal(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action26<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, RegId, usize),
-) -> Operand
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action26<'input>(input: &'input str, (_, __0, _): (usize, RegId, usize)) -> Operand {
     Operand::Register(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action27<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, i64, usize),
-) -> Literal
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action27<'input>(input: &'input str, (_, __0, _): (usize, i64, usize)) -> Literal {
     Literal::Int(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action28<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action28<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::U8
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action29<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action29<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::U16
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action30<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action30<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::U32
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action31<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action31<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::U64
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action32<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action32<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::I8
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action33<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action33<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::I16
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action34<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action34<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::I32
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action35<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action35<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::I64
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action36<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action36<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::Void
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action37<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> Type
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action37<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> Type {
     Type::Bool
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action38<
-    'input,
->(
-    input: &'input str,
-    (_, id, _): (usize, &'input str, usize),
-) -> String
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action38<'input>(input: &'input str, (_, id, _): (usize, &'input str, usize)) -> String {
     id[1..].to_string()
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action39<
-    'input,
->(
-    input: &'input str,
-    (_, id, _): (usize, &'input str, usize),
-) -> RegId
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action39<'input>(input: &'input str, (_, id, _): (usize, &'input str, usize)) -> RegId {
     RegId(u32::from_str(&id[1..]).unwrap())
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action40<
-    'input,
->(
-    input: &'input str,
-    (_, id, _): (usize, &'input str, usize),
-) -> BasicBlockId
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action40<'input>(input: &'input str, (_, id, _): (usize, &'input str, usize)) -> BasicBlockId {
     BasicBlockId(u32::from_str(&id[2..]).unwrap())
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action41<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action41<'input>(
     input: &'input str,
     (_, s, _): (usize, core::option::Option<&'input str>, usize),
     (_, num, _): (usize, u64, usize),
-) -> i64
-{
+) -> i64 {
     match s {
-     Some(_) => -(num as i64),
-     None => num as i64
-}
+        Some(_) => -(num as i64),
+        None => num as i64,
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action42<
-    'input,
->(
-    input: &'input str,
-    (_, __0, _): (usize, &'input str, usize),
-) -> u64
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action42<'input>(input: &'input str, (_, __0, _): (usize, &'input str, usize)) -> u64 {
     0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action43<
-    'input,
->(
-    input: &'input str,
-    (_, s, _): (usize, &'input str, usize),
-) -> u64
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action43<'input>(input: &'input str, (_, s, _): (usize, &'input str, usize)) -> u64 {
     u64::from_str(s).unwrap()
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action44<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action44<'input>(
     input: &'input str,
     (_, __0, _): (usize, &'input str, usize),
-) -> core::option::Option<&'input str>
-{
+) -> core::option::Option<&'input str> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action45<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action45<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<&'input str>
-{
+) -> core::option::Option<&'input str> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action46<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action46<'input>(
     input: &'input str,
     (_, mut v, _): (usize, alloc::vec::Vec<Operand>, usize),
     (_, e, _): (usize, core::option::Option<Operand>, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     match e {
         None => v,
         Some(e) => {
@@ -30140,65 +30112,70 @@ fn __action46<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action47<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action47<'input>(
     input: &'input str,
     (_, __0, _): (usize, Vec<Operand>, usize),
-) -> core::option::Option<Vec<Operand>>
-{
+) -> core::option::Option<Vec<Operand>> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action48<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action48<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<Vec<Operand>>
-{
+) -> core::option::Option<Vec<Operand>> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action49<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action49<'input>(
     input: &'input str,
     (_, __0, _): (usize, Operand, usize),
-) -> core::option::Option<Operand>
-{
+) -> core::option::Option<Operand> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action50<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action50<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<Operand>
-{
+) -> core::option::Option<Operand> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action51<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action51<'input>(
     input: &'input str,
     (_, mut v, _): (usize, alloc::vec::Vec<Arg>, usize),
     (_, e, _): (usize, core::option::Option<Arg>, usize),
-) -> Vec<Arg>
-{
+) -> Vec<Arg> {
     match e {
         None => v,
         Some(e) => {
@@ -30209,90 +30186,97 @@ fn __action51<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action52<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action52<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<Instruction>
-{
+) -> alloc::vec::Vec<Instruction> {
     alloc::vec![]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action53<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action53<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Instruction>, usize),
-) -> alloc::vec::Vec<Instruction>
-{
+) -> alloc::vec::Vec<Instruction> {
     v
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action54<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action54<'input>(
     input: &'input str,
     (_, __0, _): (usize, Vec<Arg>, usize),
-) -> core::option::Option<Vec<Arg>>
-{
+) -> core::option::Option<Vec<Arg>> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action55<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action55<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<Vec<Arg>>
-{
+) -> core::option::Option<Vec<Arg>> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action56<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action56<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<BasicBlock>
-{
+) -> alloc::vec::Vec<BasicBlock> {
     alloc::vec![]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action57<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action57<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<BasicBlock>, usize),
-) -> alloc::vec::Vec<BasicBlock>
-{
+) -> alloc::vec::Vec<BasicBlock> {
     v
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action58<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action58<'input>(
     input: &'input str,
     (_, mut v, _): (usize, alloc::vec::Vec<Type>, usize),
     (_, e, _): (usize, core::option::Option<Type>, usize),
-) -> Vec<Type>
-{
+) -> Vec<Type> {
     match e {
         None => v,
         Some(e) => {
@@ -30303,779 +30287,683 @@ fn __action58<
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action59<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action59<'input>(
     input: &'input str,
     (_, __0, _): (usize, Function, usize),
-) -> alloc::vec::Vec<Function>
-{
+) -> alloc::vec::Vec<Function> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action60<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action60<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Function>, usize),
     (_, e, _): (usize, Function, usize),
-) -> alloc::vec::Vec<Function>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<Function> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action61<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action61<'input>(
     input: &'input str,
     (_, __0, _): (usize, Type, usize),
-) -> core::option::Option<Type>
-{
+) -> core::option::Option<Type> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action62<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action62<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<Type>
-{
+) -> core::option::Option<Type> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action63<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action63<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<Type>
-{
+) -> alloc::vec::Vec<Type> {
     alloc::vec![]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action64<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action64<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Type>, usize),
-) -> alloc::vec::Vec<Type>
-{
+) -> alloc::vec::Vec<Type> {
     v
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action65<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action65<'input>(
     input: &'input str,
     (_, __0, _): (usize, Type, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Type
-{
+) -> Type {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action66<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action66<'input>(
     input: &'input str,
     (_, __0, _): (usize, BasicBlock, usize),
-) -> alloc::vec::Vec<BasicBlock>
-{
+) -> alloc::vec::Vec<BasicBlock> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action67<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action67<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<BasicBlock>, usize),
     (_, e, _): (usize, BasicBlock, usize),
-) -> alloc::vec::Vec<BasicBlock>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<BasicBlock> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action68<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action68<'input>(
     input: &'input str,
     (_, __0, _): (usize, Instruction, usize),
-) -> alloc::vec::Vec<Instruction>
-{
+) -> alloc::vec::Vec<Instruction> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action69<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action69<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Instruction>, usize),
     (_, e, _): (usize, Instruction, usize),
-) -> alloc::vec::Vec<Instruction>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<Instruction> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action70<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action70<'input>(
     input: &'input str,
     (_, __0, _): (usize, Arg, usize),
-) -> core::option::Option<Arg>
-{
+) -> core::option::Option<Arg> {
     Some(__0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action71<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action71<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> core::option::Option<Arg>
-{
+) -> core::option::Option<Arg> {
     None
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action72<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action72<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<Arg>
-{
+) -> alloc::vec::Vec<Arg> {
     alloc::vec![]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action73<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action73<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Arg>, usize),
-) -> alloc::vec::Vec<Arg>
-{
+) -> alloc::vec::Vec<Arg> {
     v
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action74<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action74<'input>(
     input: &'input str,
     (_, __0, _): (usize, Arg, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Arg
-{
+) -> Arg {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action75<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action75<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<Operand>
-{
+) -> alloc::vec::Vec<Operand> {
     alloc::vec![]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action76<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action76<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Operand>, usize),
-) -> alloc::vec::Vec<Operand>
-{
+) -> alloc::vec::Vec<Operand> {
     v
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action77<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action77<'input>(
     input: &'input str,
     (_, __0, _): (usize, Operand, usize),
     (_, _, _): (usize, &'input str, usize),
-) -> Operand
-{
+) -> Operand {
     __0
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action78<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action78<'input>(
     input: &'input str,
     (_, __0, _): (usize, Operand, usize),
-) -> alloc::vec::Vec<Operand>
-{
+) -> alloc::vec::Vec<Operand> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action79<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action79<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Operand>, usize),
     (_, e, _): (usize, Operand, usize),
-) -> alloc::vec::Vec<Operand>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<Operand> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action80<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action80<'input>(
     input: &'input str,
     (_, __0, _): (usize, Arg, usize),
-) -> alloc::vec::Vec<Arg>
-{
+) -> alloc::vec::Vec<Arg> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action81<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action81<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Arg>, usize),
     (_, e, _): (usize, Arg, usize),
-) -> alloc::vec::Vec<Arg>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<Arg> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action82<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action82<'input>(
     input: &'input str,
     (_, __0, _): (usize, Type, usize),
-) -> alloc::vec::Vec<Type>
-{
+) -> alloc::vec::Vec<Type> {
     alloc::vec![__0]
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
-fn __action83<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action83<'input>(
     input: &'input str,
     (_, v, _): (usize, alloc::vec::Vec<Type>, usize),
     (_, e, _): (usize, Type, usize),
-) -> alloc::vec::Vec<Type>
-{
-    { let mut v = v; v.push(e); v }
+) -> alloc::vec::Vec<Type> {
+    {
+        let mut v = v;
+        v.push(e);
+        v
+    }
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action84<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action84<'input>(
     input: &'input str,
     __0: (usize, &'input str, usize),
     __1: (usize, u64, usize),
-) -> i64
-{
+) -> i64 {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action44(
-        input,
-        __0,
-    );
+    let __temp0 = __action44(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action41(
-        input,
-        __temp0,
-        __1,
-    )
+    __action41(input, __temp0, __1)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action85<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, u64, usize),
-) -> i64
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action85<'input>(input: &'input str, __0: (usize, u64, usize)) -> i64 {
     let __start0 = __0.0;
     let __end0 = __0.0;
-    let __temp0 = __action45(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action45(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action41(
-        input,
-        __temp0,
-        __0,
-    )
+    __action41(input, __temp0, __0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action86<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action86<'input>(
     input: &'input str,
     __0: (usize, Arg, usize),
     __1: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Arg>
-{
+) -> alloc::vec::Vec<Arg> {
     let __start0 = __0.0;
     let __end0 = __1.2;
-    let __temp0 = __action74(
-        input,
-        __0,
-        __1,
-    );
+    let __temp0 = __action74(input, __0, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action80(
-        input,
-        __temp0,
-    )
+    __action80(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action87<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action87<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Arg>, usize),
     __1: (usize, Arg, usize),
     __2: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Arg>
-{
+) -> alloc::vec::Vec<Arg> {
     let __start0 = __1.0;
     let __end0 = __2.2;
-    let __temp0 = __action74(
-        input,
-        __1,
-        __2,
-    );
+    let __temp0 = __action74(input, __1, __2);
     let __temp0 = (__start0, __temp0, __end0);
-    __action81(
-        input,
-        __0,
-        __temp0,
-    )
+    __action81(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action88<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action88<'input>(
     input: &'input str,
     __0: (usize, core::option::Option<Arg>, usize),
-) -> Vec<Arg>
-{
+) -> Vec<Arg> {
     let __start0 = __0.0;
     let __end0 = __0.0;
-    let __temp0 = __action72(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action72(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action51(
-        input,
-        __temp0,
-        __0,
-    )
+    __action51(input, __temp0, __0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action89<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action89<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Arg>, usize),
     __1: (usize, core::option::Option<Arg>, usize),
-) -> Vec<Arg>
-{
+) -> Vec<Arg> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action73(
-        input,
-        __0,
-    );
+    let __temp0 = __action73(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action51(
-        input,
-        __temp0,
-        __1,
-    )
+    __action51(input, __temp0, __1)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action90<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action90<'input>(
     input: &'input str,
     __0: (usize, Operand, usize),
     __1: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Operand>
-{
+) -> alloc::vec::Vec<Operand> {
     let __start0 = __0.0;
     let __end0 = __1.2;
-    let __temp0 = __action77(
-        input,
-        __0,
-        __1,
-    );
+    let __temp0 = __action77(input, __0, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action78(
-        input,
-        __temp0,
-    )
+    __action78(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action91<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action91<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Operand>, usize),
     __1: (usize, Operand, usize),
     __2: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Operand>
-{
+) -> alloc::vec::Vec<Operand> {
     let __start0 = __1.0;
     let __end0 = __2.2;
-    let __temp0 = __action77(
-        input,
-        __1,
-        __2,
-    );
+    let __temp0 = __action77(input, __1, __2);
     let __temp0 = (__start0, __temp0, __end0);
-    __action79(
-        input,
-        __0,
-        __temp0,
-    )
+    __action79(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action92<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action92<'input>(
     input: &'input str,
     __0: (usize, core::option::Option<Operand>, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     let __start0 = __0.0;
     let __end0 = __0.0;
-    let __temp0 = __action75(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action75(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action46(
-        input,
-        __temp0,
-        __0,
-    )
+    __action46(input, __temp0, __0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action93<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action93<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Operand>, usize),
     __1: (usize, core::option::Option<Operand>, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action76(
-        input,
-        __0,
-    );
+    let __temp0 = __action76(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action46(
-        input,
-        __temp0,
-        __1,
-    )
+    __action46(input, __temp0, __1)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action94<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action94<'input>(
     input: &'input str,
     __0: (usize, Type, usize),
     __1: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Type>
-{
+) -> alloc::vec::Vec<Type> {
     let __start0 = __0.0;
     let __end0 = __1.2;
-    let __temp0 = __action65(
-        input,
-        __0,
-        __1,
-    );
+    let __temp0 = __action65(input, __0, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action82(
-        input,
-        __temp0,
-    )
+    __action82(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action95<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action95<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Type>, usize),
     __1: (usize, Type, usize),
     __2: (usize, &'input str, usize),
-) -> alloc::vec::Vec<Type>
-{
+) -> alloc::vec::Vec<Type> {
     let __start0 = __1.0;
     let __end0 = __2.2;
-    let __temp0 = __action65(
-        input,
-        __1,
-        __2,
-    );
+    let __temp0 = __action65(input, __1, __2);
     let __temp0 = (__start0, __temp0, __end0);
-    __action83(
-        input,
-        __0,
-        __temp0,
-    )
+    __action83(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action96<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action96<'input>(
     input: &'input str,
     __0: (usize, core::option::Option<Type>, usize),
-) -> Vec<Type>
-{
+) -> Vec<Type> {
     let __start0 = __0.0;
     let __end0 = __0.0;
-    let __temp0 = __action63(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action63(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action58(
-        input,
-        __temp0,
-        __0,
-    )
+    __action58(input, __temp0, __0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action97<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action97<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Type>, usize),
     __1: (usize, core::option::Option<Type>, usize),
-) -> Vec<Type>
-{
+) -> Vec<Type> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action64(
-        input,
-        __0,
-    );
+    let __temp0 = __action64(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action58(
-        input,
-        __temp0,
-        __1,
-    )
+    __action58(input, __temp0, __1)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action98<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, Arg, usize),
-) -> Vec<Arg>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action98<'input>(input: &'input str, __0: (usize, Arg, usize)) -> Vec<Arg> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action70(
-        input,
-        __0,
-    );
+    let __temp0 = __action70(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action88(
-        input,
-        __temp0,
-    )
+    __action88(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action99<
-    'input,
->(
-    input: &'input str,
-    __lookbehind: &usize,
-    __lookahead: &usize,
-) -> Vec<Arg>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action99<'input>(input: &'input str, __lookbehind: &usize, __lookahead: &usize) -> Vec<Arg> {
     let __start0 = *__lookbehind;
     let __end0 = *__lookahead;
-    let __temp0 = __action71(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action71(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action88(
-        input,
-        __temp0,
-    )
+    __action88(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action100<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action100<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Arg>, usize),
     __1: (usize, Arg, usize),
-) -> Vec<Arg>
-{
+) -> Vec<Arg> {
     let __start0 = __1.0;
     let __end0 = __1.2;
-    let __temp0 = __action70(
-        input,
-        __1,
-    );
+    let __temp0 = __action70(input, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action89(
-        input,
-        __0,
-        __temp0,
-    )
+    __action89(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action101<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, alloc::vec::Vec<Arg>, usize),
-) -> Vec<Arg>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action101<'input>(input: &'input str, __0: (usize, alloc::vec::Vec<Arg>, usize)) -> Vec<Arg> {
     let __start0 = __0.2;
     let __end0 = __0.2;
-    let __temp0 = __action71(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action71(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action89(
-        input,
-        __0,
-        __temp0,
-    )
+    __action89(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action102<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action102<'input>(
     input: &'input str,
     __0: (usize, &'input str, usize),
     __1: (usize, Type, usize),
@@ -31085,36 +30973,21 @@ fn __action102<
     __5: (usize, &'input str, usize),
     __6: (usize, &'input str, usize),
     __7: (usize, &'input str, usize),
-) -> Function
-{
+) -> Function {
     let __start0 = __6.2;
     let __end0 = __7.0;
-    let __temp0 = __action56(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action56(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action9(
-        input,
-        __0,
-        __1,
-        __2,
-        __3,
-        __4,
-        __5,
-        __6,
-        __temp0,
-        __7,
-    )
+    __action9(input, __0, __1, __2, __3, __4, __5, __6, __temp0, __7)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action103<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action103<'input>(
     input: &'input str,
     __0: (usize, &'input str, usize),
     __1: (usize, Type, usize),
@@ -31125,514 +30998,355 @@ fn __action103<
     __6: (usize, &'input str, usize),
     __7: (usize, alloc::vec::Vec<BasicBlock>, usize),
     __8: (usize, &'input str, usize),
-) -> Function
-{
+) -> Function {
     let __start0 = __7.0;
     let __end0 = __7.2;
-    let __temp0 = __action57(
-        input,
-        __7,
-    );
+    let __temp0 = __action57(input, __7);
     let __temp0 = (__start0, __temp0, __end0);
-    __action9(
-        input,
-        __0,
-        __1,
-        __2,
-        __3,
-        __4,
-        __5,
-        __6,
-        __temp0,
-        __8,
-    )
+    __action9(input, __0, __1, __2, __3, __4, __5, __6, __temp0, __8)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action104<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action104<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, Vec<Arg>, usize),
     __2: (usize, &'input str, usize),
     __3: (usize, alloc::vec::Vec<Instruction>, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __1.0;
     let __end0 = __1.2;
-    let __temp0 = __action54(
-        input,
-        __1,
-    );
+    let __temp0 = __action54(input, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action10(
-        input,
-        __0,
-        __temp0,
-        __2,
-        __3,
-    )
+    __action10(input, __0, __temp0, __2, __3)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action105<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action105<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, &'input str, usize),
     __2: (usize, alloc::vec::Vec<Instruction>, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __0.2;
     let __end0 = __1.0;
-    let __temp0 = __action55(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action55(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action10(
-        input,
-        __0,
-        __temp0,
-        __1,
-        __2,
-    )
+    __action10(input, __0, __temp0, __1, __2)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action106<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action106<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, Vec<Arg>, usize),
     __2: (usize, &'input str, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __2.2;
     let __end0 = __2.2;
-    let __temp0 = __action52(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action52(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action104(
-        input,
-        __0,
-        __1,
-        __2,
-        __temp0,
-    )
+    __action104(input, __0, __1, __2, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action107<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action107<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, Vec<Arg>, usize),
     __2: (usize, &'input str, usize),
     __3: (usize, alloc::vec::Vec<Instruction>, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __3.0;
     let __end0 = __3.2;
-    let __temp0 = __action53(
-        input,
-        __3,
-    );
+    let __temp0 = __action53(input, __3);
     let __temp0 = (__start0, __temp0, __end0);
-    __action104(
-        input,
-        __0,
-        __1,
-        __2,
-        __temp0,
-    )
+    __action104(input, __0, __1, __2, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action108<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action108<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, &'input str, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __1.2;
     let __end0 = __1.2;
-    let __temp0 = __action52(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action52(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action105(
-        input,
-        __0,
-        __1,
-        __temp0,
-    )
+    __action105(input, __0, __1, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action109<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action109<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, &'input str, usize),
     __2: (usize, alloc::vec::Vec<Instruction>, usize),
-) -> BasicBlock
-{
+) -> BasicBlock {
     let __start0 = __2.0;
     let __end0 = __2.2;
-    let __temp0 = __action53(
-        input,
-        __2,
-    );
+    let __temp0 = __action53(input, __2);
     let __temp0 = (__start0, __temp0, __end0);
-    __action105(
-        input,
-        __0,
-        __1,
-        __temp0,
-    )
+    __action105(input, __0, __1, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action110<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, Operand, usize),
-) -> Vec<Operand>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action110<'input>(input: &'input str, __0: (usize, Operand, usize)) -> Vec<Operand> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action49(
-        input,
-        __0,
-    );
+    let __temp0 = __action49(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action92(
-        input,
-        __temp0,
-    )
+    __action92(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action111<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action111<'input>(
     input: &'input str,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     let __start0 = *__lookbehind;
     let __end0 = *__lookahead;
-    let __temp0 = __action50(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action50(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action92(
-        input,
-        __temp0,
-    )
+    __action92(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action112<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action112<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Operand>, usize),
     __1: (usize, Operand, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     let __start0 = __1.0;
     let __end0 = __1.2;
-    let __temp0 = __action49(
-        input,
-        __1,
-    );
+    let __temp0 = __action49(input, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action93(
-        input,
-        __0,
-        __temp0,
-    )
+    __action93(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action113<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action113<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Operand>, usize),
-) -> Vec<Operand>
-{
+) -> Vec<Operand> {
     let __start0 = __0.2;
     let __end0 = __0.2;
-    let __temp0 = __action50(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action50(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action93(
-        input,
-        __0,
-        __temp0,
-    )
+    __action93(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action114<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action114<'input>(
     input: &'input str,
     __0: (usize, &'input str, usize),
     __1: (usize, Type, usize),
     __2: (usize, Operand, usize),
-) -> Instruction
-{
+) -> Instruction {
     let __start0 = __2.0;
     let __end0 = __2.2;
-    let __temp0 = __action49(
-        input,
-        __2,
-    );
+    let __temp0 = __action49(input, __2);
     let __temp0 = (__start0, __temp0, __end0);
-    __action20(
-        input,
-        __0,
-        __1,
-        __temp0,
-    )
+    __action20(input, __0, __1, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action115<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action115<'input>(
     input: &'input str,
     __0: (usize, &'input str, usize),
     __1: (usize, Type, usize),
-) -> Instruction
-{
+) -> Instruction {
     let __start0 = __1.2;
     let __end0 = __1.2;
-    let __temp0 = __action50(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action50(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action20(
-        input,
-        __0,
-        __1,
-        __temp0,
-    )
+    __action20(input, __0, __1, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action116<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action116<'input>(
     input: &'input str,
     __0: (usize, BasicBlockId, usize),
     __1: (usize, Vec<Operand>, usize),
-) -> Target
-{
+) -> Target {
     let __start0 = __1.0;
     let __end0 = __1.2;
-    let __temp0 = __action47(
-        input,
-        __1,
-    );
+    let __temp0 = __action47(input, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action23(
-        input,
-        __0,
-        __temp0,
-    )
+    __action23(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action117<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, BasicBlockId, usize),
-) -> Target
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action117<'input>(input: &'input str, __0: (usize, BasicBlockId, usize)) -> Target {
     let __start0 = __0.2;
     let __end0 = __0.2;
-    let __temp0 = __action48(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action48(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action23(
-        input,
-        __0,
-        __temp0,
-    )
+    __action23(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action118<
-    'input,
->(
-    input: &'input str,
-    __0: (usize, Type, usize),
-) -> Vec<Type>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action118<'input>(input: &'input str, __0: (usize, Type, usize)) -> Vec<Type> {
     let __start0 = __0.0;
     let __end0 = __0.2;
-    let __temp0 = __action61(
-        input,
-        __0,
-    );
+    let __temp0 = __action61(input, __0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action96(
-        input,
-        __temp0,
-    )
+    __action96(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action119<
-    'input,
->(
-    input: &'input str,
-    __lookbehind: &usize,
-    __lookahead: &usize,
-) -> Vec<Type>
-{
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action119<'input>(input: &'input str, __lookbehind: &usize, __lookahead: &usize) -> Vec<Type> {
     let __start0 = *__lookbehind;
     let __end0 = *__lookahead;
-    let __temp0 = __action62(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action62(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action96(
-        input,
-        __temp0,
-    )
+    __action96(input, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action120<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action120<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Type>, usize),
     __1: (usize, Type, usize),
-) -> Vec<Type>
-{
+) -> Vec<Type> {
     let __start0 = __1.0;
     let __end0 = __1.2;
-    let __temp0 = __action61(
-        input,
-        __1,
-    );
+    let __temp0 = __action61(input, __1);
     let __temp0 = (__start0, __temp0, __end0);
-    __action97(
-        input,
-        __0,
-        __temp0,
-    )
+    __action97(input, __0, __temp0)
 }
 
 #[allow(unused_variables)]
-#[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
-    clippy::just_underscores_and_digits)]
-fn __action121<
-    'input,
->(
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_lifetimes,
+    clippy::just_underscores_and_digits
+)]
+fn __action121<'input>(
     input: &'input str,
     __0: (usize, alloc::vec::Vec<Type>, usize),
-) -> Vec<Type>
-{
+) -> Vec<Type> {
     let __start0 = __0.2;
     let __end0 = __0.2;
-    let __temp0 = __action62(
-        input,
-        &__start0,
-        &__end0,
-    );
+    let __temp0 = __action62(input, &__start0, &__end0);
     let __temp0 = (__start0, __temp0, __end0);
-    __action97(
-        input,
-        __0,
-        __temp0,
-    )
+    __action97(input, __0, __temp0)
 }
 #[allow(clippy::type_complexity, dead_code)]
 
-pub  trait __ToTriple<'input, >
-{
-    fn to_triple(value: Self) -> Result<(usize,Token<'input>,usize), __lalrpop_util::ParseError<usize, Token<'input>, &'static str>>;
+pub trait __ToTriple<'input> {
+    fn to_triple(
+        value: Self,
+    ) -> Result<
+        (usize, Token<'input>, usize),
+        __lalrpop_util::ParseError<usize, Token<'input>, &'static str>,
+    >;
 }
 
-impl<'input, > __ToTriple<'input, > for (usize, Token<'input>, usize)
-{
-    fn to_triple(value: Self) -> Result<(usize,Token<'input>,usize), __lalrpop_util::ParseError<usize, Token<'input>, &'static str>> {
+impl<'input> __ToTriple<'input> for (usize, Token<'input>, usize) {
+    fn to_triple(
+        value: Self,
+    ) -> Result<
+        (usize, Token<'input>, usize),
+        __lalrpop_util::ParseError<usize, Token<'input>, &'static str>,
+    > {
         Ok(value)
     }
 }
-impl<'input, > __ToTriple<'input, > for Result<(usize, Token<'input>, usize), &'static str>
-{
-    fn to_triple(value: Self) -> Result<(usize,Token<'input>,usize), __lalrpop_util::ParseError<usize, Token<'input>, &'static str>> {
+impl<'input> __ToTriple<'input> for Result<(usize, Token<'input>, usize), &'static str> {
+    fn to_triple(
+        value: Self,
+    ) -> Result<
+        (usize, Token<'input>, usize),
+        __lalrpop_util::ParseError<usize, Token<'input>, &'static str>,
+    > {
         match value {
             Ok(v) => Ok(v),
             Err(error) => Err(__lalrpop_util::ParseError::User { error }),

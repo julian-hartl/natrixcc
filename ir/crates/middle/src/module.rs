@@ -1,11 +1,24 @@
-use std::fmt::{Display, Formatter};
-use std::time::Instant;
+use std::{
+    fmt::{
+        Display,
+        Formatter,
+    },
+    time::Instant,
+};
+
 use cranelift_entity::PrimaryMap;
+use tracing::{
+    debug,
+    info,
+};
 
-use tracing::{debug, info};
-
-use crate::{Function, FunctionId, Instr, optimization};
-use crate::optimization::PipelineConfig;
+use crate::{
+    optimization,
+    optimization::PipelineConfig,
+    Function,
+    FunctionId,
+    Instr,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct Module {
@@ -14,9 +27,9 @@ pub struct Module {
 
 impl Module {
     pub fn find_function_by_name(&self, name: &str) -> Option<&Function> {
-        self.functions.values().find(
-            |function| function.name == name
-        )
+        self.functions
+            .values()
+            .find(|function| function.name == name)
     }
 
     pub fn optimize(&mut self, config: PipelineConfig) {

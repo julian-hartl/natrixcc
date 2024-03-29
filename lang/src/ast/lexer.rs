@@ -1,5 +1,9 @@
+use std::fmt::{
+    Display,
+    Formatter,
+};
+
 use crate::text::span::TextSpan;
-use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind {
@@ -89,7 +93,6 @@ impl Display for TokenKind {
             TokenKind::Colon => write!(f, "Colon"),
             TokenKind::Arrow => write!(f, "Arrow"),
             TokenKind::SemiColon => write!(f, "SemiColon"),
-
         }
     }
 }

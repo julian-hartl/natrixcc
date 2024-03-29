@@ -11,11 +11,11 @@ use crate::codegen::{
             },
             Function,
         },
+        Instr,
         TargetMachine,
     },
     selection_dag::Immediate,
 };
-use crate::codegen::machine::Instr;
 
 type Reg<B> = <<B as Backend>::TM as TargetMachine>::Reg;
 type BackInstr<B> = <<B as Backend>::TM as TargetMachine>::Instr;
@@ -23,7 +23,7 @@ type BackInstr<B> = <<B as Backend>::TM as TargetMachine>::Instr;
 pub trait Backend {
     type TM: TargetMachine;
 
-    type P: Pattern<TM=Self::TM>;
+    type P: Pattern<TM = Self::TM>;
 
     fn patterns() -> &'static [Self::P];
 

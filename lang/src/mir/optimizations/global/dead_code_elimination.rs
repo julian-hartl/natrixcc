@@ -1,7 +1,13 @@
 use std::collections::HashSet;
 
-use crate::mir::{InstructionIdx, InstructionKind, MIR, TerminatorKind, Value};
-use crate::mir::optimizations::MIRPass;
+use crate::mir::{
+    optimizations::MIRPass,
+    InstructionIdx,
+    InstructionKind,
+    TerminatorKind,
+    Value,
+    MIR,
+};
 
 struct ReferencedInstructions(HashSet<InstructionIdx>);
 
@@ -30,27 +36,17 @@ impl MIRPass for DeadCodeElimination {
                 for instruction_idx in bb.instructions.iter().copied() {
                     let instruction = &mut function.instructions[instruction_idx];
                     match &mut instruction.kind {
-                        InstructionKind::Binary {
-                            lhs,
-                            rhs,
-                            ..
-                        } => {
+                        InstructionKind::Binary { lhs, rhs, .. } => {
                             referenced_instructions.insert_if_is_instruction_ref(lhs);
                             referenced_instructions.insert_if_is_instruction_ref(rhs);
                         }
-                        InstructionKind::Unary {
-                            operand,
-                            ..
-                        } => {
+                        InstructionKind::Unary { operand, .. } => {
                             referenced_instructions.insert_if_is_instruction_ref(operand);
                         }
                         InstructionKind::Value(value) => {
                             referenced_instructions.insert_if_is_instruction_ref(value);
                         }
-                        InstructionKind::Call {
-                            arguments,
-                            ..
-                        } => {
+                        InstructionKind::Call { arguments, .. } => {
                             for argument in arguments.iter_mut() {
                                 referenced_instructions.insert_if_is_instruction_ref(argument);
                             }
@@ -79,7 +75,9 @@ impl MIRPass for DeadCodeElimination {
             for bb in function.basic_blocks.iter().copied() {
                 let bb = mir.basic_blocks.get_mut_or_panic(bb);
                 bb.instructions.retain(|instruction_idx| {
-                    if referenced_instructions.0.contains(instruction_idx) || !function.instructions[*instruction_idx].is_pure() {
+                    if referenced_instructions.0.contains(instruction_idx)
+                        || !function.instructions[*instruction_idx].is_pure()
+                    {
                         true
                     } else {
                         changes += 1;

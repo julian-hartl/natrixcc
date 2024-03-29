@@ -1,17 +1,27 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-
 use fusion_compiler::Idx;
 
-use crate::compilation_unit::GlobalScope;
-use crate::hir::{HIR, HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind};
+use crate::{
+    compilation_unit::GlobalScope,
+    hir::{
+        HIRExpr,
+        HIRExprKind,
+        HIRStmt,
+        HIRStmtKind,
+        HIR,
+    },
+};
 
 pub struct HIRWriter<W> {
     _phantom: std::marker::PhantomData<W>,
 }
 
-impl<W> HIRWriter<W> where W: Write {
+impl<W> HIRWriter<W>
+where
+    W: Write,
+{
     pub fn write(writer: &mut W, hir: &HIR, global_scope: &GlobalScope) -> Result<()> {
         for (function_id, body) in &hir.functions {
             let function = global_scope.functions.get(*function_id);
@@ -34,7 +44,11 @@ impl<W> HIRWriter<W> where W: Write {
         Ok(())
     }
 
-    fn write_statement(writer: &mut W, statement: &HIRStmt, global_scope: &GlobalScope) -> Result<()> {
+    fn write_statement(
+        writer: &mut W,
+        statement: &HIRStmt,
+        global_scope: &GlobalScope,
+    ) -> Result<()> {
         match &statement.kind {
             HIRStmtKind::Loop { body } => {
                 writeln!(writer, "loop {{")?;
@@ -43,7 +57,11 @@ impl<W> HIRWriter<W> where W: Write {
                 }
                 writeln!(writer, "}}")?;
             }
-            HIRStmtKind::If { condition, then_body, else_body } => {
+            HIRStmtKind::If {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 write!(writer, "if ")?;
                 Self::write_expression(writer, condition, global_scope)?;
                 writeln!(writer, " {{")?;
@@ -72,7 +90,10 @@ impl<W> HIRWriter<W> where W: Write {
                 Self::write_expression(writer, expr, global_scope)?;
                 writeln!(writer)?;
             }
-            HIRStmtKind::Decl { variable_idx, initializer } => {
+            HIRStmtKind::Decl {
+                variable_idx,
+                initializer,
+            } => {
                 let variable = global_scope.variables.get(*variable_idx);
                 write!(writer, "let {}: {}", variable.name, variable.ty)?;
                 if let Some(initializer) = initializer {
@@ -94,7 +115,11 @@ impl<W> HIRWriter<W> where W: Write {
         Ok(())
     }
 
-    fn write_expression(writer: &mut W, expression: &HIRExpr, global_scope: &GlobalScope) -> Result<()> {
+    fn write_expression(
+        writer: &mut W,
+        expression: &HIRExpr,
+        global_scope: &GlobalScope,
+    ) -> Result<()> {
         match &expression.kind {
             HIRExprKind::Binary { operator, lhs, rhs } => {
                 Self::write_expression(writer, lhs.as_ref(), global_scope)?;
@@ -105,7 +130,10 @@ impl<W> HIRWriter<W> where W: Write {
                 write!(writer, "{}", operator)?;
                 Self::write_expression(writer, operand.as_ref(), global_scope)?;
             }
-            HIRExprKind::Call { function_idx, arguments } => {
+            HIRExprKind::Call {
+                function_idx,
+                arguments,
+            } => {
                 let function = global_scope.functions.get(*function_idx);
                 write!(writer, "{}(", function.name)?;
                 for (arg_idx, arg) in arguments.iter().enumerate() {

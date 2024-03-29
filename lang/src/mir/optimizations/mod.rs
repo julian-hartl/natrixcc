@@ -1,7 +1,7 @@
 use crate::mir::MIR;
 
-mod local;
 mod global;
+mod local;
 
 pub trait MIRPass {
     /// Returns the number of changes made to the MIR
@@ -20,7 +20,7 @@ impl Optimizer {
                 Box::new(global::branch_elimination::BranchElimination),
                 Box::new(global::dead_code_elimination::DeadCodeElimination),
                 Box::new(local::LocalOptimizer::new()),
-            ]
+            ],
         }
     }
 
@@ -40,4 +40,3 @@ impl Optimizer {
         }
     }
 }
-

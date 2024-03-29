@@ -6,20 +6,19 @@ use std::{
     },
 };
 
+pub use builder::Builder;
 use daggy::petgraph::dot::{
     Config,
     Dot,
+};
+use natrix_middle::{
+    cfg::BasicBlockId,
+    instruction::CmpOp,
 };
 use rustc_hash::FxHashMap;
 use smallvec::{
     smallvec,
     SmallVec,
-};
-
-pub use builder::Builder;
-use natrix_middle::{
-    cfg::BasicBlockId,
-    instruction::CmpOp,
 };
 
 use crate::codegen::machine::{
@@ -28,8 +27,8 @@ use crate::codegen::machine::{
         VReg,
     },
     Size,
+    TargetMachine,
 };
-use crate::codegen::machine::TargetMachine;
 
 pub mod builder;
 

@@ -1,11 +1,19 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
-use cranelift_entity::{entity_impl, PrimaryMap};
+use cranelift_entity::{
+    entity_impl,
+    PrimaryMap,
+};
 
-use crate::cfg::Cfg;
-use crate::instruction::VRegData;
-use crate::ty::Type;
-use crate::VReg;
+use crate::{
+    cfg::Cfg,
+    instruction::VRegData,
+    ty::Type,
+    VReg,
+};
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct FunctionId(u32);
@@ -21,7 +29,6 @@ pub struct Function {
     pub cfg: Cfg,
 }
 
-
 impl Function {
     pub fn new(name: String, params: Vec<Type>, ret_ty: Type) -> Self {
         Self {
@@ -31,7 +38,6 @@ impl Function {
             cfg: Cfg::new(),
         }
     }
-
 }
 
 impl Display for Function {

@@ -1,7 +1,15 @@
-use crate::diagnostics::Diagnostic;
-use crate::text::SourceText;
 use std::cmp;
-use termion::color::{Fg, Red, Reset};
+
+use termion::color::{
+    Fg,
+    Red,
+    Reset,
+};
+
+use crate::{
+    diagnostics::Diagnostic,
+    text::SourceText,
+};
 
 pub struct DiagnosticsPrinter<'a> {
     text: &'a SourceText,
@@ -23,7 +31,6 @@ impl<'a> DiagnosticsPrinter<'a> {
     ///          ^
     ///          |
     ///          +-- This is the error message (<line>:<column>)
-    ///
     pub fn stringify_diagnostic(&self, diagnostic: &Diagnostic) -> String {
         let line_index = self.text.line_index(diagnostic.span.start);
         let line = self.text.get_line(line_index);

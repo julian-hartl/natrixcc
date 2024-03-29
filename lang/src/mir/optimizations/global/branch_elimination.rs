@@ -1,10 +1,17 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 
 use itertools::Itertools;
 
-use crate::mir::{InstructionKind, MIR, TerminatorKind};
-use crate::mir::basic_block::BasicBlockIdx;
-use crate::mir::optimizations::MIRPass;
+use crate::mir::{
+    basic_block::BasicBlockIdx,
+    optimizations::MIRPass,
+    InstructionKind,
+    TerminatorKind,
+    MIR,
+};
 
 /// Branch elimination is a global optimization that removes branches that are not needed.
 ///
@@ -48,7 +55,9 @@ impl AppendixGraph {
         let mut paths = all_paths.clone();
         // Step 2: Filter out subset paths
         paths.retain(|path| {
-            !all_paths.iter().any(|other_path| Self::is_subset_path(path, other_path))
+            !all_paths
+                .iter()
+                .any(|other_path| Self::is_subset_path(path, other_path))
         });
 
         paths
@@ -71,7 +80,6 @@ impl AppendixGraph {
 
         false
     }
-
 }
 
 impl MIRPass for BranchElimination {
@@ -90,14 +98,25 @@ impl MIRPass for BranchElimination {
                                 TerminatorKind::Return { .. } => {}
                                 TerminatorKind::Jump(target_idx) => {
                                     let target_idx = *target_idx;
-                                    if predecessors.get_immediate(target_idx).map(|i| i.len()).unwrap_or_default() == 1 {
+                                    if predecessors
+                                        .get_immediate(target_idx)
+                                        .map(|i| i.len())
+                                        .unwrap_or_default()
+                                        == 1
+                                    {
                                         appendix_graph.add_edge(bb_idx, target_idx);
                                     }
                                 }
-                                TerminatorKind::SwitchInt { value, cases, default } => {
+                                TerminatorKind::SwitchInt {
+                                    value,
+                                    cases,
+                                    default,
+                                } => {
                                     if let Some(value) = value.as_i32() {
                                         tracing::info!("Found a switch on a constant value, replacing with a jump to the target");
-                                        let case = cases.iter().find(|(case_value, _)| *case_value as i32 == value);
+                                        let case = cases
+                                            .iter()
+                                            .find(|(case_value, _)| *case_value as i32 == value);
                                         let target = case.map(|c| c.1).unwrap_or(*default);
                                         terminator.kind = TerminatorKind::Jump(target);
                                         changes += 1;
@@ -127,20 +146,26 @@ impl MIRPass for BranchElimination {
                             for successor in successors {
                                 let successor = mir.basic_blocks.get_mut_or_panic(*successor);
                                 for instruction_idx in successor.instructions.iter_mut() {
-                                    let instruction = function.instructions.get_mut(*instruction_idx);
+                                    let instruction =
+                                        function.instructions.get_mut(*instruction_idx);
                                     match &mut instruction.kind {
                                         InstructionKind::Binary { .. } => {}
                                         InstructionKind::Unary { .. } => {}
                                         InstructionKind::Value(_) => {}
                                         InstructionKind::Call { .. } => {}
                                         InstructionKind::Phi(phi) => {
-                                            phi.operands = phi.operands.iter().copied().map(|(from, instruction_idx)| {
-                                                if from == bb_to_append_idx {
-                                                    (bb_idx, instruction_idx)
-                                                } else {
-                                                    (from, instruction_idx)
-                                                }
-                                            }).collect();
+                                            phi.operands = phi
+                                                .operands
+                                                .iter()
+                                                .copied()
+                                                .map(|(from, instruction_idx)| {
+                                                    if from == bb_to_append_idx {
+                                                        (bb_idx, instruction_idx)
+                                                    } else {
+                                                        (from, instruction_idx)
+                                                    }
+                                                })
+                                                .collect();
                                         }
                                     }
                                 }

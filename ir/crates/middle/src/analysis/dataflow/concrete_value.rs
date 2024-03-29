@@ -1,10 +1,22 @@
-use rustc_hash::{FxHashMap, FxHashSet};
-use crate::analysis::dataflow::lattice;
-use crate::{Instr, InstrKind, VReg};
-use crate::analysis::dataflow::forward::ForwardAnalysisRunner;
-use crate::cfg::Terminator;
+use rustc_hash::{
+    FxHashMap,
+    FxHashSet,
+};
 
-use crate::instruction::{Const, Op};
+use crate::{
+    analysis::dataflow::{
+        forward::ForwardAnalysisRunner,
+        lattice,
+    },
+    cfg::Terminator,
+    instruction::{
+        Const,
+        Op,
+    },
+    Instr,
+    InstrKind,
+    VReg,
+};
 
 #[derive(Debug, Default, Clone)]
 pub struct ConcreteValues {
@@ -13,17 +25,13 @@ pub struct ConcreteValues {
 
 impl ConcreteValues {
     pub const fn new(values: FxHashSet<Const>) -> Self {
-        Self {
-            values
-        }
+        Self { values }
     }
 
     pub fn from_single_value(value: Const) -> Self {
         let mut values = FxHashSet::default();
         values.insert(value);
-        Self {
-            values
-        }
+        Self { values }
     }
 
     pub fn as_single_value(&self) -> Option<&Const> {
@@ -43,7 +51,6 @@ impl lattice::Value for ConcreteValues {
     }
 }
 
-
 pub struct Analysis;
 pub type AnalysisRunner<'a> = ForwardAnalysisRunner<'a, Analysis>;
 
@@ -53,7 +60,10 @@ impl super::Analysis for Analysis {
     fn analyse_instr(instr: &Instr, values: &mut Self::V) {
         if let InstrKind::Op(instr) = &instr.kind {
             if let Op::Const(const_val) = &instr.op {
-                values.insert(instr.value, ConcreteValues::from_single_value(const_val.clone()));
+                values.insert(
+                    instr.value,
+                    ConcreteValues::from_single_value(const_val.clone()),
+                );
             }
         };
     }

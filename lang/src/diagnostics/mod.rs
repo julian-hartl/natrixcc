@@ -1,9 +1,16 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::{
+    cell::RefCell,
+    rc::Rc,
+};
 
-use crate::ast::lexer::{Token, TokenKind};
-use crate::text::span::TextSpan;
-use crate::typings::Type;
+use crate::{
+    ast::lexer::{
+        Token,
+        TokenKind,
+    },
+    text::span::TextSpan,
+    typings::Type,
+};
 
 pub mod printer;
 
@@ -155,9 +162,14 @@ impl DiagnosticsBag {
 
 #[cfg(test)]
 mod test {
-    use crate::compilation_unit::CompilationUnit;
-    use crate::diagnostics::{Diagnostic, DiagnosticKind};
-    use crate::text::span::TextSpan;
+    use crate::{
+        compilation_unit::CompilationUnit,
+        diagnostics::{
+            Diagnostic,
+            DiagnosticKind,
+        },
+        text::span::TextSpan,
+    };
 
     struct DiagnosticsVerifier {
         actual: Vec<Diagnostic>,

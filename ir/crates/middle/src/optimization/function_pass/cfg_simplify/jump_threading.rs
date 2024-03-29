@@ -1,9 +1,19 @@
 use tracing::debug;
-use crate::cfg::{BasicBlockId, BranchTerm, TerminatorKind};
-use crate::FunctionId;
-use crate::instruction::{Const, Op};
-use crate::module::Module;
-use crate::optimization::basic_block_pass;
+
+use crate::{
+    cfg::{
+        BasicBlockId,
+        BranchTerm,
+        TerminatorKind,
+    },
+    instruction::{
+        Const,
+        Op,
+    },
+    module::Module,
+    optimization::basic_block_pass,
+    FunctionId,
+};
 
 /// # Jump threading optimization pass
 ///
@@ -24,9 +34,9 @@ use crate::optimization::basic_block_pass;
 /// 5. Depending on the constant, we choose the new jump target and replace the conditional branch with an unconditional branch
 /// 6. Update the successors of the basic block - this is currently implemented by just recomputing the successors,
 /// but could be optimized as we know the exact successors after the optimization
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```text
 /// fun @test() {
 /// bb0:
@@ -37,7 +47,7 @@ use crate::optimization::basic_block_pass;
 ///   ret    
 /// }
 /// ```
-/// 
+///
 /// After the optimization, the function will look like this:
 ///
 /// ```text
@@ -50,11 +60,10 @@ use crate::optimization::basic_block_pass;
 ///   ret    
 /// }
 /// ```
-/// 
+///
 /// ## Costs of this pass
 ///
-/// This optimization only needs to check the terminator of the basic block and therefore is relatively cheap to run. 
-///
+/// This optimization only needs to check the terminator of the basic block and therefore is relatively cheap to run.
 #[derive(Default)]
 pub struct Pass {}
 
@@ -65,7 +74,12 @@ impl crate::optimization::Pass for Pass {
 }
 
 impl basic_block_pass::BasicBlockPass for Pass {
-    fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block: BasicBlockId) -> usize {
+    fn run_on_basic_block(
+        &mut self,
+        module: &mut Module,
+        function: FunctionId,
+        basic_block: BasicBlockId,
+    ) -> usize {
         let cfg = &mut module.functions[function].cfg;
         let bb = cfg.basic_block_mut(basic_block);
         let changes = bb.update_terminator(|term| {
@@ -93,7 +107,7 @@ impl basic_block_pass::BasicBlockPass for Pass {
             }
         });
         // Only recompute successors if we have changed anything as
-        // recompute_successors does not check whether any updates have occurred 
+        // recompute_successors does not check whether any updates have occurred
         if changes > 0 {
             cfg.recompute_successors(basic_block);
         }

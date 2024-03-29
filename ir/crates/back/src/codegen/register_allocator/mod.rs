@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+pub use coalescer::Coalescer;
 use cranelift_entity::SecondaryMap;
 use daggy::Walker;
 use iter_tools::Itertools;
@@ -20,28 +21,28 @@ use smallvec::{
 };
 use tracing::debug;
 
-pub use coalescer::Coalescer;
-
 use crate::codegen::machine::{
     abi::{
         calling_convention::Slot,
         CallingConvention,
     },
-    function::Function,
+    function::{
+        BasicBlockId,
+        Function,
+    },
     instr::{
         Instr,
         PseudoInstr,
     },
-    InstrId,
     isa::PhysicalRegister,
     reg::{
         Register,
         VReg,
     },
+    InstrId,
     Size,
+    TargetMachine,
 };
-use crate::codegen::machine::function::BasicBlockId;
-use crate::codegen::machine::TargetMachine;
 
 mod coalescer;
 pub mod linear_scan;
@@ -358,7 +359,7 @@ impl InstrNumbering {
         InstrNumberingIter::new(self)
     }
 
-    pub fn iter_enumerated(&self) -> impl Iterator<Item=(InstrNr, InstrUid)> + '_ {
+    pub fn iter_enumerated(&self) -> impl Iterator<Item = (InstrNr, InstrUid)> + '_ {
         self.iter()
             .enumerate()
             .map(|(nr, instr_uid)| (nr as InstrNr, instr_uid))
@@ -417,7 +418,10 @@ impl LivenessRepr {
     }
 }
 
-struct LivenessReprDisplay<'func, 'liveness, A: TargetMachine>(&'liveness LivenessRepr, &'func Function<A>);
+struct LivenessReprDisplay<'func, 'liveness, A: TargetMachine>(
+    &'liveness LivenessRepr,
+    &'func Function<A>,
+);
 
 impl<A: TargetMachine> Display for LivenessReprDisplay<'_, '_, A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -540,7 +544,12 @@ impl<'liveness, A: TargetMachine> VRegAllocations<'liveness, A> {
     }
 }
 
-pub struct RegisterAllocator<'liveness, 'func, A: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, A>> {
+pub struct RegisterAllocator<
+    'liveness,
+    'func,
+    A: TargetMachine,
+    RegAlloc: RegAllocAlgorithm<'liveness, A>,
+> {
     algo: RegAlloc,
     func: &'func mut Function<A>,
     marker: std::marker::PhantomData<A>,
@@ -549,7 +558,7 @@ pub struct RegisterAllocator<'liveness, 'func, A: TargetMachine, RegAlloc: RegAl
 }
 
 impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness, TM>>
-RegisterAllocator<'liveness, 'func, TM, RegAlloc>
+    RegisterAllocator<'liveness, 'func, TM, RegAlloc>
 {
     pub fn new(func: &'func mut Function<TM>, liveness_repr: &'liveness LivenessRepr) -> Self {
         Self {
@@ -703,7 +712,7 @@ RegisterAllocator<'liveness, 'func, TM, RegAlloc>
                 .iter()
                 .map(|param| self.func.vregs[*param].size),
         )
-            .collect_vec();
+        .collect_vec();
         for (arg, slot) in self.func.params.iter().copied().zip(slots) {
             match slot {
                 Slot::Register(reg) => {
@@ -731,7 +740,7 @@ impl<TM: TargetMachine> Function<TM> {
                 self.0.entry(bb).or_default();
             }
 
-            fn liveins(&self, bb: BasicBlockId) -> impl Iterator<Item=VReg> + '_ {
+            fn liveins(&self, bb: BasicBlockId) -> impl Iterator<Item = VReg> + '_ {
                 self.0[&bb].iter().copied()
             }
         }

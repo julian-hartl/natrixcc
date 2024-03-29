@@ -1,6 +1,8 @@
 use crate::grammar;
 
-pub fn parse(input: &str) -> Result<Module, lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, &str>> {
+pub fn parse(
+    input: &str,
+) -> Result<Module, lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, &str>> {
     grammar::ModuleParser::new().parse(input)
 }
 
@@ -16,7 +18,6 @@ pub struct Function {
     pub args: Vec<Type>,
     pub basic_blocks: Vec<BasicBlock>,
 }
-
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Arg {
@@ -45,7 +46,7 @@ pub enum Instruction {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CmpOp {
     Eq,
-    Gt
+    Gt,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -84,48 +85,68 @@ pub struct BasicBlockId(pub u32);
 
 #[cfg(test)]
 mod tests {
-    use crate::grammar;
-    use crate::module::{Arg, BasicBlock, BasicBlockId, Function, Instruction, Operand, RegId, Type};
+    use crate::{
+        grammar,
+        module::{
+            Arg,
+            BasicBlock,
+            BasicBlockId,
+            Function,
+            Instruction,
+            Operand,
+            RegId,
+            Type,
+        },
+    };
 
     #[test]
     fn should_parse_function() {
-        let function = grammar::FunctionParser::new().parse(r"
+        let function = grammar::FunctionParser::new()
+            .parse(
+                r"
 fun i32 @add(i32, i32) {
 bb0(i32 v0, i32 v1):
     v2 = add i32 v0, v1;
     v3 = add i32 v2, v1;
     ret i32 v3;
 }
-        ").unwrap();
+        ",
+            )
+            .unwrap();
         assert_eq!(
             function,
             Function {
                 name: "add".to_string(),
                 ret_ty: Type::I32,
-                args: vec![
-                    Type::I32,
-                    Type::I32,
-                ],
-                basic_blocks: vec![
-                    BasicBlock {
-                        id: BasicBlockId(0),
-                        instructions: vec![
-                            Instruction::Add(RegId(2), Type::I32, Operand::Register(RegId(0)), Operand::Register(RegId(1))),
-                            Instruction::Add(RegId(3), Type::I32, Operand::Register(RegId(2)), Operand::Register(RegId(1))),
-                            Instruction::Ret(Type::I32, Some(Operand::Register(RegId(3)))),
-                        ],
-                        args: vec![
-                            Arg {
-                                id: RegId(0),
-                                ty: Type::I32,
-                            },
-                            Arg {
-                                id: RegId(1),
-                                ty: Type::I32,
-                            },
-                        ],
-                    },
-                ],
+                args: vec![Type::I32, Type::I32,],
+                basic_blocks: vec![BasicBlock {
+                    id: BasicBlockId(0),
+                    instructions: vec![
+                        Instruction::Add(
+                            RegId(2),
+                            Type::I32,
+                            Operand::Register(RegId(0)),
+                            Operand::Register(RegId(1))
+                        ),
+                        Instruction::Add(
+                            RegId(3),
+                            Type::I32,
+                            Operand::Register(RegId(2)),
+                            Operand::Register(RegId(1))
+                        ),
+                        Instruction::Ret(Type::I32, Some(Operand::Register(RegId(3)))),
+                    ],
+                    args: vec![
+                        Arg {
+                            id: RegId(0),
+                            ty: Type::I32,
+                        },
+                        Arg {
+                            id: RegId(1),
+                            ty: Type::I32,
+                        },
+                    ],
+                },],
             }
         )
     }

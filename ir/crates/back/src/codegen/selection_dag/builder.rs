@@ -1,17 +1,14 @@
+use codegen::selection_dag;
 use cranelift_entity::{
     EntityRef,
     SecondaryMap,
 };
 use daggy::{
-    NodeIndex,
     petgraph::visit::IntoNodeIdentifiers,
+    NodeIndex,
     Walker,
 };
 use iter_tools::Itertools;
-use rustc_hash::FxHashMap;
-use tracing::debug;
-
-use codegen::selection_dag;
 use natrix_middle::{
     cfg::{
         BasicBlockId,
@@ -26,7 +23,9 @@ use natrix_middle::{
     },
     ty::Type,
 };
+use rustc_hash::FxHashMap;
 use selection_dag::SelectionDAG;
+use tracing::debug;
 
 use crate::{
     codegen,
@@ -37,6 +36,7 @@ use crate::{
                 Register,
                 VReg,
             },
+            TargetMachine,
         },
         selection_dag::{
             Immediate,
@@ -47,7 +47,6 @@ use crate::{
         },
     },
 };
-use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
 pub struct Builder<'func, TM: TargetMachine> {

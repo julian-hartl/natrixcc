@@ -1,9 +1,52 @@
 use std::collections::HashMap;
 
-use crate::ast::{Ast, BinaryExpr, BlockExpr, CallExpr, Expr, ExprId, ExprKind, FunctionDeclaration, IfExpr, Item, ItemKind, StmtId, StmtKind, UnaryExpr};
-use crate::codegen::c::ast::{CAssignExpr, CAst, CBinaryExpr, CBinOperator, CBlock, CBool, CCallExpr, CExpr, CFunctionDecl, CFunctionImpl, CIfStmt, CItem, CNumber, CParameter, CReturn, CStmt, CType, CUnaryExpr, CUnOperator, CVarDecl, CVarExpr, CWhile};
-use crate::compilation_unit::{GlobalScope, VariableIdx};
-use crate::typings::Type;
+use crate::{
+    ast::{
+        Ast,
+        BinaryExpr,
+        BlockExpr,
+        CallExpr,
+        Expr,
+        ExprId,
+        ExprKind,
+        FunctionDeclaration,
+        IfExpr,
+        Item,
+        ItemKind,
+        StmtId,
+        StmtKind,
+        UnaryExpr,
+    },
+    codegen::c::ast::{
+        CAssignExpr,
+        CAst,
+        CBinOperator,
+        CBinaryExpr,
+        CBlock,
+        CBool,
+        CCallExpr,
+        CExpr,
+        CFunctionDecl,
+        CFunctionImpl,
+        CIfStmt,
+        CItem,
+        CNumber,
+        CParameter,
+        CReturn,
+        CStmt,
+        CType,
+        CUnOperator,
+        CUnaryExpr,
+        CVarDecl,
+        CVarExpr,
+        CWhile,
+    },
+    compilation_unit::{
+        GlobalScope,
+        VariableIdx,
+    },
+    typings::Type,
+};
 
 pub struct CTranspiler<'a> {
     global_scope: &'a GlobalScope,
@@ -25,32 +68,31 @@ impl<'a> CTranspiler<'a> {
             CItem::Macro("true".to_string(), "1".to_string()),
             CItem::Macro("false".to_string(), "0".to_string()),
         ];
-        items.extend(ast.items.iter().filter(
-            |item| matches!(item.kind, ItemKind::Function(_))
-        ).map(|item| {
-            match &item.kind {
-                ItemKind::Stmt(_) => {
-                    unreachable!()
-                }
-                ItemKind::Function(function) => {
-                    self.transpile_function_decl(ast, function)
-                }
-            }
-        }).collect::<Vec<_>>());
-        items.extend(ast
-            .items
-            .iter()
-            .map(|item| self.transpile_item(ast, item))
-            .collect::<Vec<_>>());
+        items.extend(
+            ast.items
+                .iter()
+                .filter(|item| matches!(item.kind, ItemKind::Function(_)))
+                .map(|item| match &item.kind {
+                    ItemKind::Stmt(_) => {
+                        unreachable!()
+                    }
+                    ItemKind::Function(function) => self.transpile_function_decl(ast, function),
+                })
+                .collect::<Vec<_>>(),
+        );
+        items.extend(
+            ast.items
+                .iter()
+                .map(|item| self.transpile_item(ast, item))
+                .collect::<Vec<_>>(),
+        );
         CAst::new(items)
     }
 
     fn transpile_item(&mut self, ast: &Ast, item: &Item) -> CItem {
         match &item.kind {
             ItemKind::Stmt(_) => panic!("Statement in global scope not supported"),
-            ItemKind::Function(function) => {
-                self.transpile_function(ast, function)
-            }
+            ItemKind::Function(function) => self.transpile_function(ast, function),
         }
     }
 
@@ -59,8 +101,7 @@ impl<'a> CTranspiler<'a> {
 
         CItem::FunctionDecl(CFunctionDecl {
             name: function.name.clone(),
-            return_type: CType::try_from(&function.return_type)
-                .expect("Unsupported return type"),
+            return_type: CType::try_from(&function.return_type).expect("Unsupported return type"),
             parameters: function
                 .parameters
                 .iter()
@@ -68,21 +109,24 @@ impl<'a> CTranspiler<'a> {
                     let parameter = self.global_scope.variables.get(*parameter_idx);
                     CParameter {
                         name: self.get_variable_name(*parameter_idx),
-                        ty: CType::try_from(&parameter.ty)
-                            .expect("Unsupported parameter type"),
+                        ty: CType::try_from(&parameter.ty).expect("Unsupported parameter type"),
                     }
                 })
                 .collect(),
         })
     }
 
-
     fn transpile_function(&mut self, ast: &Ast, function: &FunctionDeclaration) -> CItem {
         let function_decl = match self.transpile_function_decl(ast, function) {
             CItem::FunctionDecl(function_decl) => function_decl,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
-        let mut body_stmts = function.body.iter().map(|stmt| self.transpile_stmt(ast, *stmt)).flatten().collect::<Vec<_>>();
+        let mut body_stmts = function
+            .body
+            .iter()
+            .map(|stmt| self.transpile_stmt(ast, *stmt))
+            .flatten()
+            .collect::<Vec<_>>();
 
         CItem::FunctionImpl(CFunctionImpl {
             name: function_decl.name,
@@ -101,24 +145,18 @@ impl<'a> CTranspiler<'a> {
                     value: number.number,
                 }),
             ),
-            ExprKind::Binary(binary_expr) => {
-                self.transpile_binary_expr(ast, &binary_expr)
-            }
-            ExprKind::Unary(unary_expr) => {
-                self.transpile_unary_expr(ast, &unary_expr)
-            }
+            ExprKind::Binary(binary_expr) => self.transpile_binary_expr(ast, &binary_expr),
+            ExprKind::Unary(unary_expr) => self.transpile_unary_expr(ast, &unary_expr),
             ExprKind::Parenthesized(paren_expr) => {
                 let (expr_stmts, expr) = self.transpile_expr(ast, paren_expr.inner);
                 (expr_stmts, CExpr::Parenthesized(Box::new(expr)))
             }
-            ExprKind::Variable(var_expr) => {
-                (
-                    None,
-                    CExpr::Var(CVarExpr {
-                        name: self.get_variable_name(var_expr.variable_idx)
-                    }),
-                )
-            }
+            ExprKind::Variable(var_expr) => (
+                None,
+                CExpr::Var(CVarExpr {
+                    name: self.get_variable_name(var_expr.variable_idx),
+                }),
+            ),
             ExprKind::Assignment(assignment_expr) => {
                 let (assign_expr_stmts, assign_expr) =
                     self.transpile_expr(ast, assignment_expr.expression);
@@ -136,20 +174,19 @@ impl<'a> CTranspiler<'a> {
                     value: bool_expr.value,
                 }),
             ),
-            ExprKind::Call(call_expr) => {
-                self.transpile_call_expr(ast, call_expr)
-            }
-            ExprKind::If(if_expr) => {
-                self.transpile_if_expr(ast, &expr, if_expr)
-            }
-            ExprKind::Block(block_expr) => {
-                self.transpile_block_expr(ast, &expr, block_expr)
-            }
+            ExprKind::Call(call_expr) => self.transpile_call_expr(ast, call_expr),
+            ExprKind::If(if_expr) => self.transpile_if_expr(ast, &expr, if_expr),
+            ExprKind::Block(block_expr) => self.transpile_block_expr(ast, &expr, block_expr),
             ExprKind::Error(_) => panic!("Error expression"),
         }
     }
 
-    fn transpile_if_expr(&mut self, ast: &Ast, expr: &&Expr, if_expr: &IfExpr) -> (Option<Vec<CStmt>>, CExpr) {
+    fn transpile_if_expr(
+        &mut self,
+        ast: &Ast,
+        expr: &&Expr,
+        if_expr: &IfExpr,
+    ) -> (Option<Vec<CStmt>>, CExpr) {
         let (cond_stmts, condition) = self.transpile_expr(ast, if_expr.condition);
         let (then_expr_stmts, then_expr) =
             // self.transpile_expr(ast, if_expr.then_branch);
@@ -228,7 +265,12 @@ impl<'a> CTranspiler<'a> {
         }
     }
 
-    fn transpile_block_expr(&mut self, ast: &Ast, expr: &&Expr, block_expr: &BlockExpr) -> (Option<Vec<CStmt>>, CExpr) {
+    fn transpile_block_expr(
+        &mut self,
+        ast: &Ast,
+        expr: &&Expr,
+        block_expr: &BlockExpr,
+    ) -> (Option<Vec<CStmt>>, CExpr) {
         let mut stmts = Vec::new();
         let assign_returning_expr_to_temp_var = !matches!(&expr.ty, Type::Void);
         let (temp_var, temp_var_name) = if assign_returning_expr_to_temp_var {
@@ -270,7 +312,11 @@ impl<'a> CTranspiler<'a> {
         )
     }
 
-    fn transpile_call_expr(&mut self, ast: &Ast, call_expr: &CallExpr) -> (Option<Vec<CStmt>>, CExpr) {
+    fn transpile_call_expr(
+        &mut self,
+        ast: &Ast,
+        call_expr: &CallExpr,
+    ) -> (Option<Vec<CStmt>>, CExpr) {
         let function = self.global_scope.functions.get(call_expr.function_idx);
         let mut stmts = Vec::new();
         let arguments = call_expr
@@ -293,10 +339,13 @@ impl<'a> CTranspiler<'a> {
         )
     }
 
-    fn transpile_unary_expr(&mut self, ast: &Ast, unary_expr: &&UnaryExpr) -> (Option<Vec<CStmt>>, CExpr) {
+    fn transpile_unary_expr(
+        &mut self,
+        ast: &Ast,
+        unary_expr: &&UnaryExpr,
+    ) -> (Option<Vec<CStmt>>, CExpr) {
         let (expr_stmts, expr) = self.transpile_expr(ast, unary_expr.operand);
-        let op = CUnOperator::try_from(&unary_expr.operator)
-            .expect("Unsupported unary operator");
+        let op = CUnOperator::try_from(&unary_expr.operator).expect("Unsupported unary operator");
         (
             expr_stmts,
             CExpr::Unary(CUnaryExpr {
@@ -306,11 +355,15 @@ impl<'a> CTranspiler<'a> {
         )
     }
 
-    fn transpile_binary_expr(&mut self, ast: &Ast, binary_expr: &&BinaryExpr) -> (Option<Vec<CStmt>>, CExpr) {
+    fn transpile_binary_expr(
+        &mut self,
+        ast: &Ast,
+        binary_expr: &&BinaryExpr,
+    ) -> (Option<Vec<CStmt>>, CExpr) {
         let (left_stmts, left) = self.transpile_expr(ast, binary_expr.left);
         let (right_stmts, right) = self.transpile_expr(ast, binary_expr.right);
-        let op = CBinOperator::try_from(&binary_expr.operator)
-            .expect("Unsupported binary operator");
+        let op =
+            CBinOperator::try_from(&binary_expr.operator).expect("Unsupported binary operator");
         let mut stmts = Vec::new();
         if let Some(left_stmts) = left_stmts {
             stmts.extend(left_stmts);
@@ -373,17 +426,12 @@ impl<'a> CTranspiler<'a> {
                         statements: then_block_stmts,
                     },
                     else_block: Some(CBlock {
-                        statements: vec![
-                            CStmt::Break,
-                        ]
+                        statements: vec![CStmt::Break],
                     }),
                 }));
 
-
                 CStmt::While(CWhile {
-                    condition: CExpr::Bool(CBool {
-                        value: true,
-                    }),
+                    condition: CExpr::Bool(CBool { value: true }),
                     body: CBlock {
                         statements: while_body_stmts,
                     },
@@ -430,7 +478,8 @@ impl CTranspiler<'_> {
         let shadowing_variables = self.shadowing_variables.get_mut(&variable.name);
         let shadowing_variables = match shadowing_variables {
             None => {
-                self.shadowing_variables.insert(variable.name.clone(), vec![variable_idx]);
+                self.shadowing_variables
+                    .insert(variable.name.clone(), vec![variable_idx]);
                 self.shadowing_variables.get_mut(&variable.name).unwrap()
             }
             Some(shadowing_variables) => shadowing_variables,
@@ -450,8 +499,10 @@ impl CTranspiler<'_> {
 mod test {
     use serial_test::serial;
 
-    use crate::codegen::c::CProgram;
-    use crate::compilation_unit::CompilationUnit;
+    use crate::{
+        codegen::c::CProgram,
+        compilation_unit::CompilationUnit,
+    };
 
     fn expect_return_value(input: &str, expected_return_value: i32, include_main: bool) {
         let input = if include_main {
@@ -464,7 +515,11 @@ mod test {
         let compilation_unit = CompilationUnit::compile(&input).expect("Compilation failed");
         let program = CProgram::from_compilation_unit(&compilation_unit);
         let c_return_value = program.run().expect("C program failed");
-        return assert_eq!(c_return_value, expected_return_value, "Expected return value {} but got {}", expected_return_value, c_return_value);
+        return assert_eq!(
+            c_return_value, expected_return_value,
+            "Expected return value {} but got {}",
+            expected_return_value, c_return_value
+        );
     }
 
     #[test]
@@ -611,7 +666,6 @@ mod test {
         expect_return_value(input, 1, true)
     }
 
-
     #[test]
     #[serial]
     fn while_loop_condition_expression_evaluation() {
@@ -645,5 +699,3 @@ mod test {
         expect_return_value(input, 1, true)
     }
 }
-
-

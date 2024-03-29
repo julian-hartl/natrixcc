@@ -1,9 +1,14 @@
-use crate::FunctionId;
-use crate::module::Module;
-use crate::optimization::{CFGSimplifyPipelineConfig, FunctionPass};
+use crate::{
+    module::Module,
+    optimization::{
+        CFGSimplifyPipelineConfig,
+        FunctionPass,
+    },
+    FunctionId,
+};
 
-mod jump_threading;
 mod bb_merge;
+mod jump_threading;
 mod unreachable_bb_elim;
 
 pub struct Pass {
@@ -50,9 +55,18 @@ impl FunctionPass for Pass {
 #[cfg(test)]
 mod tests {
     use tracing_test::traced_test;
-    use crate::cfg;
-    use crate::optimization::{CFGSimplifyPipelineConfig, PipelineConfig};
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+
+    use crate::{
+        cfg,
+        optimization::{
+            CFGSimplifyPipelineConfig,
+            PipelineConfig,
+        },
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     #[traced_test]
@@ -67,16 +81,18 @@ mod tests {
                 bb2:
                    ret i32 v0;
                 }
-            "
+            ",
         );
-        module.optimize(PipelineConfig::cfg_simplify_only(CFGSimplifyPipelineConfig::o3()));
+        module.optimize(PipelineConfig::cfg_simplify_only(
+            CFGSimplifyPipelineConfig::o3(),
+        ));
         assert_module_is_equal_to_src(
             &module,
             "fun i32 @test(i32) {
              bb0(i32 v0):
                 ret i32 v0;
              }
-             "
+             ",
         )
     }
 }

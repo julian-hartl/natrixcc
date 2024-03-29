@@ -1,25 +1,37 @@
 #![feature(exit_status_error)]
 
-use std::fs::File;
-use std::io::Write;
+use std::{
+    fs::File,
+    io::Write,
+};
 
-use anyhow::{anyhow, Result};
+use anyhow::{
+    anyhow,
+    Result,
+};
 
-use crate::compilation_unit::CompilationUnit;
-use crate::hir::{HIRBuilder, HIRWriter};
-use crate::mir::{MIRBuilder, MIRWriter};
-use crate::mir::optimizations::Optimizer;
+use crate::{
+    compilation_unit::CompilationUnit,
+    hir::{
+        HIRBuilder,
+        HIRWriter,
+    },
+    mir::{
+        optimizations::Optimizer,
+        MIRBuilder,
+        MIRWriter,
+    },
+};
 
 mod ast;
 mod codegen;
 mod compilation_unit;
 mod diagnostics;
-mod text;
-mod typings;
-mod mir;
 mod hir;
 mod lir;
-
+mod mir;
+mod text;
+mod typings;
 
 fn main() -> Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
@@ -46,9 +58,8 @@ fn main() -> Result<()> {
             }
         }
     ";
-    let mut compilation_unit = CompilationUnit::compile(input).map_err(
-        |err| anyhow!("Compilation failed")
-    )?;
+    let mut compilation_unit =
+        CompilationUnit::compile(input).map_err(|err| anyhow!("Compilation failed"))?;
     compilation_unit.run();
     // let program = CProgram::from_compilation_unit(&compilation_unit);
     // let c_return_value = program.run()?;

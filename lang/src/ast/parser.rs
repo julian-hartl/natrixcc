@@ -1,10 +1,36 @@
 use std::cell::Cell;
 
-use crate::ast::{Ast, BinOpAssociativity, BinOperator, BinOpKind, Body, ElseBranch, Expr, ExprId, FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt, StmtId, UnOperator, UnOpKind};
-use crate::ast::lexer::{Token, TokenKind};
-use crate::compilation_unit::{GlobalScope, resolve_type_from_string};
-use crate::diagnostics::DiagnosticsBagCell;
-use crate::typings::Type;
+use crate::{
+    ast::{
+        lexer::{
+            Token,
+            TokenKind,
+        },
+        Ast,
+        BinOpAssociativity,
+        BinOpKind,
+        BinOperator,
+        Body,
+        ElseBranch,
+        Expr,
+        ExprId,
+        FuncDeclParameter,
+        FunctionReturnTypeSyntax,
+        Item,
+        ItemKind,
+        StaticTypeAnnotation,
+        Stmt,
+        StmtId,
+        UnOpKind,
+        UnOperator,
+    },
+    compilation_unit::{
+        resolve_type_from_string,
+        GlobalScope,
+    },
+    diagnostics::DiagnosticsBagCell,
+    typings::Type,
+};
 
 #[derive(Debug, Clone)]
 pub struct Counter {
@@ -101,8 +127,12 @@ impl<'a> Parser<'a> {
                     &self.diagnostics_bag,
                     &parameter.type_annotation.type_name,
                 );
-                self.global_scope
-                    .declare_variable(&parameter.identifier.span.literal, ty, false, false)
+                self.global_scope.declare_variable(
+                    &parameter.identifier.span.literal,
+                    ty,
+                    false,
+                    false,
+                )
             })
             .collect();
 
@@ -292,7 +322,7 @@ impl<'a> Parser<'a> {
                 let equal_precedence = inner_operator.precedence() == operator.precedence();
                 if !greater_precedence
                     && !(equal_precedence
-                    && inner_operator.associativity() == BinOpAssociativity::Right)
+                        && inner_operator.associativity() == BinOpAssociativity::Right)
                 {
                     break;
                 }
@@ -379,7 +409,7 @@ impl<'a> Parser<'a> {
                 self.ast.error_expression(token.span)
             }
         }
-            .id;
+        .id;
     }
 
     fn parse_call_expression(&mut self, identifier: Token) -> ExprId {

@@ -1,7 +1,9 @@
 use termion::color;
 
-use crate::ast::*;
-use crate::text::span::TextSpan;
+use crate::{
+    ast::*,
+    text::span::TextSpan,
+};
 
 pub struct ASTPrinter {
     indent: usize,
@@ -73,7 +75,12 @@ impl ASTPrinter {
 }
 
 impl ASTVisitor for ASTPrinter {
-    fn visit_func_decl(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration, _item_id: ItemId) {
+    fn visit_func_decl(
+        &mut self,
+        ast: &mut Ast,
+        func_decl: &FunctionDeclaration,
+        _item_id: ItemId,
+    ) {
         self.add_keyword("func");
         self.add_whitespace();
         self.add_text(&func_decl.identifier.span.literal);
@@ -217,7 +224,12 @@ impl ASTVisitor for ASTPrinter {
             .push_str(&format!("{}{}", Self::TEXT_COLOR.fg_str(), span.literal,));
     }
 
-    fn visit_unary_expression(&mut self, ast: &mut Ast, unary_expression: &UnaryExpr, _expr: &Expr) {
+    fn visit_unary_expression(
+        &mut self,
+        ast: &mut Ast,
+        unary_expression: &UnaryExpr,
+        _expr: &Expr,
+    ) {
         self.result.push_str(&format!(
             "{}{}",
             Self::TEXT_COLOR.fg_str(),

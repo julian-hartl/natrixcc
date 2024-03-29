@@ -1,6 +1,6 @@
 [hooks]
 pre-commit = "cargo build"
-pre-push = "cargo fmt --all --allow-dirty"
+pre-push = "cargo fmt --all"
 post-commit = "Ran pre-commit hook"
 
 [logging]

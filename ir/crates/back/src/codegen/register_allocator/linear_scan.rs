@@ -5,6 +5,7 @@ use crate::codegen::{
     machine::{
         isa::PhysicalRegister,
         Size,
+        TargetMachine,
     },
     register_allocator::{
         Lifetime,
@@ -15,7 +16,6 @@ use crate::codegen::{
         RegAllocVReg,
     },
 };
-use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
 pub struct RegAlloc<'liveness, TM: TargetMachine> {

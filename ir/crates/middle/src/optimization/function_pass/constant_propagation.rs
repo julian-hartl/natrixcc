@@ -1,12 +1,28 @@
-use tracing::{debug, debug_span};
+use tracing::{
+    debug,
+    debug_span,
+};
 
-use crate::analysis::dataflow::{concrete_value, DFValueState, InstrWalker};
-use crate::analysis::dataflow::concrete_value::ConcreteValues;
-use crate::cfg::TerminatorKind;
-use crate::FunctionId;
-use crate::instruction::{Const, InstrKind, Op};
-use crate::module::Module;
-use crate::optimization::{FunctionPass, Pass};
+use crate::{
+    analysis::dataflow::{
+        concrete_value,
+        concrete_value::ConcreteValues,
+        DFValueState,
+        InstrWalker,
+    },
+    cfg::TerminatorKind,
+    instruction::{
+        Const,
+        InstrKind,
+        Op,
+    },
+    module::Module,
+    optimization::{
+        FunctionPass,
+        Pass,
+    },
+    FunctionId,
+};
 
 #[derive(Default)]
 pub struct ConstantPropagation;
@@ -20,7 +36,8 @@ impl Pass for ConstantPropagation {
 impl FunctionPass for ConstantPropagation {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
         let mut changes = 0;
-        let mut analysis_runner = concrete_value::AnalysisRunner::new(&mut module.functions[function]);
+        let mut analysis_runner =
+            concrete_value::AnalysisRunner::new(&mut module.functions[function]);
         while let Some((bb_id, mut instr_walker)) = analysis_runner.next_bb() {
             // let bb = instr_walker.function.cfg.basic_block(bb_id);
             // let bb_args = bb.arguments();
@@ -88,45 +105,44 @@ impl FunctionPass for ConstantPropagation {
             // }
             // }
 
-            instr_walker.walk(|instr, state| {
-                match &mut instr.kind {
-                    InstrKind::Op(op) => {
-                        if Self::maybe_replace_op(&mut op.op, state) {
-                            changes += 1;
-                        }
+            instr_walker.walk(|instr, state| match &mut instr.kind {
+                InstrKind::Op(op) => {
+                    if Self::maybe_replace_op(&mut op.op, state) {
+                        changes += 1;
                     }
-                    InstrKind::Sub(instr) => {
-                        if Self::maybe_replace_op(&mut instr.lhs, state) {
-                            changes += 1;
-                        }
-                        if Self::maybe_replace_op(&mut instr.rhs, state) {
-                            changes += 1;
-                        }
-                    }
-                    InstrKind::Add(instr) => {
-                        if Self::maybe_replace_op(&mut instr.lhs, state) {
-                            changes += 1;
-                        }
-                        if Self::maybe_replace_op(&mut instr.rhs, state) {
-                            changes += 1;
-                        }
-                    }
-                    InstrKind::Cmp(icmp) => {
-                        if Self::maybe_replace_op(&mut icmp.lhs, state) {
-                            changes += 1;
-                        }
-                        if Self::maybe_replace_op(&mut icmp.rhs, state) {
-                            changes += 1;
-                        }
-                    }
-                    InstrKind::Alloca(_) |
-                    InstrKind::Load(_) |
-                    InstrKind::Store(_) => {}
                 }
+                InstrKind::Sub(instr) => {
+                    if Self::maybe_replace_op(&mut instr.lhs, state) {
+                        changes += 1;
+                    }
+                    if Self::maybe_replace_op(&mut instr.rhs, state) {
+                        changes += 1;
+                    }
+                }
+                InstrKind::Add(instr) => {
+                    if Self::maybe_replace_op(&mut instr.lhs, state) {
+                        changes += 1;
+                    }
+                    if Self::maybe_replace_op(&mut instr.rhs, state) {
+                        changes += 1;
+                    }
+                }
+                InstrKind::Cmp(icmp) => {
+                    if Self::maybe_replace_op(&mut icmp.lhs, state) {
+                        changes += 1;
+                    }
+                    if Self::maybe_replace_op(&mut icmp.rhs, state) {
+                        changes += 1;
+                    }
+                }
+                InstrKind::Alloca(_) | InstrKind::Load(_) | InstrKind::Store(_) => {}
             });
 
-            analysis_runner.function.cfg.basic_block_mut(bb_id).update_terminator(
-                |terminator| {
+            analysis_runner
+                .function
+                .cfg
+                .basic_block_mut(bb_id)
+                .update_terminator(|terminator| {
                     let state = analysis_runner.state.get(bb_id);
                     match &mut terminator.kind {
                         TerminatorKind::Ret(ret) => {
@@ -156,9 +172,8 @@ impl FunctionPass for ConstantPropagation {
                             }
                         }
                     }
-                }
-            );
-        };
+                });
+        }
         changes
     }
 }
@@ -166,20 +181,15 @@ impl FunctionPass for ConstantPropagation {
 impl ConstantPropagation {
     fn maybe_replace_op(op: &mut Op, state: &DFValueState<ConcreteValues>) -> bool {
         match op {
-            Op::Const(_) =>
-                false,
-            Op::Vreg(value) => {
-                match state.get(value).and_then(|s| s.as_single_value()) {
-                    None => {
-                        false
-                    }
-                    Some(const_value) => {
-                        debug!("Replaced {value} with {const_value}");
-                        *op = Op::Const(const_value.clone());
-                        true
-                    }
+            Op::Const(_) => false,
+            Op::Vreg(value) => match state.get(value).and_then(|s| s.as_single_value()) {
+                None => false,
+                Some(const_value) => {
+                    debug!("Replaced {value} with {const_value}");
+                    *op = Op::Const(const_value.clone());
+                    true
                 }
-            }
+            },
         }
     }
 }
@@ -188,8 +198,13 @@ impl ConstantPropagation {
 mod tests {
     use tracing_test::traced_test;
 
-    use crate::optimization::PipelineConfig;
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+    use crate::{
+        optimization::PipelineConfig,
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     #[traced_test]
@@ -208,7 +223,7 @@ bb2:
     v3 = add i32 v2, v0;
     ret i32 v3;
 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::global_constant_propagation_only());
         assert_module_is_equal_to_src(
@@ -226,7 +241,7 @@ bb2:
     v3 = i32 16;
     ret i32 16;
 }
- ");
+ ",
+        );
     }
 }
-

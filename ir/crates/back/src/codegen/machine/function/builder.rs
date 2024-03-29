@@ -2,10 +2,9 @@ use daggy::{
     petgraph::prelude::Bfs,
     Walker,
 };
+use natrix_middle::instruction::CmpOp;
 use rustc_hash::FxHashMap;
 use tracing::debug;
-
-use natrix_middle::instruction::CmpOp;
 
 use crate::codegen::{
     machine::{
@@ -21,6 +20,7 @@ use crate::codegen::{
             InstrOperand,
             PseudoInstr,
         },
+        Instr,
         MachInstr,
         Register,
         Size,
@@ -35,7 +35,6 @@ use crate::codegen::{
         PseudoOp,
     },
 };
-use crate::codegen::machine::Instr;
 
 #[derive(Debug)]
 pub struct FunctionBuilder<TM: TargetMachine> {
@@ -226,10 +225,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         mbb
     }
 
-    fn operand_to_matched_pattern_operand(
-        &self,
-        src: &Operand<TM>,
-    ) -> MatchedPatternOperand<TM> {
+    fn operand_to_matched_pattern_operand(&self, src: &Operand<TM>) -> MatchedPatternOperand<TM> {
         match src {
             Operand::Reg(reg) => MatchedPatternOperand::Reg(*reg),
             Operand::Imm(imm) => MatchedPatternOperand::Imm(imm.clone()),
