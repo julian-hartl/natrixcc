@@ -20,6 +20,7 @@ use crate::codegen::{
             InstrOperand,
             PseudoInstr,
         },
+        Instr,
         MachInstr,
         Register,
         Size,
@@ -34,7 +35,6 @@ use crate::codegen::{
         PseudoOp,
     },
 };
-use crate::codegen::machine::Instr;
 
 #[derive(Debug)]
 pub struct FunctionBuilder<TM: TargetMachine> {
@@ -100,9 +100,13 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
                                 )));
                             }
                             PseudoOp::Phi(dest, operands) => {
-                                self.function.basic_blocks[mbb_id].add_phi(*dest, operands.iter().map(
-                                    |(reg, bb)| (*reg, self.bb_mapping[bb])
-                                ).collect());
+                                self.function.basic_blocks[mbb_id].add_phi(
+                                    *dest,
+                                    operands
+                                        .iter()
+                                        .map(|(reg, bb)| (*reg, self.bb_mapping[bb]))
+                                        .collect(),
+                                );
                             }
                             PseudoOp::Def(reg) => {
                                 instructions
@@ -224,10 +228,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         mbb
     }
 
-    fn operand_to_matched_pattern_operand(
-        &self,
-        src: &Operand<TM>,
-    ) -> MatchedPatternOperand<TM> {
+    fn operand_to_matched_pattern_operand(&self, src: &Operand<TM>) -> MatchedPatternOperand<TM> {
         match src {
             Operand::Reg(reg) => MatchedPatternOperand::Reg(*reg),
             Operand::Imm(imm) => MatchedPatternOperand::Imm(imm.clone()),

@@ -9,6 +9,7 @@ use crate::codegen::machine::{
         PseudoInstr,
     },
     Module,
+    TargetMachine,
 };
 
 pub struct Coalescer<'module, TM: TargetMachine> {

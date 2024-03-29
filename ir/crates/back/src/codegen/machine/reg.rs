@@ -5,7 +5,12 @@ use std::fmt::{
 
 use cranelift_entity::entity_impl;
 
-use crate::codegen::machine::{function::Function, isa::PhysicalRegister, Size, TargetMachine};
+use crate::codegen::machine::{
+    function::Function,
+    isa::PhysicalRegister,
+    Size,
+    TargetMachine,
+};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Register<TM: TargetMachine> {

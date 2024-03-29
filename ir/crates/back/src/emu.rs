@@ -10,7 +10,6 @@ use tracing::{
     warn,
 };
 use unicorn_engine::{
-    SECOND_SCALE,
     unicorn_const::{
         uc_error,
         Arch,
@@ -25,10 +24,10 @@ use crate::codegen::machine::{
         calling_convention::Slot,
         CallingConvention,
     },
-    Architecture,
     function::FunctionId,
     isa::PhysicalRegister,
     module::asm::AsmModule,
+    Architecture,
     TargetMachine,
 };
 

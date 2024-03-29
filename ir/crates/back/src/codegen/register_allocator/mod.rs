@@ -7,6 +7,7 @@ use std::{
     },
 };
 
+pub use coalescer::Coalescer;
 pub use cranelift_entity::SecondaryMap;
 pub use daggy::Walker;
 pub use iter_tools::Itertools;
@@ -19,8 +20,6 @@ use smallvec::{
     SmallVec,
 };
 use tracing::debug;
-
-pub use coalescer::Coalescer;
 
 use crate::codegen::machine::{
     abi::{
@@ -35,12 +34,12 @@ use crate::codegen::machine::{
         Instr,
         PseudoInstr,
     },
-    InstrId,
     isa::PhysicalRegister,
     reg::{
         Register,
         VReg,
     },
+    InstrId,
     Size,
     TargetMachine,
 };
@@ -660,8 +659,7 @@ impl<'liveness, 'func, TM: TargetMachine, RegAlloc: RegAllocAlgorithm<'liveness,
                     None => {
                         debug!(
                             "Allocating {vreg} at {:?} with hints: {:?} and size {size}",
-                            instr_uid,
-                            hints
+                            instr_uid, hints
                         );
 
                         Some(self.algo.allocate_arbitrary(&alloc_vreg, hints))

@@ -1,26 +1,23 @@
+use machine::instr::Instr as MInstr;
+use natrix_middle::instruction::CmpOp;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use strum::VariantArray;
 
-use machine::instr::Instr as MInstr;
-use natrix_middle::instruction::CmpOp;
-
 use crate::codegen::{
     machine,
     machine::{
-        Architecture,
         backend,
-        Endianness,
         function::{
-            BasicBlockId,
             builder::{
                 MatchedPattern,
                 PatternIn,
                 PatternInOperand,
                 PatternInOutput,
             },
+            BasicBlockId,
             Function,
         },
         instr::{
@@ -28,6 +25,8 @@ use crate::codegen::{
             PseudoInstr,
         },
         isa::PhysicalRegister as MachPhysicalRegister,
+        Architecture,
+        Endianness,
         Size,
         TargetMachine,
     },
@@ -421,7 +420,6 @@ impl MachPhysicalRegister for PhysicalRegister {
     }
 }
 
-
 impl machine::isa::MachInstr for Instr {
     type TM = Target;
 
@@ -508,8 +506,12 @@ impl machine::isa::MachInstr for Instr {
             Self::CMP32rr { lhs, rhs } => {
                 smallvec![InstrOperand::Reg(*lhs), InstrOperand::Reg(*rhs)]
             }
-            Self::CMP32ri { lhs, rhs } => smallvec![InstrOperand::Reg(*lhs),InstrOperand::Imm(*rhs)],
-            Self::CMP8ri { lhs, rhs } => smallvec![InstrOperand::Reg(*lhs),InstrOperand::Imm(*rhs)],
+            Self::CMP32ri { lhs, rhs } => {
+                smallvec![InstrOperand::Reg(*lhs), InstrOperand::Imm(*rhs)]
+            }
+            Self::CMP8ri { lhs, rhs } => {
+                smallvec![InstrOperand::Reg(*lhs), InstrOperand::Imm(*rhs)]
+            }
             Self::SETCC { dest, .. } => smallvec![InstrOperand::Reg(*dest)],
             Self::JCC { target, .. } => smallvec![InstrOperand::Label(*target),],
         }

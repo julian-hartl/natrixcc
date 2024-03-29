@@ -1,8 +1,7 @@
 use std::fmt::Debug;
 
-pub use cranelift_entity::EntityRef;
-
 pub use backend::Backend;
+pub use cranelift_entity::EntityRef;
 pub use function::{
     Function,
     FunctionId,
@@ -22,8 +21,10 @@ pub use reg::{
     VReg,
 };
 
-use crate::codegen::machine::abi::CallingConvention;
-use crate::codegen::machine::asm::Assembler;
+use crate::codegen::machine::{
+    abi::CallingConvention,
+    asm::Assembler,
+};
 
 pub mod abi;
 pub mod asm;
@@ -98,13 +99,13 @@ pub enum Architecture {
 pub trait TargetMachine: Debug + Default + Copy + Clone + PartialEq + Eq {
     type Reg: PhysicalRegister;
 
-    type Instr: MachInstr<TM=Self>;
+    type Instr: MachInstr<TM = Self>;
 
-    type CallingConvention: CallingConvention<Reg=Self::Reg>;
+    type CallingConvention: CallingConvention<Reg = Self::Reg>;
 
-    type Backend: Backend<TM=Self>;
+    type Backend: Backend<TM = Self>;
 
-    type Assembler: Assembler<TM=Self>;
+    type Assembler: Assembler<TM = Self>;
 
     fn endianness() -> Endianness;
 

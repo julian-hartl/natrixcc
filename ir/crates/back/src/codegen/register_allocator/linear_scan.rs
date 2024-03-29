@@ -6,6 +6,7 @@ use crate::codegen::{
         isa::PhysicalRegister,
         Size,
         TargetMachine,
+        VReg,
     },
     register_allocator::{
         LiveRange,
@@ -16,7 +17,6 @@ use crate::codegen::{
         RegAllocVReg,
     },
 };
-use crate::codegen::machine::{TargetMachine, VReg};
 
 #[derive(Debug)]
 pub struct RegAlloc<'liveness, TM: TargetMachine> {

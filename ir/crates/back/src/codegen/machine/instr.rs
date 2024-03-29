@@ -9,12 +9,14 @@ use smallvec::{
 };
 
 use crate::codegen::{
-    machine::Register,
+    machine::{
+        function::BasicBlockId,
+        isa::MachInstr as MInstr,
+        Register,
+        TargetMachine,
+    },
     selection_dag::Immediate,
 };
-use crate::codegen::machine::function::BasicBlockId;
-use crate::codegen::machine::isa::MachInstr as MInstr;
-use crate::codegen::machine::TargetMachine;
 
 index_vec::define_index_type! {
     pub struct InstrId = u32;
@@ -97,7 +99,6 @@ impl<TM: TargetMachine> Instr<TM> {
             Instr::Machine(machine) => Some(machine),
         }
     }
-
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

@@ -1,3 +1,4 @@
+use codegen::selection_dag;
 use cranelift_entity::{
     EntityRef,
     SecondaryMap,
@@ -8,10 +9,6 @@ use daggy::{
     Walker,
 };
 use iter_tools::Itertools;
-use rustc_hash::FxHashMap;
-use tracing::debug;
-
-use codegen::selection_dag;
 use natrix_middle::{
     cfg::{
         BasicBlockId,
@@ -50,7 +47,6 @@ use crate::{
         },
     },
 };
-use crate::codegen::machine::TargetMachine;
 
 #[derive(Debug)]
 pub struct Builder<'func, TM: TargetMachine> {

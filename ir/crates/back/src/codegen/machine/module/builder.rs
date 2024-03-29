@@ -2,6 +2,7 @@ use crate::codegen::machine::{
     backend::Backend,
     function::builder::FunctionBuilder,
     Module,
+    TargetMachine,
 };
 
 #[derive(Debug)]

@@ -1,9 +1,12 @@
-use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
+use crate::codegen::{
+    machine::{
+        abi::{
+            calling_convention::Slot,
+            CallingConvention,
+        },
+        Size,
     },
-    Size,
+    targets::x86_64,
 };
 
 #[derive(Default)]
@@ -12,8 +15,8 @@ pub struct SystemV;
 impl CallingConvention for SystemV {
     type Reg = x86_64::PhysicalRegister;
     fn parameter_slots(
-        params: impl Iterator<Item=Size>,
-    ) -> impl Iterator<Item=Slot<Self::Reg>> {
+        params: impl Iterator<Item = Size>,
+    ) -> impl Iterator<Item = Slot<Self::Reg>> {
         let mut used_regs = 0;
         params.map(move |size| {
             let slot = if used_regs < 6 {

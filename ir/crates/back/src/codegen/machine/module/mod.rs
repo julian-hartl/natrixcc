@@ -1,3 +1,9 @@
+pub use asm::AsmModule;
+use asm::{
+    FunctionSymbolTable,
+    FunctionSymbolTableEntry,
+};
+pub use builder::Builder;
 use cranelift_entity::PrimaryMap;
 use tracing::{
     debug,
@@ -18,6 +24,7 @@ use crate::codegen::{
 };
 
 pub mod asm;
+mod builder;
 
 #[derive(Debug, Clone)]
 pub struct Module<TM: TargetMachine> {
@@ -37,7 +44,7 @@ impl<TM: TargetMachine> Module<TM> {
         self.functions.push(function)
     }
 
-    pub fn functions(&self) -> impl ExactSizeIterator<Item=(FunctionId, &Function<TM>)> {
+    pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM>)> {
         self.functions.iter()
     }
 

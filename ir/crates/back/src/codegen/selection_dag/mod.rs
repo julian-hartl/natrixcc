@@ -21,20 +21,14 @@ use smallvec::{
     SmallVec,
 };
 
-pub use builder::Builder;
-use natrix_middle::{
-    cfg::BasicBlockId,
-    instruction::CmpOp,
-};
-
 use crate::codegen::machine::{
     reg::{
         Register,
         VReg,
     },
     Size,
+    TargetMachine,
 };
-use crate::codegen::machine::TargetMachine;
 
 pub mod builder;
 
@@ -267,9 +261,7 @@ impl<TM: TargetMachine> PseudoOp<TM> {
                 Some(Operand::Reg(reg)) => smallvec![*reg],
                 _ => smallvec![],
             },
-            Self::Phi(_, regs) => regs.iter().map(
-                |(reg, _)| *reg
-            ).collect(),
+            Self::Phi(_, regs) => regs.iter().map(|(reg, _)| *reg).collect(),
             Self::Def(_) => smallvec![],
         }
     }
