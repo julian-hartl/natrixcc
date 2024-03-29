@@ -141,7 +141,11 @@ impl FrontBridge {
     }
 
     fn ensure_bb_exists(builder: &mut Builder, bb_id: BasicBlockId) {
-        while builder.max_bb_id().map(|max_bb_id| max_bb_id < bb_id).unwrap_or(true) {
+        while builder
+            .max_bb_id()
+            .map(|max_bb_id| max_bb_id < bb_id)
+            .unwrap_or(true)
+        {
             builder.create_empty_bb();
         }
         builder.ensure_exists(bb_id);

@@ -1,11 +1,18 @@
 use cranelift_entity::SecondaryMap;
 use tracing::debug;
 
-use crate::analysis::dataflow;
-use crate::analysis::dataflow::use_def::IRLocation;
-use crate::FunctionId;
-use crate::module::Module;
-use crate::optimization::{FunctionPass, Pass};
+use crate::{
+    analysis::{
+        dataflow,
+        dataflow::use_def::IRLocation,
+    },
+    module::Module,
+    optimization::{
+        FunctionPass,
+        Pass,
+    },
+    FunctionId,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct DeadCodeEliminationPass {}

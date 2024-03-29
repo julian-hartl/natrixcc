@@ -1,10 +1,26 @@
 use cranelift_entity::EntityRef;
 
-use crate::cfg::{BasicBlockId, TerminatorKind};
-use crate::function::Function;
-use crate::instruction::{AllocaInstr, BinOpInstr, CmpInstr, CmpOp, InstrKind, LoadInstr, Op, OpInstr, StoreInstr, VRegData};
-use crate::ty::Type;
-use crate::VReg;
+use crate::{
+    cfg::{
+        BasicBlockId,
+        TerminatorKind,
+    },
+    function::Function,
+    instruction::{
+        AllocaInstr,
+        BinOpInstr,
+        CmpInstr,
+        CmpOp,
+        InstrKind,
+        LoadInstr,
+        Op,
+        OpInstr,
+        StoreInstr,
+        VRegData,
+    },
+    ty::Type,
+    VReg,
+};
 
 #[derive(Debug)]
 pub struct Builder<'func> {
@@ -144,14 +160,10 @@ impl<'func> Builder<'func> {
                 let vreg_idx = vreg.0 as usize;
                 if vreg_idx < self.func.cfg.vregs.len() {
                     let current_bb = self.current_bb();
-                    self.func.cfg.vregs[vreg].get_or_insert_with(
-                        || {
-                            VRegData {
-                                ty,
-                                defined_in: current_bb
-                            }
-                        }
-                    );
+                    self.func.cfg.vregs[vreg].get_or_insert_with(|| VRegData {
+                        ty,
+                        defined_in: current_bb,
+                    });
                 } else {
                     for _ in self.func.cfg.vregs.len()..vreg_idx {
                         self.func.cfg.empty_vreg();

@@ -74,15 +74,11 @@ impl Cfg {
         };
         bb
     }
-    
+
     pub(crate) fn ensure_exists(&mut self, id: BasicBlockId) {
-        self.basic_blocks[id].get_or_insert_with(
-            || {
-                BasicBlock::new(id)
-            }
-        );
+        self.basic_blocks[id].get_or_insert_with(|| BasicBlock::new(id));
     }
-    
+
     pub(crate) fn new_empty_block(&mut self) -> BasicBlockId {
         self.graph.add_node(());
         self.basic_blocks.push(None)
@@ -90,21 +86,19 @@ impl Cfg {
 
     pub fn remove_basic_block(&mut self, bb_id: BasicBlockId) -> (Vec<Instr>, Terminator) {
         self.graph.remove_node(bb_id.into());
-        let bb = self.basic_blocks[bb_id].take().expect("Basic block does not exist");
+        let bb = self.basic_blocks[bb_id]
+            .take()
+            .expect("Basic block does not exist");
         let instructions = bb.instructions.raw;
         let terminator = bb.terminator.unwrap();
         (instructions, terminator)
     }
 
     /// Returns an iterator visiting all basics blocks in arbitrary order.
-    pub fn basic_blocks(&self) -> impl Iterator<Item=(BasicBlockId, &BasicBlock)> {
-        self.basic_blocks.iter().flat_map(
-            |(id, bb)| {
-                bb.as_ref().map(
-                    |bb| (id, bb)
-                )
-            }
-        )
+    pub fn basic_blocks(&self) -> impl Iterator<Item = (BasicBlockId, &BasicBlock)> {
+        self.basic_blocks
+            .iter()
+            .flat_map(|(id, bb)| bb.as_ref().map(|bb| (id, bb)))
     }
 
     /// Returns an iterator visiting all basics block ids in arbitrary order.
@@ -120,11 +114,15 @@ impl Cfg {
 
     /// The basic block associated with `id`.
     pub fn basic_block(&self, id: BasicBlockId) -> &BasicBlock {
-        self.basic_blocks[id].as_ref().expect("Basic block was removed")
+        self.basic_blocks[id]
+            .as_ref()
+            .expect("Basic block was removed")
     }
 
     pub fn basic_block_mut(&mut self, id: BasicBlockId) -> &mut BasicBlock {
-        self.basic_blocks[id].as_mut().expect("Basic block was removed")
+        self.basic_blocks[id]
+            .as_mut()
+            .expect("Basic block was removed")
     }
 
     pub fn entry_block(&self) -> BasicBlockId {
@@ -221,7 +219,7 @@ impl Cfg {
     pub fn new_vreg(&mut self, vreg: VRegData) -> VReg {
         self.vregs.push(Some(vreg))
     }
-    
+
     pub(crate) fn empty_vreg(&mut self) -> VReg {
         self.vregs.push(None)
     }
@@ -238,7 +236,7 @@ impl Cfg {
         self.vregs[vreg].as_ref().expect("VReg does not exist")
     }
 
-    pub fn dfs_postorder(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+    pub fn dfs_postorder(&self) -> impl Iterator<Item = BasicBlockId> + '_ {
         DfsPostOrder::new(&self.graph, self.entry_block().into())
             .iter(&self.graph)
             .map(|node| node.into())
@@ -293,7 +291,7 @@ mod cfg_tests {
 
 index_vec::define_index_type! {
     pub struct InstrId = u32;
-    
+
     DISPLAY_FORMAT = "{}";
 }
 
@@ -377,7 +375,7 @@ impl BasicBlock {
         self.instructions.iter()
     }
 
-    pub fn instructions_indexed(&self) -> impl DoubleEndedIterator<Item=(InstrId, &Instr)> {
+    pub fn instructions_indexed(&self) -> impl DoubleEndedIterator<Item = (InstrId, &Instr)> {
         self.instructions.iter_enumerated()
     }
 
@@ -414,10 +412,27 @@ mod bb_tests {
     use cranelift_entity::EntityRef;
     use index_vec::index_vec;
 
-    use crate::{Instr, InstrKind, Type, VReg};
-    use crate::instruction::{Const, Op, OpInstr};
-
-    use super::{BasicBlockId, BranchTerm, Cfg, CondBranchTerm, InstrId, JumpTarget, RetTerm, TerminatorKind};
+    use super::{
+        BasicBlockId,
+        BranchTerm,
+        Cfg,
+        CondBranchTerm,
+        InstrId,
+        JumpTarget,
+        RetTerm,
+        TerminatorKind,
+    };
+    use crate::{
+        instruction::{
+            Const,
+            Op,
+            OpInstr,
+        },
+        Instr,
+        InstrKind,
+        Type,
+        VReg,
+    };
 
     #[test]
     fn entry_block_should_be_index_0() {
@@ -455,7 +470,10 @@ mod bb_tests {
     fn should_add_instruction() {
         let mut cfg = Cfg::new();
         let bb0 = cfg.new_basic_block();
-        let instr = InstrKind::Op(OpInstr { op: Op::Const(Const::Int(Type::I32, 3)), value: VReg::new(2) });
+        let instr = InstrKind::Op(OpInstr {
+            op: Op::Const(Const::Int(Type::I32, 3)),
+            value: VReg::new(2),
+        });
         cfg.add_instruction(bb0, Type::I32, instr.clone());
         assert_eq!(
             cfg.basic_block(bb0).instructions,

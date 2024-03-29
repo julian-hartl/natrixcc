@@ -1,4 +1,8 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{
+    Display,
+    Formatter,
+};
+
 use cranelift_entity::SecondaryMap;
 
 use crate::{
@@ -44,9 +48,7 @@ impl From<&Terminator> for IRLocation {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct UseDef(
-    SecondaryMap<VReg, (Option<IRLocation>, Option<Vec<IRLocation>>)>
-);
+pub struct UseDef(SecondaryMap<VReg, (Option<IRLocation>, Option<Vec<IRLocation>>)>);
 
 impl UseDef {
     pub fn register_def(&mut self, def: VReg, instr_uid: IRLocation) -> Option<IRLocation> {
@@ -54,16 +56,14 @@ impl UseDef {
     }
 
     pub fn register_use(&mut self, use_: VReg, instr_uid: IRLocation) {
-        let uses = self.0[use_].1.get_or_insert_with(
-            Vec::new
-        );
+        let uses = self.0[use_].1.get_or_insert_with(Vec::new);
         uses.push(instr_uid);
     }
 
     pub fn is_defined(&self, def: VReg) -> bool {
         self.0[def].0.is_some()
     }
-    
+
     pub fn get_def(&self, def: VReg) -> Option<IRLocation> {
         self.0[def].0
     }

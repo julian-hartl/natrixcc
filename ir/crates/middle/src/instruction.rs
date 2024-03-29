@@ -15,8 +15,16 @@ use strum_macros::{
     EnumTryAs,
 };
 
-use crate::{Function, Type, VReg};
-use crate::cfg::{BasicBlockId, Cfg, InstrId};
+use crate::{
+    cfg::{
+        BasicBlockId,
+        Cfg,
+        InstrId,
+    },
+    Function,
+    Type,
+    VReg,
+};
 
 /// An instruction in a basic block.
 ///
@@ -198,7 +206,6 @@ impl From<VReg> for Op {
 }
 
 impl Op {
-
     pub fn ty<'func>(&'func self, function: &'func Function) -> &'func Type {
         match self {
             Op::Const(const_val) => const_val.ty(),
@@ -265,7 +272,7 @@ impl Const {
 
     pub fn ty(&self) -> &Type {
         match self {
-            Const::Int(ty, _) => ty
+            Const::Int(ty, _) => ty,
         }
     }
 }
