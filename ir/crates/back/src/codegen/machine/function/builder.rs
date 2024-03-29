@@ -100,10 +100,13 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
                                 )));
                             }
                             PseudoOp::Phi(dest, operands) => {
-                                instructions.push(Instr::Pseudo(PseudoInstr::Phi(
-                                    dest.clone(),
-                                    operands.clone(),
-                                )));
+                                self.function.basic_blocks[mbb_id].add_phi(
+                                    *dest,
+                                    operands
+                                        .iter()
+                                        .map(|(reg, bb)| (*reg, self.bb_mapping[bb]))
+                                        .collect(),
+                                );
                             }
                             PseudoOp::Def(reg) => {
                                 instructions

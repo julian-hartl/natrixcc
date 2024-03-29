@@ -6,9 +6,10 @@ use crate::codegen::{
         isa::PhysicalRegister,
         Size,
         TargetMachine,
+        VReg,
     },
     register_allocator::{
-        Lifetime,
+        LiveRange,
         LivenessRepr,
         ProgPoint,
         RegAllocAlgorithm,
@@ -23,8 +24,8 @@ pub struct RegAlloc<'liveness, TM: TargetMachine> {
     liveness_repr: &'liveness LivenessRepr,
     /// List of free registers.
     free_regs: Vec<TM::Reg>,
-    active: Vec<(Lifetime, TM::Reg)>,
-    inactive: Vec<(Lifetime, TM::Reg)>,
+    active: Vec<(VReg, TM::Reg)>,
+    inactive: Vec<(VReg, TM::Reg)>,
 }
 
 impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc<'liveness, TM> {
@@ -43,7 +44,7 @@ impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc
         }
     }
     fn allocate_arbitrary(&mut self, vreg: &RegAllocVReg, hints: RegAllocHints<TM>) -> TM::Reg {
-        self.set_cursor(vreg.lifetime.start);
+        self.set_cursor(self.liveness_repr.lifetimes[vreg.id].start());
         let reg = hints
             .into_iter()
             .find(|hint| self.is_free(*hint))
@@ -54,14 +55,14 @@ impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc
                     panic!("No free register available for size {}", vreg.size)
                 })
             });
-        self.insert_active(vreg.lifetime.clone(), reg);
+        self.insert_active(vreg.id, reg);
         reg
     }
 
     fn try_allocate_fixed(&mut self, vreg: &RegAllocVReg, reg: TM::Reg) -> bool {
-        self.set_cursor(vreg.lifetime.start);
+        self.set_cursor(self.liveness_repr.lifetimes[vreg.id].start());
         if self.is_free(reg) {
-            self.insert_active(vreg.lifetime.clone(), reg);
+            self.insert_active(vreg.id, reg);
             true
         } else {
             false
@@ -91,7 +92,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
     }
 
     /// Inserts a new live interval into the active list.
-    fn insert_active(&mut self, interval: Lifetime, reg: TM::Reg) {
+    fn insert_active(&mut self, vreg: VReg, reg: TM::Reg) {
         self.free_regs.retain(|r| {
             if reg.interferes_with(*r) {
                 debug!("Removing {} from free list", r.name());
@@ -106,16 +107,16 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         // } else {
         //     self.active.push((interval, reg));
         // }
-        self.active.push((interval, reg));
+        self.active.push((vreg, reg));
     }
 
-    fn remove_active(&mut self, i: usize) -> (Lifetime, TM::Reg) {
-        let (lifetime, reg) = self.active.remove(i);
-        debug!("Removing active interval: {}", lifetime);
+    fn remove_active(&mut self, i: usize) -> (VReg, TM::Reg) {
+        let (vreg, reg) = self.active.remove(i);
+        debug!("Removing active interval: {}", vreg);
         for reg in reg.regclass().filter(|r| reg.interferes_with(*r)) {
             self.free_reg(reg);
         }
-        (lifetime, reg)
+        (vreg, reg)
     }
 
     fn free_reg(&mut self, reg: TM::Reg) {
@@ -123,22 +124,23 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         self.free_regs.push(reg);
     }
 
-    fn insert_inactive(&mut self, interval: Lifetime, reg: TM::Reg) {
-        debug!("Inserting inactive interval: {}", interval);
-        self.inactive.push((interval, reg));
+    fn insert_inactive(&mut self, vreg: VReg, reg: TM::Reg) {
+        debug!("Inserting inactive vreg: {}", vreg);
+        self.inactive.push((vreg, reg));
     }
 
-    fn remove_inactive(&mut self, i: usize) -> (Lifetime, TM::Reg) {
-        let (lifetime, reg) = self.inactive.remove(i);
-        debug!("Removing inactive interval: {}", lifetime);
-        (lifetime, reg)
+    fn remove_inactive(&mut self, i: usize) -> (VReg, TM::Reg) {
+        let (vreg, reg) = self.inactive.remove(i);
+        debug!("Removing inactive interval: {}", vreg);
+        (vreg, reg)
     }
 
     fn expire_old_intervals(&mut self, pp: ProgPoint) {
         let mut i = 0;
         while i < self.active.len() {
-            let (interval, _) = &self.active[i];
-            if !interval.contains(pp) {
+            let (vreg, _) = &self.active[i];
+            let lifetime = &self.liveness_repr.lifetimes[*vreg];
+            if !lifetime.contains(pp) {
                 let (interval, reg) = self.remove_active(i);
                 self.insert_inactive(interval, reg);
             } else {
@@ -150,8 +152,9 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
     fn reactivate_intervals(&mut self, pp: ProgPoint) {
         let mut i = 0;
         while i < self.inactive.len() {
-            let (interval, _) = &self.inactive[i];
-            if interval.contains(pp) {
+            let (vreg, _) = &self.inactive[i];
+            let lifetime = &self.liveness_repr.lifetimes[*vreg];
+            if lifetime.contains(pp) {
                 let (interval, reg) = self.remove_inactive(i);
                 self.insert_active(interval, reg);
             } else {

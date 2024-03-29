@@ -36,12 +36,6 @@ impl<'module, TM: TargetMachine> Coalescer<'module, TM> {
                                 }
                             }
                             PseudoInstr::Ret(_) => {}
-                            PseudoInstr::Phi(dest, operands) => {
-                                if operands.iter().all(|op| op == dest) {
-                                    debug!("Removing redundant phi: {:?}", instr);
-                                    instructions_to_remove.push(instr_id);
-                                }
-                            }
                             PseudoInstr::Def(_) => {}
                         },
                         Instr::Machine(_) => {}

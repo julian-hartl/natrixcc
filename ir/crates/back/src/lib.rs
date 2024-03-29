@@ -1,5 +1,6 @@
+#![feature(option_get_or_insert_default)]
 #![deny(clippy::enum_glob_use)]
-#![warn(clippy::pedantic, clippy::nursery)]
+#![warn(clippy::pedantic)]
 #![forbid(unsafe_code)]
 #![allow(clippy::too_many_lines)]
 

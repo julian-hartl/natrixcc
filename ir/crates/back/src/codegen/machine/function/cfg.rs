@@ -21,12 +21,12 @@ use crate::codegen::{
         Instr,
         InstrId,
         MachInstr,
+        Register,
         TargetMachine,
     },
     register_allocator::{
         InstrNumbering,
         InstrUid,
-        LivenessRepr,
         ProgPoint,
     },
 };
@@ -158,6 +158,7 @@ impl Cfg {
 pub struct BasicBlock<TM: TargetMachine> {
     pub id: BasicBlockId,
     pub instructions: IndexVec<InstrId, Instr<TM>>,
+    pub(crate) phis: Vec<(Register<TM>, Vec<(Register<TM>, BasicBlockId)>)>,
 }
 
 impl<TM: TargetMachine> BasicBlock<TM> {
@@ -165,12 +166,16 @@ impl<TM: TargetMachine> BasicBlock<TM> {
         Self {
             id,
             instructions: IndexVec::default(),
+            phis: Vec::default(),
         }
     }
 
-    pub fn entry_pp(&self, liveness_repr: &LivenessRepr) -> ProgPoint {
-        let instr_nr = liveness_repr
-            .instr_numbering
+    pub fn add_phi(&mut self, dest: Register<TM>, operands: Vec<(Register<TM>, BasicBlockId)>) {
+        self.phis.push((dest, operands))
+    }
+
+    pub fn entry_pp(&self, instr_numbering: &InstrNumbering) -> ProgPoint {
+        let instr_nr = instr_numbering
             .get_instr_nr(InstrUid {
                 bb: self.id,
                 instr: 0.into(),

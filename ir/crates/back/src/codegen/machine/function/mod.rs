@@ -14,6 +14,7 @@ use cranelift_entity::{
 };
 use daggy::Walker;
 use index_vec::IndexVec;
+use iter_tools::Itertools;
 use smallvec::{
     smallvec,
     SmallVec,
@@ -36,6 +37,7 @@ use crate::codegen::machine::{
     Instr,
     InstrId,
     MachInstr,
+    Register,
     Size,
     TargetMachine,
     VReg,
@@ -171,9 +173,6 @@ impl<TM: TargetMachine> Function<TM> {
                                 }
                             }
                         },
-                        PseudoInstr::Phi(_, _) => {
-                            unreachable!("Phi should have been coalesced away by now")
-                        }
                         PseudoInstr::Def(reg) => {
                             assert!(
                                 reg.try_as_physical().is_some(),
@@ -240,6 +239,16 @@ impl<TM: TargetMachine> Display for Function<TM> {
         for bb_id in bbs {
             let bb = &self.basic_blocks[bb_id];
             writeln!(f, "{bb_id}: ")?;
+            for (dest, operands) in &bb.phis {
+                write!(f, "  {dest} = phi ")?;
+                for (i, (reg, bb)) in operands.iter().enumerate() {
+                    write!(f, "{reg}:{bb}")?;
+                    if i < operands.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                writeln!(f)?;
+            }
             for instr in &bb.instructions {
                 write!(f, "  ")?;
                 if let Some(out) = instr.writes() {
