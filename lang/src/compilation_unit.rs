@@ -1,21 +1,59 @@
-use std::cell::RefCell;
-use std::ops::Deref;
+use std::{
+    cell::RefCell,
+    ops::Deref,
+    rc::Rc,
+};
 
-use std::rc::Rc;
+use fusion_compiler::{
+    idx,
+    Idx,
+    IdxVec,
+};
 
-use fusion_compiler::{idx, Idx, IdxVec};
-
-use crate::ast::evaluator::ASTEvaluator;
-use crate::ast::lexer::{Lexer, Token};
-use crate::ast::parser::Parser;
-use crate::ast::visitor::ASTVisitor;
-use crate::ast::{AssignExpr, Ast, BinOpKind, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, ExprId, FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, StmtKind, UnOpKind, UnaryExpr, VarExpr, WhileStmt, StmtId, Body};
-use crate::diagnostics::printer::DiagnosticsPrinter;
-use crate::diagnostics::DiagnosticsBagCell;
-use crate::text::span::TextSpan;
 #[allow(unused_imports)]
 pub use crate::typings::Type;
-use crate::{diagnostics, text};
+use crate::{
+    ast::{
+        evaluator::ASTEvaluator,
+        lexer::{
+            Lexer,
+            Token,
+        },
+        parser::Parser,
+        visitor::ASTVisitor,
+        AssignExpr,
+        Ast,
+        BinOpKind,
+        BinaryExpr,
+        BlockExpr,
+        Body,
+        BoolExpr,
+        CallExpr,
+        Expr,
+        ExprId,
+        FunctionDeclaration,
+        IfExpr,
+        ItemId,
+        LetStmt,
+        NumberExpr,
+        ParenthesizedExpr,
+        ReturnStmt,
+        Stmt,
+        StmtId,
+        StmtKind,
+        UnOpKind,
+        UnaryExpr,
+        VarExpr,
+        WhileStmt,
+    },
+    diagnostics,
+    diagnostics::{
+        printer::DiagnosticsPrinter,
+        DiagnosticsBagCell,
+    },
+    text,
+    text::span::TextSpan,
+};
 
 idx!(FunctionIdx);
 idx!(VariableIdx);
@@ -27,7 +65,6 @@ pub struct Function {
     pub body: Body,
     pub return_type: Type,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Variable {
@@ -51,7 +88,13 @@ impl GlobalScope {
         }
     }
 
-    pub fn declare_variable(&mut self, identifier: &str, ty: Type, is_global: bool, is_shadowing: bool) -> VariableIdx {
+    pub fn declare_variable(
+        &mut self,
+        identifier: &str,
+        ty: Type,
+        is_global: bool,
+        is_shadowing: bool,
+    ) -> VariableIdx {
         let variable = Variable {
             name: identifier.to_string(),
             ty,
@@ -226,7 +269,6 @@ impl Scopes {
     fn current_local_scope(&self) -> Option<&LocalScope> {
         self.local_scopes.last()
     }
-
 }
 
 struct Resolver {
@@ -323,7 +365,12 @@ pub fn resolve_type_from_string(diagnostics: &DiagnosticsBagCell, type_name: &To
 }
 
 impl ASTVisitor for Resolver {
-    fn visit_func_decl(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration, _item_id: ItemId) {
+    fn visit_func_decl(
+        &mut self,
+        ast: &mut Ast,
+        func_decl: &FunctionDeclaration,
+        _item_id: ItemId,
+    ) {
         let function_idx = func_decl.idx;
         self.scopes.enter_function_scope(function_idx);
         let function = self.scopes.global_scope.functions.get(function_idx);
@@ -410,11 +457,7 @@ impl ASTVisitor for Resolver {
             let then_ty = if_statement.then_branch.ty_or_void(&*ast);
             let else_ty = else_branch.body.ty_or_void(&*ast);
             let else_span = else_branch.body.span(&*ast);
-            ty = self.expect_type(
-                then_ty,
-                &else_ty,
-                &else_span,
-            );
+            ty = self.expect_type(then_ty, &else_ty, &else_span);
             self.scopes.exit_scope();
         }
         ast.set_type(expr.id, ty);

@@ -1,17 +1,33 @@
-use std::fmt::{Display, Formatter};
-use std::hash::Hash;
-use std::ops::Deref;
+use std::{
+    fmt::{
+        Display,
+        Formatter,
+    },
+    hash::Hash,
+    ops::Deref,
+};
 
-use termion::color::{Fg, Reset};
-
-use fusion_compiler::{idx, Idx, IdxVec};
+use fusion_compiler::{
+    idx,
+    Idx,
+    IdxVec,
+};
 use printer::ASTPrinter;
+use termion::color::{
+    Fg,
+    Reset,
+};
 use visitor::ASTVisitor;
 
-use crate::ast::lexer::Token;
-use crate::compilation_unit::{FunctionIdx, VariableIdx};
-use crate::text::span::TextSpan;
-use crate::typings::Type;
+use crate::{
+    ast::lexer::Token,
+    compilation_unit::{
+        FunctionIdx,
+        VariableIdx,
+    },
+    text::span::TextSpan,
+    typings::Type,
+};
 
 pub mod evaluator;
 pub mod lexer;
@@ -515,7 +531,6 @@ pub enum UnOpKind {
     BitwiseNot,
 }
 
-
 impl Display for UnOpKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         return match self {
@@ -748,11 +763,7 @@ pub struct Body {
 }
 
 impl Body {
-    pub fn new(
-        opening_brace: Token,
-        stmts: Vec<StmtId>,
-        closing_brace: Token,
-    ) -> Self {
+    pub fn new(opening_brace: Token, stmts: Vec<StmtId>, closing_brace: Token) -> Self {
         Self {
             opening_brace,
             stmts,
@@ -763,9 +774,9 @@ impl Body {
     pub fn span(&self, ast: &Ast) -> TextSpan {
         TextSpan::combine(
             self.stmts
-                .iter().map(
-                |stmt| ast.query_stmt(*stmt).span(ast)
-            ).collect::<Vec<TextSpan>>()
+                .iter()
+                .map(|stmt| ast.query_stmt(*stmt).span(ast))
+                .collect::<Vec<TextSpan>>(),
         )
     }
 
@@ -798,11 +809,31 @@ impl Deref for Body {
 
 #[cfg(test)]
 mod test {
-    use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, UnaryExpr, VarExpr, WhileStmt};
-    use crate::compilation_unit::CompilationUnit;
-    use crate::text::span::TextSpan;
-
     use super::visitor::ASTVisitor;
+    use crate::{
+        ast::{
+            AssignExpr,
+            Ast,
+            BinaryExpr,
+            BlockExpr,
+            BoolExpr,
+            CallExpr,
+            Expr,
+            FunctionDeclaration,
+            IfExpr,
+            ItemId,
+            LetStmt,
+            NumberExpr,
+            ParenthesizedExpr,
+            ReturnStmt,
+            Stmt,
+            UnaryExpr,
+            VarExpr,
+            WhileStmt,
+        },
+        compilation_unit::CompilationUnit,
+        text::span::TextSpan,
+    };
 
     #[derive(Debug, PartialEq, Eq)]
     enum TestASTNode {
@@ -858,7 +889,7 @@ mod test {
             );
 
             for (index, (expected, actual)) in
-            self.expected.iter().zip(self.actual.iter()).enumerate()
+                self.expected.iter().zip(self.actual.iter()).enumerate()
             {
                 assert_eq!(
                     expected, actual,
@@ -870,7 +901,12 @@ mod test {
     }
 
     impl ASTVisitor for ASTVerifier {
-        fn visit_func_decl(&mut self, ast: &mut Ast, func_decl: &FunctionDeclaration, item_id: ItemId) {
+        fn visit_func_decl(
+            &mut self,
+            ast: &mut Ast,
+            func_decl: &FunctionDeclaration,
+            item_id: ItemId,
+        ) {
             self.actual.push(TestASTNode::Func);
             for stmt in func_decl.body.iter() {
                 self.visit_statement(ast, *stmt);

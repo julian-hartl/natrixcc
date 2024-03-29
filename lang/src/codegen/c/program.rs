@@ -1,16 +1,30 @@
-use std::fs::File;
-use std::process::Command;
-use std::io::Write;
+use std::{
+    fs::File,
+    io::Write,
+    process::Command,
+};
+
 use anyhow::anyhow;
-use crate::codegen::c::ast::{CAst, CBlock, CExpr, CFunctionDecl, CItem, CParameter, CStmt};
-use crate::codegen::c::CTranspiler;
-use crate::compilation_unit::CompilationUnit;
+
+use crate::{
+    codegen::c::{
+        ast::{
+            CAst,
+            CBlock,
+            CExpr,
+            CFunctionDecl,
+            CItem,
+            CParameter,
+            CStmt,
+        },
+        CTranspiler,
+    },
+    compilation_unit::CompilationUnit,
+};
 
 impl From<CAst> for CProgram {
     fn from(value: CAst) -> Self {
-        Self {
-            ast: value,
-        }
+        Self { ast: value }
     }
 }
 
@@ -44,16 +58,17 @@ impl CProgram {
             .arg(Self::C_INPUT_FILE)
             .arg("-o")
             .arg(Self::OUTPUT_FILE)
-            .status()?.exit_ok()?;
+            .status()?
+            .exit_ok()?;
         Ok(file)
     }
 
     pub fn run(&self) -> anyhow::Result<i32> {
         let _ = self.compile()?;
         let run_result = Command::new(format!("./{}", Self::OUTPUT_FILE)).status()?;
-        Ok(run_result.code().ok_or(
-            anyhow!("Program exited without returning a value")
-        )?)
+        Ok(run_result
+            .code()
+            .ok_or(anyhow!("Program exited without returning a value"))?)
     }
 }
 

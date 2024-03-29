@@ -1,8 +1,8 @@
 mod ast;
-mod transpiler;
 mod program;
+mod transpiler;
 
 #[allow(unused_imports)]
-pub use transpiler::CTranspiler;
-#[allow(unused_imports)]
 pub use program::CProgram;
+#[allow(unused_imports)]
+pub use transpiler::CTranspiler;

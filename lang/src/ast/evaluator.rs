@@ -2,10 +2,37 @@ use std::collections::HashMap;
 
 use fusion_compiler::Idx;
 
-use crate::ast::{AssignExpr, Ast, BinaryExpr, BinOpKind, BlockExpr, Body, BoolExpr, CallExpr, Expr, FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, Stmt, UnaryExpr, UnOpKind, VarExpr, WhileStmt};
-use crate::ast::visitor::ASTVisitor;
-use crate::compilation_unit::{FunctionIdx, GlobalScope, VariableIdx};
-use crate::text::span::TextSpan;
+use crate::{
+    ast::{
+        visitor::ASTVisitor,
+        AssignExpr,
+        Ast,
+        BinOpKind,
+        BinaryExpr,
+        BlockExpr,
+        Body,
+        BoolExpr,
+        CallExpr,
+        Expr,
+        FunctionDeclaration,
+        IfExpr,
+        ItemId,
+        LetStmt,
+        NumberExpr,
+        ParenthesizedExpr,
+        Stmt,
+        UnOpKind,
+        UnaryExpr,
+        VarExpr,
+        WhileStmt,
+    },
+    compilation_unit::{
+        FunctionIdx,
+        GlobalScope,
+        VariableIdx,
+    },
+    text::span::TextSpan,
+};
 
 #[derive(Debug)]
 pub struct Frame {
@@ -141,7 +168,13 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
         self.pop_frame();
     }
 
-    fn visit_func_decl(&mut self, _ast: &mut Ast, _func_decl: &FunctionDeclaration, _item_id: ItemId) {}
+    fn visit_func_decl(
+        &mut self,
+        _ast: &mut Ast,
+        _func_decl: &FunctionDeclaration,
+        _item_id: ItemId,
+    ) {
+    }
 
     fn visit_while_statement(&mut self, ast: &mut Ast, while_statement: &WhileStmt) {
         self.push_frame();
@@ -191,13 +224,7 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
             .global_scope
             .lookup_function(function_name)
             .map(|f| self.global_scope.functions.get(f))
-            .expect(
-                format!(
-                    "Function '{}' not found",
-                    function_name
-                )
-                    .as_str(),
-            );
+            .expect(format!("Function '{}' not found", function_name).as_str());
         let mut arguments = Vec::new();
         for argument in &call_expression.arguments {
             self.visit_expression(ast, *argument);
@@ -234,7 +261,7 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
                     var_expr.variable_idx.as_index(),
                     identifier
                 )
-                    .as_str(),
+                .as_str(),
             ),
         );
     }
@@ -251,7 +278,12 @@ impl<'a> ASTVisitor for ASTEvaluator<'a> {
         panic!("Cannot evaluate error expression")
     }
 
-    fn visit_unary_expression(&mut self, ast: &mut Ast, unary_expression: &UnaryExpr, _expr: &Expr) {
+    fn visit_unary_expression(
+        &mut self,
+        ast: &mut Ast,
+        unary_expression: &UnaryExpr,
+        _expr: &Expr,
+    ) {
         self.visit_expression(ast, unary_expression.operand);
         let operand = self.expect_last_value().expect_number();
         self.last_value = Some(Value::Number(match unary_expression.operator.kind {

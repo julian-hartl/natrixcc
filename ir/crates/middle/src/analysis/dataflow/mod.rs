@@ -1,28 +1,43 @@
-use std::fmt::Debug;
-use std::hash::Hash;
+use std::{
+    fmt::Debug,
+    hash::Hash,
+};
 
 use cranelift_entity::SecondaryMap;
-use rustc_hash::{FxHashMap, FxHashSet};
-
 use lattice::Value;
+use rustc_hash::{
+    FxHashMap,
+    FxHashSet,
+};
 
-use crate::Instr;
-use crate::cfg::{BasicBlockId, Terminator};
+use crate::{
+    cfg::{
+        BasicBlockId,
+        Terminator,
+    },
+    Instr,
+};
 
-pub mod lattice;
-pub mod concrete_value;
-pub mod use_def;
-mod forward;
 mod backward;
+pub mod concrete_value;
+mod forward;
+pub mod lattice;
+pub mod use_def;
 
 type InstrValue = crate::VReg;
 
 #[derive(Default)]
-pub struct DFState<V> where V: Clone {
+pub struct DFState<V>
+where
+    V: Clone,
+{
     state: SecondaryMap<BasicBlockId, V>,
 }
 
-impl<V> DFState<V> where V: Value {
+impl<V> DFState<V>
+where
+    V: Value,
+{
     pub fn new() -> Self {
         Self::default()
     }
@@ -35,7 +50,11 @@ impl<V> DFState<V> where V: Value {
         &self.state[bb]
     }
 
-    pub fn create(&mut self, bb: BasicBlockId, join_partners: impl IntoIterator<Item=BasicBlockId>) -> &mut V {
+    pub fn create(
+        &mut self,
+        bb: BasicBlockId,
+        join_partners: impl IntoIterator<Item = BasicBlockId>,
+    ) -> &mut V {
         for join_partner in join_partners {
             let pred_state = self.get(join_partner).clone();
             let entry = self.get_mut(bb);
@@ -45,9 +64,10 @@ impl<V> DFState<V> where V: Value {
     }
 }
 
-
 pub trait InstrWalker<V: Value>: Sized {
-    fn walk<H>(self, h: H) where H: FnMut(&mut Instr, &V);
+    fn walk<H>(self, h: H)
+    where
+        H: FnMut(&mut Instr, &V);
 
     fn drain(self) {
         self.walk(|_, _| {});
@@ -64,7 +84,11 @@ pub trait Analysis {
 
 pub type DFValueState<V> = FxHashMap<InstrValue, V>;
 
-impl<K, V> Value for FxHashMap<K, V> where K: Clone + Debug + Eq + Hash, V: Value {
+impl<K, V> Value for FxHashMap<K, V>
+where
+    K: Clone + Debug + Eq + Hash,
+    V: Value,
+{
     fn join(&mut self, other: Self) -> bool {
         let mut changed = false;
         for (key, val) in other {
@@ -77,12 +101,13 @@ impl<K, V> Value for FxHashMap<K, V> where K: Clone + Debug + Eq + Hash, V: Valu
     }
 }
 
-impl<T> Value for FxHashSet<T> where T: Clone + Debug + Eq + Hash {
+impl<T> Value for FxHashSet<T>
+where
+    T: Clone + Debug + Eq + Hash,
+{
     fn join(&mut self, other: Self) -> bool {
         let len_before = self.len();
         self.extend(other);
         self.len() != len_before
     }
 }
-
-

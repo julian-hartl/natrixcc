@@ -1,10 +1,19 @@
 use cranelift_entity::SecondaryMap;
 
-use crate::{Instr, VReg};
-use crate::analysis::dataflow::backward::BackwardAnalysisRunner;
-use crate::analysis::dataflow::lattice;
-use crate::cfg::{BasicBlockId, InstrId, Terminator};
-use crate::instruction::Op;
+use crate::{
+    analysis::dataflow::{
+        backward::BackwardAnalysisRunner,
+        lattice,
+    },
+    cfg::{
+        BasicBlockId,
+        InstrId,
+        Terminator,
+    },
+    instruction::Op,
+    Instr,
+    VReg,
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct InstrUid(pub BasicBlockId, pub InstrId);
@@ -28,9 +37,7 @@ impl From<&Terminator> for InstrUid {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct UseDef(
-    SecondaryMap<VReg, (Option<InstrUid>, Option<Vec<InstrUid>>)>
-);
+pub struct UseDef(SecondaryMap<VReg, (Option<InstrUid>, Option<Vec<InstrUid>>)>);
 
 impl UseDef {
     pub fn register_def(&mut self, def: VReg, instr_uid: InstrUid) -> Option<InstrUid> {
@@ -38,34 +45,30 @@ impl UseDef {
     }
 
     pub fn register_use(&mut self, use_: VReg, instr_uid: InstrUid) {
-        let uses = self.0[use_].1.get_or_insert_with(
-            Vec::new
-        );
+        let uses = self.0[use_].1.get_or_insert_with(Vec::new);
         uses.push(instr_uid);
     }
-    
+
     pub fn is_defined(&self, def: VReg) -> bool {
         self.0[def].0.is_some()
     }
-    
+
     pub fn get_def(&self, def: VReg) -> Option<InstrUid> {
         self.0[def].0
     }
-    
+
     /// Returns all defined, but unused registers
-    pub fn unused_regs(&self) -> impl Iterator<Item=VReg> + '_ {
-        self.0.iter().filter_map(
-            |(vreg, (def, uses))| {
-                def.and_then(|_| {
-                    let is_unused = uses.as_ref().map(|uses| uses.is_empty()).unwrap_or(true);
-                    if is_unused {
-                        Some(vreg)
-                    } else {
-                        None
-                    }
-                })
-            }
-        )
+    pub fn unused_regs(&self) -> impl Iterator<Item = VReg> + '_ {
+        self.0.iter().filter_map(|(vreg, (def, uses))| {
+            def.and_then(|_| {
+                let is_unused = uses.as_ref().map(|uses| uses.is_empty()).unwrap_or(true);
+                if is_unused {
+                    Some(vreg)
+                } else {
+                    None
+                }
+            })
+        })
     }
 }
 
@@ -82,12 +85,11 @@ impl lattice::Value for UseDef {
             for use_ in uses.iter().flatten().copied() {
                 self.register_use(vreg, use_);
                 changed = true;
-            } 
+            }
         }
         changed
     }
 }
-
 
 pub struct Analysis;
 
@@ -108,10 +110,12 @@ impl super::Analysis for Analysis {
         }
     }
 
-    fn analyse_term(term: &Terminator, use_def: &mut Self::V){
-        for used_vreg in term.used().into_iter().flat_map(
-            |op| op.try_as_vreg_ref().copied()
-        ) {
+    fn analyse_term(term: &Terminator, use_def: &mut Self::V) {
+        for used_vreg in term
+            .used()
+            .into_iter()
+            .flat_map(|op| op.try_as_vreg_ref().copied())
+        {
             use_def.register_use(used_vreg, term.into());
         }
     }

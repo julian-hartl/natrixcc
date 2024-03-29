@@ -1,12 +1,24 @@
 use std::collections::HashMap;
 
-use crate::mir::{BasicBlockIdx, FunctionIdx, InstructionIdx, InstructionKind, MIR, TerminatorKind};
-use crate::mir::optimizations::local::LocalMIRPass;
+use crate::mir::{
+    optimizations::local::LocalMIRPass,
+    BasicBlockIdx,
+    FunctionIdx,
+    InstructionIdx,
+    InstructionKind,
+    TerminatorKind,
+    MIR,
+};
 
 pub struct CopyPropagation;
 
 impl LocalMIRPass for CopyPropagation {
-    fn run_on_basic_block(&mut self, mir: &mut MIR, function_idx: FunctionIdx, bb_idx: BasicBlockIdx) -> u32 {
+    fn run_on_basic_block(
+        &mut self,
+        mir: &mut MIR,
+        function_idx: FunctionIdx,
+        bb_idx: BasicBlockIdx,
+    ) -> u32 {
         let mut changes = 0;
         // Marks an instruction as a copy of another instruction
         let mut copies: HashMap<InstructionIdx, InstructionIdx> = HashMap::new();
@@ -15,11 +27,7 @@ impl LocalMIRPass for CopyPropagation {
         for instruction_idx in bb.instructions.iter().copied() {
             let instruction = &mut function.instructions[instruction_idx];
             match &mut instruction.kind {
-                InstructionKind::Binary {
-                    lhs,
-                    rhs,
-                    ..
-                } => {
+                InstructionKind::Binary { lhs, rhs, .. } => {
                     if lhs.replace_copy_with_copied_ref(&copies) {
                         changes += 1;
                     }
@@ -27,10 +35,7 @@ impl LocalMIRPass for CopyPropagation {
                         changes += 1;
                     }
                 }
-                InstructionKind::Unary {
-                    operand,
-                    ..
-                } => {
+                InstructionKind::Unary { operand, .. } => {
                     if operand.replace_copy_with_copied_ref(&copies) {
                         changes += 1;
                     }
@@ -43,10 +48,7 @@ impl LocalMIRPass for CopyPropagation {
                     //     changes += 1;
                     // }
                 }
-                InstructionKind::Call {
-                    arguments,
-                    ..
-                } => {
+                InstructionKind::Call { arguments, .. } => {
                     for argument in arguments.iter_mut() {
                         if argument.replace_copy_with_copied_ref(&copies) {
                             changes += 1;

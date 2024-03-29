@@ -1,8 +1,31 @@
-use natrix_front::module::{Instruction, Literal, Operand, RegId};
+use natrix_front::module::{
+    Instruction,
+    Literal,
+    Operand,
+    RegId,
+};
 
-use crate::{cfg, Function, Module, Type, VReg};
-use crate::cfg::{BasicBlockId, BranchTerm, Builder, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
-use crate::instruction::{CmpOp, Const, Op};
+use crate::{
+    cfg,
+    cfg::{
+        BasicBlockId,
+        BranchTerm,
+        Builder,
+        CondBranchTerm,
+        JumpTarget,
+        RetTerm,
+        TerminatorKind,
+    },
+    instruction::{
+        CmpOp,
+        Const,
+        Op,
+    },
+    Function,
+    Module,
+    Type,
+    VReg,
+};
 
 pub struct FrontBridge {}
 
@@ -21,9 +44,15 @@ impl FrontBridge {
     }
 
     fn bridge_function(&mut self, front_f: natrix_front::module::Function) -> Function {
-        let mut function = Function::new(front_f.name, front_f.args.into_iter().map(
-            |arg| arg.into()
-        ).collect::<Vec<_>>(), front_f.ret_ty.into());
+        let mut function = Function::new(
+            front_f.name,
+            front_f
+                .args
+                .into_iter()
+                .map(|arg| arg.into())
+                .collect::<Vec<_>>(),
+            front_f.ret_ty.into(),
+        );
         let mut cfg_builder = cfg::Builder::new(&mut function);
         for basic_block in &front_f.basic_blocks {
             let bb_id = basic_block.id.into();
@@ -66,25 +95,15 @@ impl FrontBridge {
                         let cond = self.operand_to_op(condition, Type::Bool);
                         let true_target = self.map_target(true_target, &mut cfg_builder);
                         let false_target = self.map_target(false_target, &mut cfg_builder);
-                        cfg_builder.end_bb(
-                            TerminatorKind::CondBranch(
-                                CondBranchTerm::new(
-                                    cond,
-                                    true_target,
-                                    false_target,
-                                )
-                            )
-                        );
+                        cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm::new(
+                            cond,
+                            true_target,
+                            false_target,
+                        )));
                     }
                     Instruction::Br(target) => {
                         let target = self.map_target(target, &mut cfg_builder);
-                        cfg_builder.end_bb(
-                            TerminatorKind::Branch(
-                                BranchTerm::new(
-                                    target
-                                )
-                            )
-                        );
+                        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(target)));
                     }
                     Instruction::ICmp(dest, op, ty, lhs, rhs) => {
                         let lhs = self.operand_to_op(lhs, ty.into());
@@ -98,39 +117,45 @@ impl FrontBridge {
         function
     }
 
-    fn map_target(&mut self, target: natrix_front::module::Target, builder: &mut cfg::Builder) -> JumpTarget {
+    fn map_target(
+        &mut self,
+        target: natrix_front::module::Target,
+        builder: &mut cfg::Builder,
+    ) -> JumpTarget {
         let target_bb_id = target.0.into();
         JumpTarget::new(
             target_bb_id,
-            target.1.map(
-                |args| {
+            target
+                .1
+                .map(|args| {
                     let bb_args = builder.get_bb_arguments(target_bb_id);
-                    args.into_iter().enumerate().map(
-                        |(i, arg_op)| {
+                    args.into_iter()
+                        .enumerate()
+                        .map(|(i, arg_op)| {
                             self.operand_to_op(arg_op, builder.vreg(bb_args[i]).ty.clone())
-                        }
-                    ).collect::<Vec<_>>()
-                }
-            ).unwrap_or_default(),
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
         )
     }
 
     fn ensure_bb_exists(builder: &mut Builder, bb_id: BasicBlockId) {
-        while builder.max_bb_id().map(|max_bb_id| max_bb_id < bb_id).unwrap_or(true) {
+        while builder
+            .max_bb_id()
+            .map(|max_bb_id| max_bb_id < bb_id)
+            .unwrap_or(true)
+        {
             builder.create_bb();
         }
     }
 
     fn operand_to_op(&self, operand: Operand, context_ty: Type) -> Op {
         match operand {
-            Operand::Literal(literal) => {
-                Op::Const(match literal {
-                    Literal::Int(value) => Const::Int(context_ty, value)
-                })
-            }
-            Operand::Register(reg) => {
-                Op::Vreg(reg.into())
-            }
+            Operand::Literal(literal) => Op::Const(match literal {
+                Literal::Int(value) => Const::Int(context_ty, value),
+            }),
+            Operand::Register(reg) => Op::Vreg(reg.into()),
         }
     }
 }

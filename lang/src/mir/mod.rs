@@ -1,23 +1,40 @@
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::ops::{Deref, DerefMut};
-use basic_block::BasicBlock;
-use fusion_compiler::{bug, idx, Idx, IdxVec};
-use crate::compilation_unit::VariableIdx;
-use crate::{ast, compilation_unit};
+use std::{
+    collections::HashMap,
+    fmt::{
+        Display,
+        Formatter,
+    },
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 
+use basic_block::{
+    BasicBlock,
+    BasicBlockIdx,
+};
 #[allow(unused)]
 pub use builder::MIRBuilder;
-
+use fusion_compiler::{
+    bug,
+    idx,
+    Idx,
+    IdxVec,
+};
 #[allow(unused)]
 pub use writer::MIRWriter;
-use basic_block::BasicBlockIdx;
 
-mod builder;
-mod writer;
-pub mod optimizations;
+use crate::{
+    ast,
+    compilation_unit,
+    compilation_unit::VariableIdx,
+};
+
 mod basic_block;
-
+mod builder;
+pub mod optimizations;
+mod writer;
 
 #[derive(Debug, Copy, Clone)]
 pub enum Type {
@@ -32,7 +49,9 @@ impl From<compilation_unit::Type> for Type {
             compilation_unit::Type::Bool => Self::Bool,
             compilation_unit::Type::Int => Self::Int,
             compilation_unit::Type::Void => Self::Void,
-            compilation_unit::Type::Unresolved | compilation_unit::Type::Error => bug!("Unresolved type")
+            compilation_unit::Type::Unresolved | compilation_unit::Type::Error => {
+                bug!("Unresolved type")
+            }
         }
     }
 }
@@ -45,8 +64,7 @@ pub struct MIR {
 }
 
 impl MIR {
-    pub fn new(
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             functions: Functions::new(),
             basic_blocks: BasicBlocks::new(),
@@ -54,7 +72,8 @@ impl MIR {
     }
 
     pub fn new_basic_block(&mut self) -> BasicBlockIdx {
-        self.basic_blocks.push_with_index(|idx| Some(BasicBlock::new(idx)))
+        self.basic_blocks
+            .push_with_index(|idx| Some(BasicBlock::new(idx)))
     }
 }
 
@@ -79,7 +98,6 @@ impl Deref for BasicBlocks {
     }
 }
 
-
 impl DerefMut for BasicBlocks {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
@@ -99,7 +117,6 @@ pub struct Function {
 }
 
 idx!(FunctionIdx);
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Value {
@@ -140,7 +157,10 @@ impl Value {
         }
     }
 
-    pub fn replace_copy_with_copied_ref(&mut self, copies: &HashMap<InstructionIdx, InstructionIdx>) -> bool {
+    pub fn replace_copy_with_copied_ref(
+        &mut self,
+        copies: &HashMap<InstructionIdx, InstructionIdx>,
+    ) -> bool {
         match self {
             Self::InstructionRef(idx) => {
                 if let Some(new_reference) = copies.get(idx) {
@@ -169,9 +189,6 @@ impl Value {
     }
 }
 
-
-
-
 #[derive(Debug)]
 pub struct Instruction {
     pub kind: InstructionKind,
@@ -180,10 +197,7 @@ pub struct Instruction {
 
 impl Instruction {
     pub fn new(kind: InstructionKind, ty: Type) -> Self {
-        Self {
-            kind,
-            ty,
-        }
+        Self { kind, ty }
     }
 
     pub fn is_pure(&self) -> bool {
@@ -386,9 +400,7 @@ pub struct Terminator {
 
 impl Terminator {
     pub fn new(kind: TerminatorKind) -> Self {
-        Self {
-            kind,
-        }
+        Self { kind }
     }
 }
 
@@ -408,6 +420,4 @@ pub enum TerminatorKind {
     ///
     /// This is for example used for an unresolved break statement, because the target of a break is not known until the loop has been built.
     Unresolved,
-
 }
-

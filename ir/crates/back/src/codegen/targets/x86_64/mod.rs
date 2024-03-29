@@ -1,25 +1,23 @@
+use machine::instr::Instr as MInstr;
+use natrix_middle::instruction::CmpOp;
 use smallvec::{
     smallvec,
     SmallVec,
 };
 use strum::VariantArray;
 
-use machine::instr::Instr as MInstr;
-use natrix_middle::instruction::CmpOp;
-
 use crate::codegen::{
     machine,
     machine::{
-        Architecture,
         backend,
-        Endianness,
         function::{
-            BasicBlockId,
             builder::{
                 MatchedPattern,
+                PatternIn,
                 PatternInOperand,
                 PatternInOutput,
             },
+            BasicBlockId,
             Function,
         },
         instr::{
@@ -27,13 +25,14 @@ use crate::codegen::{
             PseudoInstr,
         },
         isa::PhysicalRegister as MachPhysicalRegister,
+        Architecture,
+        Endianness,
         Size,
         TargetMachine,
     },
     selection_dag::Immediate,
+    targets::calling_convention::systemv::SystemV,
 };
-use crate::codegen::machine::function::builder::PatternIn;
-use crate::codegen::targets::calling_convention::systemv::SystemV;
 
 mod asm;
 
@@ -420,7 +419,6 @@ impl MachPhysicalRegister for PhysicalRegister {
         }
     }
 }
-
 
 impl machine::isa::MachInstr for Instr {
     type TM = Target;

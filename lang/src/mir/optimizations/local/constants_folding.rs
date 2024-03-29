@@ -1,8 +1,24 @@
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashMap,
+    ops::{
+        Deref,
+        DerefMut,
+    },
+};
 
-use crate::mir::{BasicBlockIdx, Binop, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, TerminatorKind, Unop, Value};
-use crate::mir::optimizations::local::LocalMIRPass;
+use crate::mir::{
+    optimizations::local::LocalMIRPass,
+    BasicBlockIdx,
+    Binop,
+    FunctionIdx,
+    Instruction,
+    InstructionIdx,
+    InstructionKind,
+    TerminatorKind,
+    Unop,
+    Value,
+    MIR,
+};
 
 struct ComputedConstantValues(HashMap<InstructionIdx, Value>);
 
@@ -17,7 +33,7 @@ impl ComputedConstantValues {
             let instruction_idx = value.as_instruction_ref();
             match instruction_idx.as_ref() {
                 None => false,
-                Some(idx) => self.get(idx).is_some()
+                Some(idx) => self.get(idx).is_some(),
             }
         }
     }
@@ -30,12 +46,10 @@ impl ComputedConstantValues {
     fn get_as_constant_value(&self, value: &Value) -> Option<Value> {
         match value {
             Value::ConstantInt(value) => Some(Value::ConstantInt(*value)),
-            Value::InstructionRef(idx) => {
-                match self.get(idx) {
-                    None => None,
-                    Some(value) => self.get_as_constant_value(value)
-                }
-            }
+            Value::InstructionRef(idx) => match self.get(idx) {
+                None => None,
+                Some(value) => self.get_as_constant_value(value),
+            },
             Value::Void => Some(Value::Void),
             Value::ParameterRef(_) => None,
         }
@@ -58,9 +72,13 @@ impl DerefMut for ComputedConstantValues {
 
 pub struct ConstantFolding;
 
-
 impl LocalMIRPass for ConstantFolding {
-    fn run_on_basic_block(&mut self, mir: &mut MIR, function_idx: FunctionIdx, bb_idx: BasicBlockIdx) -> u32 {
+    fn run_on_basic_block(
+        &mut self,
+        mir: &mut MIR,
+        function_idx: FunctionIdx,
+        bb_idx: BasicBlockIdx,
+    ) -> u32 {
         let mut changes = 0;
         let function = mir.functions.get_mut(function_idx);
         let bb = mir.basic_blocks.get_mut_or_panic(bb_idx);
@@ -68,15 +86,10 @@ impl LocalMIRPass for ConstantFolding {
         for instruction_idx in bb.instructions.iter().copied() {
             let instruction = function.instructions.get_mut(instruction_idx);
             match &mut instruction.kind {
-                InstructionKind::Binary {
-                    lhs,
-                    rhs,
-                    operator
-                } => {
+                InstructionKind::Binary { lhs, rhs, operator } => {
                     let lhs_int = constant_values.get_as_constant_integer(lhs);
                     let rhs_int = constant_values.get_as_constant_integer(rhs);
-                    if let
-                        (Some(lhs_int), Some(rhs_int)) = (lhs_int, rhs_int) {
+                    if let (Some(lhs_int), Some(rhs_int)) = (lhs_int, rhs_int) {
                         let result = match operator {
                             // todo: replace with safe arithmetic
                             Binop::Add => lhs_int + rhs_int,
@@ -99,7 +112,8 @@ impl LocalMIRPass for ConstantFolding {
                         let value = Value::ConstantInt(result);
                         constant_values.insert(instruction_idx, value.clone());
                         changes += 1;
-                        *instruction = Instruction::new(InstructionKind::Value(value), instruction.ty);
+                        *instruction =
+                            Instruction::new(InstructionKind::Value(value), instruction.ty);
                     }
                 }
                 InstructionKind::Unary { operator, operand } => {
@@ -112,7 +126,8 @@ impl LocalMIRPass for ConstantFolding {
                         let value = Value::ConstantInt(result);
                         constant_values.insert(instruction_idx, value.clone());
                         changes += 1;
-                        *instruction = Instruction::new(InstructionKind::Value(value), instruction.ty);
+                        *instruction =
+                            Instruction::new(InstructionKind::Value(value), instruction.ty);
                     }
                 }
                 InstructionKind::Value(value) => {
@@ -150,17 +165,14 @@ impl LocalMIRPass for ConstantFolding {
                     }
                 }
                 TerminatorKind::Jump(_) => {}
-                TerminatorKind::SwitchInt {
-                    value,
-                    ..
-                } => {
+                TerminatorKind::SwitchInt { value, .. } => {
                     if let Some(constant_value) = constant_values.get_as_constant_value(value) {
                         if value.replace_if_not_equal(constant_value.clone()) {
                             changes += 1;
                         }
                     }
                 }
-                TerminatorKind::Unresolved  => {}
+                TerminatorKind::Unresolved => {}
             }
         }
         changes

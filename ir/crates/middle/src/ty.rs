@@ -1,4 +1,7 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{
+    Display,
+    Formatter,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
@@ -16,7 +19,6 @@ pub enum Type {
 }
 
 impl Type {
-
     pub const fn size(&self) -> u32 {
         match self {
             Self::U8 => 1,

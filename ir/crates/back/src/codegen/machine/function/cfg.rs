@@ -1,14 +1,14 @@
 use daggy::{
-    NodeIndex,
     petgraph::{
-        Directed,
-        Direction,
         prelude::{
             Bfs,
             DfsPostOrder,
             StableGraph,
         },
+        Directed,
+        Direction,
     },
+    NodeIndex,
     Walker,
 };
 use index_vec::IndexVec;
@@ -18,8 +18,10 @@ use rustc_hash::FxHashMap;
 use crate::codegen::{
     machine::{
         instr::InstrOperand,
+        Instr,
         InstrId,
         MachInstr,
+        TargetMachine,
     },
     register_allocator::{
         InstrNumbering,
@@ -28,7 +30,6 @@ use crate::codegen::{
         ProgPoint,
     },
 };
-use crate::codegen::machine::{Instr, TargetMachine};
 
 index_vec::define_index_type! {
     pub struct BasicBlockId = u32;
@@ -83,25 +84,25 @@ impl Cfg {
     }
 
     /// Traverses the cfg using a post order depth first traversal
-    pub fn dfs_postorder(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+    pub fn dfs_postorder(&self) -> impl Iterator<Item = BasicBlockId> + '_ {
         DfsPostOrder::new(&self.graph, self.entry_node())
             .iter(&self.graph)
             .map(|node| self.node_to_block_map[&node])
     }
 
-    pub fn bfs(&self) -> impl Iterator<Item=BasicBlockId> + '_ {
+    pub fn bfs(&self) -> impl Iterator<Item = BasicBlockId> + '_ {
         Bfs::new(&self.graph, self.entry_node())
             .iter(&self.graph)
             .map(|node| self.node_to_block_map[&node])
     }
 
-    pub fn predecessors(&self, bb: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+    pub fn predecessors(&self, bb: BasicBlockId) -> impl Iterator<Item = BasicBlockId> + '_ {
         self.graph
             .neighbors_directed(self.block_to_node_map[&bb], Direction::Incoming)
             .map(|node| self.node_to_block_map[&node])
     }
 
-    pub fn successors(&self, bb: BasicBlockId) -> impl Iterator<Item=BasicBlockId> + '_ {
+    pub fn successors(&self, bb: BasicBlockId) -> impl Iterator<Item = BasicBlockId> + '_ {
         self.graph
             .neighbors(self.block_to_node_map[&bb])
             .map(|node| self.node_to_block_map[&node])

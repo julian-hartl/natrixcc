@@ -1,14 +1,23 @@
-use crate::mir::{BasicBlockIdx, FunctionIdx, MIR};
-use crate::mir::optimizations::MIRPass;
+use crate::mir::{
+    optimizations::MIRPass,
+    BasicBlockIdx,
+    FunctionIdx,
+    MIR,
+};
 
-mod constants_folding;
 mod algebraic_simplification;
+mod constants_folding;
 mod copy_propagation;
 mod trivial_phi_node_elimination;
 
 pub trait LocalMIRPass {
     /// Returns the number of changes made to the BasicBlock
-    fn run_on_basic_block(&mut self, mir: &mut MIR, function_idx: FunctionIdx, bb_idx: BasicBlockIdx) -> u32;
+    fn run_on_basic_block(
+        &mut self,
+        mir: &mut MIR,
+        function_idx: FunctionIdx,
+        bb_idx: BasicBlockIdx,
+    ) -> u32;
 }
 
 pub struct LocalOptimizer {
@@ -23,7 +32,7 @@ impl LocalOptimizer {
                 Box::new(constants_folding::ConstantFolding),
                 Box::new(copy_propagation::CopyPropagation),
                 Box::new(algebraic_simplification::AlgebraicSimplification),
-            ]
+            ],
         }
     }
 }

@@ -9,8 +9,8 @@ use crate::codegen::machine::{
         PseudoInstr,
     },
     Module,
+    TargetMachine,
 };
-use crate::codegen::machine::TargetMachine;
 
 pub struct Coalescer<'module, TM: TargetMachine> {
     module: &'module mut Module<TM>,

@@ -1,8 +1,18 @@
-use tracing::{debug, trace};
-use crate::{FunctionId, Instr};
-use crate::instruction::{InstrKind, OpInstr};
-use crate::module::Module;
-use crate::optimization::function_pass::FunctionPass;
+use tracing::{
+    debug,
+    trace,
+};
+
+use crate::{
+    instruction::{
+        InstrKind,
+        OpInstr,
+    },
+    module::Module,
+    optimization::function_pass::FunctionPass,
+    FunctionId,
+    Instr,
+};
 
 /// # Unreachable Basic Block Elimination
 ///
@@ -53,7 +63,6 @@ use crate::optimization::function_pass::FunctionPass;
 /// ## Costs of this pass
 ///
 /// This pass needs to compute the [DomTree][`crate::cfg::DomTree`] for the function, which has a time complexity of O(n^2).
-///
 #[derive(Default)]
 pub struct Pass {}
 
@@ -78,7 +87,11 @@ impl FunctionPass for Pass {
         if unreachable_bbs.is_empty() {
             return 0;
         }
-        trace!("Removing {} unreachable basic blocks: {:?}", unreachable_bbs.len(), unreachable_bbs);
+        trace!(
+            "Removing {} unreachable basic blocks: {:?}",
+            unreachable_bbs.len(),
+            unreachable_bbs
+        );
         let removed = unreachable_bbs.len();
         for bb in unreachable_bbs {
             // Remove the unreachable block from the cfg
@@ -90,7 +103,9 @@ impl FunctionPass for Pass {
                 // This is the case if the successor now only has one predecessor
                 let pred_id = {
                     let mut preds = function.cfg.predecessors(successor_id);
-                    let Some(pred_id) = preds.next() else { continue; };
+                    let Some(pred_id) = preds.next() else {
+                        continue;
+                    };
                     if preds.next().is_some() {
                         continue;
                     }
@@ -99,24 +114,31 @@ impl FunctionPass for Pass {
                 debug!("Removing jump target argument list from {pred_id}");
                 // Clear the jump target argument list of the predecessor
                 let pred = function.cfg.basic_block_mut(pred_id);
-                let Some(branch_args) = pred.update_terminator(|terminator| {
-                    terminator.clear_args(successor_id)
-                }) else {
+                let Some(branch_args) =
+                    pred.update_terminator(|terminator| terminator.clear_args(successor_id))
+                else {
                     continue;
                 };
                 debug!("Removing basic block arguments from {successor_id}");
                 let branch_args = branch_args.collect::<Vec<_>>();
                 // Remove the basic block arguments from the successor
-                let successors_args = function.cfg.basic_block_mut(successor_id).clear_arguments().collect::<Vec<_>>();
+                let successors_args = function
+                    .cfg
+                    .basic_block_mut(successor_id)
+                    .clear_arguments()
+                    .collect::<Vec<_>>();
                 for (argument, op) in successors_args.into_iter().zip(branch_args) {
                     let ty = function.cfg.vreg_ty_cloned(argument);
                     // To keep the program consistent, we need to insert move instruction for each argument
                     // They look like this:
                     // <previous argument> = <previous value argument in branch instruction>
-                    function.cfg.basic_block_mut(pred_id).append_instruction(ty, InstrKind::Op(OpInstr {
-                        value: argument,
-                        op,
-                    }));
+                    function.cfg.basic_block_mut(pred_id).append_instruction(
+                        ty,
+                        InstrKind::Op(OpInstr {
+                            value: argument,
+                            op,
+                        }),
+                    );
                 }
             }
         }
@@ -127,15 +149,25 @@ impl FunctionPass for Pass {
 #[cfg(test)]
 mod tests {
     use tracing_test::traced_test;
-    use crate::cfg;
-    use crate::optimization::{CFGSimplifyPipelineConfig, Pipeline};
-    use crate::optimization::PipelineConfig;
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+
+    use crate::{
+        cfg,
+        optimization::{
+            CFGSimplifyPipelineConfig,
+            Pipeline,
+            PipelineConfig,
+        },
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     #[traced_test]
     fn should_work_on_cfg_without_bb_args() {
-        let mut module = create_test_module_from_source(r#"
+        let mut module = create_test_module_from_source(
+            r#"
             fun void @test() {
             bb0:
               v0 = bool 1;
@@ -147,9 +179,14 @@ mod tests {
               v3 = i32 8;
               ret void;
             }
-        "#);
-        module.optimize(PipelineConfig::cfg_simplify_only(CFGSimplifyPipelineConfig::unreachable_bb_elim_only()));
-        assert_module_is_equal_to_src(&module, "
+        "#,
+        );
+        module.optimize(PipelineConfig::cfg_simplify_only(
+            CFGSimplifyPipelineConfig::unreachable_bb_elim_only(),
+        ));
+        assert_module_is_equal_to_src(
+            &module,
+            "
             fun void @test() {
             bb0:
                 v0 = bool 1;
@@ -158,12 +195,14 @@ mod tests {
                 v3 = i32 8;
                 ret void;
             }
-            ")
+            ",
+        )
     }
 
     #[test]
     fn should_work_on_cfg_with_bb_args() {
-        let mut module = create_test_module_from_source(r#"
+        let mut module = create_test_module_from_source(
+            r#"
             fun i32 @test() {
             bb0:
               v0 = i32 8;
@@ -175,9 +214,14 @@ mod tests {
               v3 = i32 v4;
               ret i32 v3;
             }
-        "#);
-        module.optimize(PipelineConfig::cfg_simplify_only(CFGSimplifyPipelineConfig::unreachable_bb_elim_only()));
-        assert_module_is_equal_to_src(&module, "
+        "#,
+        );
+        module.optimize(PipelineConfig::cfg_simplify_only(
+            CFGSimplifyPipelineConfig::unreachable_bb_elim_only(),
+        ));
+        assert_module_is_equal_to_src(
+            &module,
+            "
             fun i32 @test() {
             bb0:
                 v0 = i32 8;
@@ -187,6 +231,7 @@ mod tests {
               v3 = i32 v4;
               ret i32 v3;
             }
-        ")
+        ",
+        )
     }
 }

@@ -1,11 +1,18 @@
 use cranelift_entity::SecondaryMap;
 use tracing::debug;
 
-use crate::analysis::dataflow;
-use crate::analysis::dataflow::use_def::InstrUid;
-use crate::FunctionId;
-use crate::module::Module;
-use crate::optimization::{FunctionPass, Pass};
+use crate::{
+    analysis::{
+        dataflow,
+        dataflow::use_def::InstrUid,
+    },
+    module::Module,
+    optimization::{
+        FunctionPass,
+        Pass,
+    },
+    FunctionId,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct DeadCodeEliminationPass {}
@@ -18,9 +25,7 @@ impl Pass for DeadCodeEliminationPass {
 
 impl FunctionPass for DeadCodeEliminationPass {
     fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
-        let runner = dataflow::use_def::AnalysisRunner::new(
-            &mut module.functions[function]
-        );
+        let runner = dataflow::use_def::AnalysisRunner::new(&mut module.functions[function]);
         let state = runner.collect();
         let mut changes = 0;
         let mut removed_instr_count = SecondaryMap::new();
@@ -41,12 +46,18 @@ impl FunctionPass for DeadCodeEliminationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::optimization::PipelineConfig;
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+    use crate::{
+        optimization::PipelineConfig,
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     fn should_eliminate_unused_values() {
-        let mut module = create_test_module_from_source("
+        let mut module = create_test_module_from_source(
+            "
             fun i32 @test() {
             bb0:
                 v0 = i32 20;
@@ -56,7 +67,8 @@ mod tests {
             bb1:
                 ret i32 v0;
             }
-        ");
+        ",
+        );
         module.optimize(PipelineConfig::dead_code_elimination_only());
         assert_module_is_equal_to_src(
             &module,
@@ -68,7 +80,7 @@ mod tests {
             bb1:
                 ret i32 v0;
             }
-        "
+        ",
         );
     }
 }

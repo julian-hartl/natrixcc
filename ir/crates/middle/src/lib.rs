@@ -3,8 +3,14 @@
 
 use cranelift_entity::entity_impl;
 pub use front_bridge::FrontBridge;
-pub use function::{Function, FunctionId};
-pub use instruction::{Instr, InstrKind};
+pub use function::{
+    Function,
+    FunctionId,
+};
+pub use instruction::{
+    Instr,
+    InstrKind,
+};
 pub use module::Module;
 pub use ty::Type;
 
@@ -16,12 +22,11 @@ pub struct VReg(u32);
 entity_impl!(VReg, "v");
 pub mod instruction;
 
-pub mod optimization;
 pub mod module;
+pub mod optimization;
 
 mod analysis;
+mod front_bridge;
 #[cfg(test)]
 pub mod test;
 pub mod ty;
-mod front_bridge;
-

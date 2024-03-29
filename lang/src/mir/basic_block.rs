@@ -1,6 +1,19 @@
-use std::fmt::{Display, Formatter};
-use fusion_compiler::{bug, Idx, idx};
-use crate::mir::{InstructionIdx, Terminator, TerminatorKind};
+use std::fmt::{
+    Display,
+    Formatter,
+};
+
+use fusion_compiler::{
+    bug,
+    idx,
+    Idx,
+};
+
+use crate::mir::{
+    InstructionIdx,
+    Terminator,
+    TerminatorKind,
+};
 
 /// A node in the MIR.
 ///
@@ -32,16 +45,13 @@ pub struct BasicBlock {
 }
 
 impl BasicBlock {
-    pub fn new(
-        idx: BasicBlockIdx,
-    ) -> Self {
+    pub fn new(idx: BasicBlockIdx) -> Self {
         Self {
             instructions: vec![],
             terminator: None,
-            idx
+            idx,
         }
     }
-
 
     #[inline]
     pub fn is_terminated(&self) -> bool {
@@ -50,12 +60,12 @@ impl BasicBlock {
 
     #[inline]
     pub fn set_terminator(&mut self, kind: TerminatorKind) {
-        tracing::debug!("Setting terminator of {:?} to {:?}",self.idx , kind);
+        tracing::debug!("Setting terminator of {:?} to {:?}", self.idx, kind);
         self.terminator = Some(Terminator::new(kind));
     }
 
     /// Sets the [terminator][Terminator] of the basic block if the basic block is not already terminated.
-    pub fn maybe_set_terminator(&mut self,  kind: TerminatorKind) {
+    pub fn maybe_set_terminator(&mut self, kind: TerminatorKind) {
         if !self.is_terminated() {
             self.set_terminator(kind);
         }
@@ -63,14 +73,17 @@ impl BasicBlock {
 
     #[inline]
     pub fn terminator(&self) -> &Terminator {
-        self.terminator.as_ref().unwrap_or_else(|| bug!("Invalid terminator state in {:?}", self.idx))
+        self.terminator
+            .as_ref()
+            .unwrap_or_else(|| bug!("Invalid terminator state in {:?}", self.idx))
     }
 
     #[inline]
     pub fn terminator_mut(&mut self) -> &mut Terminator {
-        self.terminator.as_mut().unwrap_or_else(|| bug!("Invalid terminator state in {:?}", self.idx))
+        self.terminator
+            .as_mut()
+            .unwrap_or_else(|| bug!("Invalid terminator state in {:?}", self.idx))
     }
-
 
     /// Appends `other` to `self`.
     ///
@@ -99,7 +112,6 @@ impl BasicBlock {
     ///   %5 = add %6, %7
     ///   %8 = add %5, %9
     ///   jump bb2 ; note that the terminator of bb0 is replaced with the terminator of bb1
-    ///
     pub fn append(&mut self, other: Self) {
         self.instructions.extend(other.instructions);
         self.terminator = other.terminator;

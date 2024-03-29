@@ -1,7 +1,11 @@
 use fusion_compiler::Idx;
-use crate::mir::{InstructionKind, MIR};
-use crate::mir::basic_block::BasicBlockIdx;
-use crate::mir::optimizations::MIRPass;
+
+use crate::mir::{
+    basic_block::BasicBlockIdx,
+    optimizations::MIRPass,
+    InstructionKind,
+    MIR,
+};
 
 pub struct UnreachableCodeElimination;
 
@@ -17,7 +21,12 @@ impl MIRPass for UnreachableCodeElimination {
                 if bb == BasicBlockIdx::first() {
                     continue;
                 }
-                if predecessors.get_immediate(bb).map(|i| i.len()).unwrap_or_default() == 0 {
+                if predecessors
+                    .get_immediate(bb)
+                    .map(|i| i.len())
+                    .unwrap_or_default()
+                    == 0
+                {
                     tracing::debug!("Found unreachable basic block {}, removing it", bb);
                     basic_blocks_to_remove.push(bb);
                     changes += 1;

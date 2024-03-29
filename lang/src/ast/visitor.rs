@@ -1,13 +1,35 @@
-
-
-
-use crate::ast::{AssignExpr, Ast, BinaryExpr, BlockExpr, Body, BoolExpr, CallExpr, Expr, ExprId, ExprKind, FunctionDeclaration, IfExpr, ItemId, ItemKind, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, StmtId, StmtKind, UnaryExpr, VarExpr, WhileStmt};
-use crate::text::span::TextSpan;
+use crate::{
+    ast::{
+        AssignExpr,
+        Ast,
+        BinaryExpr,
+        BlockExpr,
+        Body,
+        BoolExpr,
+        CallExpr,
+        Expr,
+        ExprId,
+        ExprKind,
+        FunctionDeclaration,
+        IfExpr,
+        ItemId,
+        ItemKind,
+        LetStmt,
+        NumberExpr,
+        ParenthesizedExpr,
+        ReturnStmt,
+        Stmt,
+        StmtId,
+        StmtKind,
+        UnaryExpr,
+        VarExpr,
+        WhileStmt,
+    },
+    text::span::TextSpan,
+};
 
 pub trait ASTVisitor {
     fn visit_item(&mut self, ast: &mut Ast, item: ItemId) {
-
-
         self.visit_item_default(ast, item);
     }
 

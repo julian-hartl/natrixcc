@@ -1,10 +1,12 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/back",
-    "crates/compiler",
-    "crates/front",
-    "crates/middle"]
+    "ir/crates/back",
+    "ir/crates/compiler",
+    "ir/crates/front",
+    "ir/crates/middle",
+    "lang"
+]
 
 [profile.release]
 opt-level = 3
@@ -15,7 +17,6 @@ strip = "symbols"
 
 [profile.dev.package."*"]
 opt-level = 3
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 

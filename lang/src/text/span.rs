@@ -25,7 +25,11 @@ impl TextSpan {
         let start = spans.first().unwrap().start;
         let end = spans.last().unwrap().end;
 
-        TextSpan::new(start, end, spans.into_iter().map(|span| span.literal).collect())
+        TextSpan::new(
+            start,
+            end,
+            spans.into_iter().map(|span| span.literal).collect(),
+        )
     }
 
     pub fn length(&self) -> usize {

@@ -1,11 +1,29 @@
-use std::fmt::{Display, Formatter};
-use std::ops::Sub;
-use smallvec::{SmallVec, smallvec};
+use std::{
+    fmt::{
+        Display,
+        Formatter,
+    },
+    ops::Sub,
+};
 
-use strum_macros::{Display, EnumTryAs};
+use smallvec::{
+    smallvec,
+    SmallVec,
+};
+use strum_macros::{
+    Display,
+    EnumTryAs,
+};
 
-use crate::{Type, VReg};
-use crate::cfg::{BasicBlockId, Cfg, InstrId};
+use crate::{
+    cfg::{
+        BasicBlockId,
+        Cfg,
+        InstrId,
+    },
+    Type,
+    VReg,
+};
 
 /// An instruction in a basic block.
 ///
@@ -26,17 +44,15 @@ pub enum InstrIdentifyingKey {
 
 impl Instr {
     pub const fn new(ty: Type, kind: InstrKind, bb: BasicBlockId, id: InstrId) -> Self {
-        Self {
-            id,
-            bb,
-            ty,
-            kind,
-        }
+        Self { id, bb, ty, kind }
     }
 
     pub fn identifying_key(&self) -> Option<InstrIdentifyingKey> {
         match &self.kind {
-            InstrKind::Sub(instr) => Some(InstrIdentifyingKey::Sub(instr.lhs.clone(), instr.rhs.clone())),
+            InstrKind::Sub(instr) => Some(InstrIdentifyingKey::Sub(
+                instr.lhs.clone(),
+                instr.rhs.clone(),
+            )),
             _ => None,
         }
     }
@@ -56,7 +72,7 @@ impl Instr {
             InstrKind::Add(instr) => Some(instr.value),
         }
     }
-    
+
     pub fn used(&self) -> SmallVec<[&Op; 2]> {
         match &self.kind {
             InstrKind::Alloca(_) => smallvec![],
@@ -81,10 +97,18 @@ impl Display for InstrDisplay<'_> {
                 }
             }
             InstrKind::Sub(instr) => {
-                write!(f, "{} = sub {} {}, {}", instr.value, self.1.ty, instr.lhs, instr.rhs)?;
+                write!(
+                    f,
+                    "{} = sub {} {}, {}",
+                    instr.value, self.1.ty, instr.lhs, instr.rhs
+                )?;
             }
             InstrKind::Add(instr) => {
-                write!(f, "{} = add {} {}, {}", instr.value, self.1.ty, instr.lhs, instr.rhs)?;
+                write!(
+                    f,
+                    "{} = add {} {}, {}",
+                    instr.value, self.1.ty, instr.lhs, instr.rhs
+                )?;
             }
             InstrKind::Op(instr) => {
                 write!(f, "{} = {} {}", instr.value, self.1.ty, instr.op)?;
@@ -93,10 +117,18 @@ impl Display for InstrDisplay<'_> {
                 write!(f, "store {} {}, ptr {}", self.1.ty, instr.value, instr.dest)?;
             }
             InstrKind::Load(instr) => {
-                write!(f, "{} = load {} ptr {}", instr.dest, self.1.ty, instr.source)?;
+                write!(
+                    f,
+                    "{} = load {} ptr {}",
+                    instr.dest, self.1.ty, instr.source
+                )?;
             }
             InstrKind::Cmp(instr) => {
-                write!(f, "{} = icmp {} {} {}, {}", instr.value, self.1.ty, instr.op, instr.lhs, instr.rhs)?;
+                write!(
+                    f,
+                    "{} = icmp {} {} {}, {}",
+                    instr.value, self.1.ty, instr.op, instr.lhs, instr.rhs
+                )?;
             }
         };
         Ok(())
@@ -119,7 +151,6 @@ pub enum InstrKind {
     Add(BinOpInstr),
     Cmp(CmpInstr),
 }
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct AllocaInstr {
@@ -161,7 +192,6 @@ pub struct OpInstr {
     pub op: Op,
 }
 
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash, EnumTryAs)]
 pub enum Op {
     Const(Const),
@@ -178,9 +208,7 @@ impl Op {
     pub fn referenced_value(&self) -> Option<VReg> {
         match self {
             Op::Const(_) => None,
-            Op::Vreg(value) => {
-                Some(*value)
-            }
+            Op::Vreg(value) => Some(*value),
         }
     }
 }
@@ -193,7 +221,6 @@ impl Display for Op {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Const {
@@ -239,7 +266,7 @@ impl Const {
 impl Display for Const {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Int(_,value) => write!(f, "{}", value),
+            Self::Int(_, value) => write!(f, "{}", value),
         }
     }
 }
@@ -265,22 +292,33 @@ pub enum CmpOp {
     // Sge,
 }
 
-
 #[cfg(test)]
 mod tests {
     mod instruction_type {
-        use crate::cfg;
-        use crate::cfg::{RetTerm, TerminatorKind};
-        use crate::instruction::{Const, Op};
-        use crate::test::create_test_function;
-        use crate::ty::Type;
+        use crate::{
+            cfg,
+            cfg::{
+                RetTerm,
+                TerminatorKind,
+            },
+            instruction::{
+                Const,
+                Op,
+            },
+            test::create_test_function,
+            ty::Type,
+        };
 
         #[test]
         fn test_sub_instruction_type() {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb();
-            let vreg = cfg_builder.sub(Type::I8, Op::Const(Const::Int(Type::I8, 0)), Op::Const(Const::Int(Type::I8, 1)));
+            let vreg = cfg_builder.sub(
+                Type::I8,
+                Op::Const(Const::Int(Type::I8, 0)),
+                Op::Const(Const::Int(Type::I8, 1)),
+            );
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             assert_eq!(function.cfg.vreg_ty(vreg).clone(), Type::I8);
         }
@@ -292,7 +330,10 @@ mod tests {
             cfg_builder.start_bb();
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            assert_eq!(function.cfg.vreg_ty(alloca_value).clone(), Type::Ptr(Box::new(Type::I8)));
+            assert_eq!(
+                function.cfg.vreg_ty(alloca_value).clone(),
+                Type::Ptr(Box::new(Type::I8))
+            );
         }
 
         #[test]
@@ -313,7 +354,10 @@ mod tests {
             let alloca_value = cfg_builder.alloca(Type::I8, None);
             cfg_builder.store(Type::I8, alloca_value, Op::Const(Const::Int(Type::I8, 0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
-            assert_eq!(function.cfg.basic_block(bb).instructions[1].defined_vreg(), None);
+            assert_eq!(
+                function.cfg.basic_block(bb).instructions[1].defined_vreg(),
+                None
+            );
         }
 
         #[test]

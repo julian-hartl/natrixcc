@@ -1,7 +1,10 @@
 use tracing::debug;
-use crate::FunctionId;
-use crate::module::Module;
-use crate::optimization::FunctionPass;
+
+use crate::{
+    module::Module,
+    optimization::FunctionPass,
+    FunctionId,
+};
 
 /// # Basic block merge
 ///
@@ -67,8 +70,6 @@ use crate::optimization::FunctionPass;
 /// This pass needs to recompute the dominator tree for every merge operation.
 ///
 /// Therefore, it is relatively expensive to run.
-///
-///
 #[derive(Default)]
 pub struct Pass {}
 
@@ -89,14 +90,16 @@ impl FunctionPass for Pass {
                 continue;
             }
             let domtree = cfg.dom_tree();
-            let Some(a_id) = domtree.idom(b_id) else { continue; };
+            let Some(a_id) = domtree.idom(b_id) else {
+                continue;
+            };
             if cfg.successors(a_id).count() != 1 {
                 continue;
             }
             debug!("Merging {b_id} into {a_id}");
             let (instructions, b_term) = cfg.remove_basic_block(b_id);
             let a = cfg.basic_block_mut(a_id);
-                a.append_instructions(instructions.into_iter());
+            a.append_instructions(instructions.into_iter());
             a.update_terminator(|term| *term = b_term);
             cfg.recompute_successors(a_id);
             merged += 1;
@@ -108,14 +111,22 @@ impl FunctionPass for Pass {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfg;
-    use crate::optimization::CFGSimplifyPipelineConfig;
-    use crate::optimization::PipelineConfig;
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+    use crate::{
+        cfg,
+        optimization::{
+            CFGSimplifyPipelineConfig,
+            PipelineConfig,
+        },
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     fn should_merge_in_more_complex_cfg() {
-        let mut module = create_test_module_from_source("
+        let mut module = create_test_module_from_source(
+            "
             fun void @test() {
             bb0:
                 v0 = bool 1;
@@ -136,10 +147,15 @@ mod tests {
                 v5 = add i32 9, 10;
                 ret void;
             }
-");
+",
+        );
         dbg!(module.to_string());
-        module.optimize(PipelineConfig::cfg_simplify_only(CFGSimplifyPipelineConfig::bb_merge_only()));
-        assert_module_is_equal_to_src(&module, "
+        module.optimize(PipelineConfig::cfg_simplify_only(
+            CFGSimplifyPipelineConfig::bb_merge_only(),
+        ));
+        assert_module_is_equal_to_src(
+            &module,
+            "
         fun void @test() {
         bb0:
             v0 = bool 1;
@@ -156,7 +172,7 @@ mod tests {
             v5 = i32 19;
             ret void;
         }
-", );
+",
+        );
     }
 }
-

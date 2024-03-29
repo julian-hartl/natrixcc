@@ -1,4 +1,9 @@
-use fusion_compiler::{idx, Idx, IdxVec};
+use fusion_compiler::{
+    idx,
+    Idx,
+    IdxVec,
+};
+
 use crate::mir;
 
 pub(crate) mod builder;
@@ -23,7 +28,6 @@ impl LIR {
     }
 }
 
-
 idx!(FunctionIdx);
 
 #[derive(Debug)]
@@ -39,7 +43,6 @@ pub struct BasicBlock {
     pub instructions: Vec<Instruction>,
     pub terminator: Option<Terminator>,
 }
-
 
 idx!(BasicBlockIdx);
 
@@ -81,12 +84,8 @@ pub enum InstructionKind {
 
 #[derive(Debug)]
 pub enum Terminator {
-    Return {
-        value: Option<Operand>,
-    },
-    Jump {
-        target: BasicBlockIdx,
-    },
+    Return { value: Option<Operand> },
+    Jump { target: BasicBlockIdx },
 }
 
 #[derive(Debug)]
@@ -94,7 +93,6 @@ pub struct Operand {
     pub ty: Type,
     pub kind: OperandKind,
 }
-
 
 #[derive(Debug)]
 pub enum OperandKind {
@@ -117,12 +115,11 @@ pub struct Place {
     pub ty: Type,
 }
 
-
 idx!(PlaceIdx);
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Type {
     Int32,
-    Int8
+    Int8,
 }
 
 impl Type {
@@ -154,4 +151,3 @@ pub struct Layout {
     pub size: usize,
     pub alignment: usize,
 }
-

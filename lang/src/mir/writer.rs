@@ -1,17 +1,34 @@
 use std::fmt::Write;
 
 use anyhow::Result;
+use fusion_compiler::{
+    Idx,
+    IdxVec,
+};
 
-use fusion_compiler::{Idx, IdxVec};
-
-use crate::mir::{BasicBlockIdx, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, MIR, Terminator, TerminatorKind, Type, Value};
-use crate::mir::basic_block::BasicBlock;
+use crate::mir::{
+    basic_block::BasicBlock,
+    BasicBlockIdx,
+    Function,
+    FunctionIdx,
+    Instruction,
+    InstructionIdx,
+    InstructionKind,
+    Terminator,
+    TerminatorKind,
+    Type,
+    Value,
+    MIR,
+};
 
 pub struct MIRWriter<W> {
     _phantom: std::marker::PhantomData<W>,
 }
 
-impl<W> MIRWriter<W> where W: Write {
+impl<W> MIRWriter<W>
+where
+    W: Write,
+{
     pub fn write_graphviz_representation(writer: &mut W, ir: &MIR) -> Result<()> {
         writeln!(writer, "digraph {{")?;
         for function in ir.functions.iter() {
@@ -21,15 +38,39 @@ impl<W> MIRWriter<W> where W: Write {
                 let bb = ir.basic_blocks.get_or_panic(bb_idx);
                 let mut bb_content = String::new();
                 MIRWriter::write_basic_block(&mut bb_content, &ir, function, bb_idx, &bb)?;
-                writeln!(writer, "        {} [label=\"{}\"];", Self::format_bb_idx(bb_idx), bb_content)?;
+                writeln!(
+                    writer,
+                    "        {} [label=\"{}\"];",
+                    Self::format_bb_idx(bb_idx),
+                    bb_content
+                )?;
                 match &bb.terminator.as_ref().unwrap().kind {
                     TerminatorKind::Jump(target) => {
-                        writeln!(writer, "        {} -> {};", Self::format_bb_idx(bb_idx), Self::format_bb_idx(*target))?;
+                        writeln!(
+                            writer,
+                            "        {} -> {};",
+                            Self::format_bb_idx(bb_idx),
+                            Self::format_bb_idx(*target)
+                        )?;
                     }
-                    TerminatorKind::SwitchInt { value, cases, default } => {
-                        writeln!(writer, "        {} -> {};", Self::format_bb_idx(bb_idx), Self::format_bb_idx(*default))?;
+                    TerminatorKind::SwitchInt {
+                        value,
+                        cases,
+                        default,
+                    } => {
+                        writeln!(
+                            writer,
+                            "        {} -> {};",
+                            Self::format_bb_idx(bb_idx),
+                            Self::format_bb_idx(*default)
+                        )?;
                         for (case_value, case_target) in cases.iter() {
-                            writeln!(writer, "        {} -> {};", Self::format_bb_idx(bb_idx), Self::format_bb_idx(*case_target))?;
+                            writeln!(
+                                writer,
+                                "        {} -> {};",
+                                Self::format_bb_idx(bb_idx),
+                                Self::format_bb_idx(*case_target)
+                            )?;
                         }
                     }
                     TerminatorKind::Return { .. } => {}
@@ -52,14 +93,24 @@ impl<W> MIRWriter<W> where W: Write {
         Ok(())
     }
 
-    fn write_basic_block(writer: &mut W, ir: &MIR, function: &Function, bb_idx: BasicBlockIdx, bb: &&BasicBlock) -> Result<()> {
+    fn write_basic_block(
+        writer: &mut W,
+        ir: &MIR,
+        function: &Function,
+        bb_idx: BasicBlockIdx,
+        bb: &&BasicBlock,
+    ) -> Result<()> {
         writeln!(writer, "{}:", Self::format_bb_idx(bb_idx))?;
         let indentation = "    ";
         for instruction_idx in &bb.instructions {
             let instruction = function.instructions.get(*instruction_idx);
             write!(writer, "{}", indentation)?;
             if !matches!(instruction.ty, Type::Void) {
-                write!(writer, "{} = ", Self::format_instruction_idx(*instruction_idx))?;
+                write!(
+                    writer,
+                    "{} = ",
+                    Self::format_instruction_idx(*instruction_idx)
+                )?;
             }
             Self::write_instruction(writer, &ir.functions, instruction)?;
             writeln!(writer)?;
@@ -91,7 +142,10 @@ impl<W> MIRWriter<W> where W: Write {
             InstructionKind::Value(value) => {
                 Self::write_value(writer, value)?;
             }
-            InstructionKind::Call { function_idx, arguments } => {
+            InstructionKind::Call {
+                function_idx,
+                arguments,
+            } => {
                 let function = functions.get(*function_idx);
                 write!(writer, "{}(", function.name)?;
                 for (arg_idx, arg) in arguments.iter().enumerate() {
@@ -105,7 +159,12 @@ impl<W> MIRWriter<W> where W: Write {
             InstructionKind::Phi(phi) => {
                 write!(writer, "phi {{ ")?;
                 for (idx, (from, instruction_ref)) in phi.iter().enumerate() {
-                    write!(writer, "{} -> {}", from, Self::format_instruction_idx(*instruction_ref))?;
+                    write!(
+                        writer,
+                        "{} -> {}",
+                        from,
+                        Self::format_instruction_idx(*instruction_ref)
+                    )?;
                     if idx != phi.len() - 1 {
                         write!(writer, ", ")?;
                     }
@@ -129,7 +188,11 @@ impl<W> MIRWriter<W> where W: Write {
             TerminatorKind::Jump(target) => {
                 write!(writer, "jump {}", target)?;
             }
-            TerminatorKind::SwitchInt { value, cases, default } => {
+            TerminatorKind::SwitchInt {
+                value,
+                cases,
+                default,
+            } => {
                 write!(writer, "switchInt (")?;
                 Self::write_value(writer, value)?;
                 writeln!(writer, ") {{")?;
@@ -147,7 +210,6 @@ impl<W> MIRWriter<W> where W: Write {
         }
         Ok(())
     }
-
 
     fn write_value(writer: &mut W, value: &Value) -> Result<()> {
         match value {
@@ -167,11 +229,9 @@ impl<W> MIRWriter<W> where W: Write {
         Ok(())
     }
 
-
     fn format_instruction_idx(instruction_idx: InstructionIdx) -> String {
         format!("%{}", instruction_idx.as_index())
     }
-
 
     fn format_bb_idx(bb_idx: BasicBlockIdx) -> String {
         format!("bb{}", bb_idx.as_index())

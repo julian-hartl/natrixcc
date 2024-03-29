@@ -12,12 +12,11 @@ macro_rules! idx {
             fn new(index: usize) -> Self {
                 Self(index)
             }
-
         }
     };
 }
 
-pub trait Idx: Copy + Clone + Sized{
+pub trait Idx: Copy + Clone + Sized {
     fn as_index(&self) -> usize;
     fn new(index: usize) -> Self;
 
@@ -32,15 +31,14 @@ pub trait Idx: Copy + Clone + Sized{
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct IdxVec<Index, T>
-    where
-        Index: Idx,
+where
+    Index: Idx,
 {
     vec: Vec<T>,
     _marker: std::marker::PhantomData<Index>,
 }
 
-impl<Index: Idx, T> IdxVec<Index, T>
-{
+impl<Index: Idx, T> IdxVec<Index, T> {
     pub fn new() -> Self {
         Self {
             vec: vec![],
@@ -60,29 +58,27 @@ impl<Index: Idx, T> IdxVec<Index, T>
         next_index
     }
 
-
-    pub fn iter(&self) -> impl Iterator<Item=&T> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.vec.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut T> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.vec.iter_mut()
     }
 
-    pub fn indexed_iter(&self) -> impl Iterator<Item=(Index, &T)> {
+    pub fn indexed_iter(&self) -> impl Iterator<Item = (Index, &T)> {
         self.vec
             .iter()
             .enumerate()
             .map(|(index, value)| (Index::new(index), value))
     }
 
-    pub fn indexed_iter_mut(&mut self) -> impl Iterator<Item=(Index, &mut T)> {
+    pub fn indexed_iter_mut(&mut self) -> impl Iterator<Item = (Index, &mut T)> {
         self.vec
             .iter_mut()
             .enumerate()
             .map(|(index, value)| (Index::new(index), value))
     }
-
 
     pub fn cloned_indices(&self) -> Vec<Index> {
         self.vec
@@ -91,7 +87,6 @@ impl<Index: Idx, T> IdxVec<Index, T>
             .map(|(index, _)| Index::new(index))
             .collect()
     }
-
 
     pub fn len(&self) -> usize {
         self.vec.len()
@@ -109,7 +104,7 @@ impl<Index: Idx, T> IdxVec<Index, T>
         &mut self[index]
     }
 
-    pub fn indices(&self) -> impl Iterator<Item=Index> {
+    pub fn indices(&self) -> impl Iterator<Item = Index> {
         (0..self.vec.len()).map(|index| Index::new(index))
     }
 }
@@ -121,7 +116,7 @@ impl<I: Idx, T> IdxVec<I, Option<T>> {
     }
 
     #[inline]
-    pub fn indexed_iter_as_option(&self) -> impl Iterator<Item=Option<(I, &T)>> {
+    pub fn indexed_iter_as_option(&self) -> impl Iterator<Item = Option<(I, &T)>> {
         self.vec
             .iter()
             .enumerate()
@@ -130,19 +125,22 @@ impl<I: Idx, T> IdxVec<I, Option<T>> {
 
     #[inline]
     pub fn get_or_panic(&self, index: I) -> &T {
-        self.get(index).as_ref().unwrap_or_else(||  crate::bug!("Index {} does not exist", index.as_index()))
+        self.get(index)
+            .as_ref()
+            .unwrap_or_else(|| crate::bug!("Index {} does not exist", index.as_index()))
     }
 
     #[inline]
     pub fn get_mut_or_panic(&mut self, index: I) -> &mut T {
-        self.get_mut(index).as_mut().unwrap_or_else(|| crate::bug!("Index {} does not exist", index.as_index()))
+        self.get_mut(index)
+            .as_mut()
+            .unwrap_or_else(|| crate::bug!("Index {} does not exist", index.as_index()))
     }
-
 }
 
 impl<Index, T> std::ops::Index<Index> for IdxVec<Index, T>
-    where
-        Index: Idx,
+where
+    Index: Idx,
 {
     type Output = T;
 
@@ -152,8 +150,8 @@ impl<Index, T> std::ops::Index<Index> for IdxVec<Index, T>
 }
 
 impl<Index, T> std::ops::IndexMut<Index> for IdxVec<Index, T>
-    where
-        Index: Idx,
+where
+    Index: Idx,
 {
     fn index_mut(&mut self, index: Index) -> &mut T {
         return &mut self.vec[index.as_index()];

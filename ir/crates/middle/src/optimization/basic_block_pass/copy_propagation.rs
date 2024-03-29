@@ -1,15 +1,26 @@
 use rustc_hash::FxHashMap;
 
-use crate::{FunctionId, VReg};
-use crate::cfg::{BasicBlockId, TerminatorKind};
-use crate::instruction::{InstrKind, Op};
-use crate::module::Module;
-use crate::optimization::basic_block_pass::BasicBlockPass;
-use crate::optimization::Pass;
+use crate::{
+    cfg::{
+        BasicBlockId,
+        TerminatorKind,
+    },
+    instruction::{
+        InstrKind,
+        Op,
+    },
+    module::Module,
+    optimization::{
+        basic_block_pass::BasicBlockPass,
+        Pass,
+    },
+    FunctionId,
+    VReg,
+};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 struct CopyGraph {
-    edges: FxHashMap<VReg, VReg>
+    edges: FxHashMap<VReg, VReg>,
 }
 
 impl CopyGraph {
@@ -36,7 +47,12 @@ impl Pass for CopyPropagationPass {
 }
 
 impl BasicBlockPass for CopyPropagationPass {
-    fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block: BasicBlockId) -> usize {
+    fn run_on_basic_block(
+        &mut self,
+        module: &mut Module,
+        function: FunctionId,
+        basic_block: BasicBlockId,
+    ) -> usize {
         let cfg = &mut module.functions[function].cfg;
         let bb = cfg.basic_block_mut(basic_block);
         let mut changes = 0;
@@ -45,53 +61,67 @@ impl BasicBlockPass for CopyPropagationPass {
             match &mut instr.kind {
                 InstrKind::Alloca(_) => {}
                 InstrKind::Store(store_instr) => {
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut store_instr.value));
+                    changes += usize::from(Self::apply_copy_graph_to_op(
+                        &copy_graph,
+                        &mut store_instr.value,
+                    ));
                 }
                 InstrKind::Load(_) => {}
-                InstrKind::Op(op_instr) => {
-                   match &op_instr.op {
-                       Op::Const(_) => {}
-                       Op::Vreg(value) => {
-                           copy_graph.insert_copy(*value, op_instr.value);
-                       }
-                   }
-                }
+                InstrKind::Op(op_instr) => match &op_instr.op {
+                    Op::Const(_) => {}
+                    Op::Vreg(value) => {
+                        copy_graph.insert_copy(*value, op_instr.value);
+                    }
+                },
                 InstrKind::Sub(sub_instr) => {
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut sub_instr.lhs));
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut sub_instr.rhs));
+                    changes += usize::from(Self::apply_copy_graph_to_op(
+                        &copy_graph,
+                        &mut sub_instr.lhs,
+                    ));
+                    changes += usize::from(Self::apply_copy_graph_to_op(
+                        &copy_graph,
+                        &mut sub_instr.rhs,
+                    ));
                 }
                 InstrKind::Add(add_instr) => {
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut add_instr.lhs));
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut add_instr.rhs));
+                    changes += usize::from(Self::apply_copy_graph_to_op(
+                        &copy_graph,
+                        &mut add_instr.lhs,
+                    ));
+                    changes += usize::from(Self::apply_copy_graph_to_op(
+                        &copy_graph,
+                        &mut add_instr.rhs,
+                    ));
                 }
                 InstrKind::Cmp(instr) => {
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.lhs));
-                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.rhs));
+                    changes +=
+                        usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.lhs));
+                    changes +=
+                        usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut instr.rhs));
                 }
             }
         }
 
-        bb.update_terminator(|terminator| {
-           match &mut terminator.kind {
-               TerminatorKind::Ret(ret_term) => {
-                   if let Some(value) = &mut ret_term.value {
-                       changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, value));
-                   }
-               }
-               TerminatorKind::CondBranch(cond_branch) => {
-                   changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, &mut cond_branch.cond))
-               }
-               TerminatorKind::Branch(_) => {
-
-               }
-           }
+        bb.update_terminator(|terminator| match &mut terminator.kind {
+            TerminatorKind::Ret(ret_term) => {
+                if let Some(value) = &mut ret_term.value {
+                    changes += usize::from(Self::apply_copy_graph_to_op(&copy_graph, value));
+                }
+            }
+            TerminatorKind::CondBranch(cond_branch) => {
+                changes += usize::from(Self::apply_copy_graph_to_op(
+                    &copy_graph,
+                    &mut cond_branch.cond,
+                ))
+            }
+            TerminatorKind::Branch(_) => {}
         });
         changes
     }
 }
 
 impl CopyPropagationPass {
-    fn apply_copy_graph_to_op(copy_graph: &CopyGraph, op: &mut Op) -> bool{
+    fn apply_copy_graph_to_op(copy_graph: &CopyGraph, op: &mut Op) -> bool {
         match op {
             Op::Const(_) => false,
             Op::Vreg(value) => {
@@ -109,8 +139,10 @@ impl CopyPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::optimization::PipelineConfig;
-    use crate::test::create_test_module_from_source;
+    use crate::{
+        optimization::PipelineConfig,
+        test::create_test_module_from_source,
+    };
 
     #[test]
     fn should_propagate_copies() {
@@ -124,7 +156,7 @@ mod tests {
                     v4 = sub i32 v2, v3;
                     ret i32 v4;
                 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::copy_propagation_only());
         let function = module.find_function_by_name("test").unwrap();

@@ -5,8 +5,17 @@ pub use builder::HIRBuilder;
 #[allow(unused)]
 pub use writer::HIRWriter;
 
-use crate::ast::{BinOpKind, UnOpKind};
-use crate::compilation_unit::{FunctionIdx, Type, VariableIdx};
+use crate::{
+    ast::{
+        BinOpKind,
+        UnOpKind,
+    },
+    compilation_unit::{
+        FunctionIdx,
+        Type,
+        VariableIdx,
+    },
+};
 
 mod builder;
 mod writer;

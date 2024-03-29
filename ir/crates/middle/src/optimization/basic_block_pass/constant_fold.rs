@@ -1,12 +1,26 @@
 use rustc_hash::FxHashMap;
 use tracing::debug;
 
-use crate::{FunctionId, VReg};
-use crate::cfg::{BasicBlockId, TerminatorKind};
-use crate::instruction::{Const, CmpOp, InstrKind, Op, OpInstr};
-use crate::module::Module;
-use crate::optimization::basic_block_pass::BasicBlockPass;
-use crate::optimization::Pass;
+use crate::{
+    cfg::{
+        BasicBlockId,
+        TerminatorKind,
+    },
+    instruction::{
+        CmpOp,
+        Const,
+        InstrKind,
+        Op,
+        OpInstr,
+    },
+    module::Module,
+    optimization::{
+        basic_block_pass::BasicBlockPass,
+        Pass,
+    },
+    FunctionId,
+    VReg,
+};
 
 pub struct ConstantFoldPass {}
 
@@ -17,7 +31,12 @@ impl Pass for ConstantFoldPass {
 }
 
 impl BasicBlockPass for ConstantFoldPass {
-    fn run_on_basic_block(&mut self, module: &mut Module, function: FunctionId, basic_block_id: BasicBlockId) -> usize {
+    fn run_on_basic_block(
+        &mut self,
+        module: &mut Module,
+        function: FunctionId,
+        basic_block_id: BasicBlockId,
+    ) -> usize {
         let cfg = &mut module.functions[function].cfg;
         let bb = cfg.basic_block_mut(basic_block_id);
         let mut changes = 0;
@@ -32,9 +51,12 @@ impl BasicBlockPass for ConstantFoldPass {
                     if Self::try_replace_op(&constant_values, &mut sub_instr.rhs) {
                         changes += 1;
                     }
-                    if let Some(const_val) = Self::eval_binary_instr(&constant_values, &sub_instr.lhs, &sub_instr.rhs, |lhs, rhs| {
-                        lhs.sub(rhs).unwrap()
-                    }) {
+                    if let Some(const_val) = Self::eval_binary_instr(
+                        &constant_values,
+                        &sub_instr.lhs,
+                        &sub_instr.rhs,
+                        |lhs, rhs| lhs.sub(rhs).unwrap(),
+                    ) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: sub_instr.value,
                             op: Op::Const(const_val),
@@ -49,9 +71,12 @@ impl BasicBlockPass for ConstantFoldPass {
                     if Self::try_replace_op(&constant_values, &mut add_instr.rhs) {
                         changes += 1;
                     }
-                    if let Some(const_val) = Self::eval_binary_instr(&constant_values, &add_instr.lhs, &add_instr.rhs, |lhs, rhs| {
-                        lhs.add(rhs).unwrap()
-                    }) {
+                    if let Some(const_val) = Self::eval_binary_instr(
+                        &constant_values,
+                        &add_instr.lhs,
+                        &add_instr.rhs,
+                        |lhs, rhs| lhs.add(rhs).unwrap(),
+                    ) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: add_instr.value,
                             op: Op::Const(const_val),
@@ -66,11 +91,14 @@ impl BasicBlockPass for ConstantFoldPass {
                             None
                         }
                         Op::Vreg(place) => {
-                            constant_values.get(place).cloned().and_then(|constant_value| {
-                                constant_values.insert(*place, constant_value.clone());
-                                changes += 1;
-                                Some(Op::Const(constant_value))
-                            })
+                            constant_values
+                                .get(place)
+                                .cloned()
+                                .and_then(|constant_value| {
+                                    constant_values.insert(*place, constant_value.clone());
+                                    changes += 1;
+                                    Some(Op::Const(constant_value))
+                                })
                         }
                     };
                     if let Some(updated_op) = updated_op {
@@ -94,9 +122,12 @@ impl BasicBlockPass for ConstantFoldPass {
                     if Self::try_replace_op(&constant_values, &mut icmp_instr.rhs) {
                         changes += 1;
                     }
-                    if let Some(const_val) = Self::eval_binary_instr(&constant_values, &icmp_instr.lhs, &icmp_instr.rhs, |lhs, rhs| {
-                        lhs.cmp(rhs, CmpOp::from(icmp_instr.op)).unwrap()
-                    }) {
+                    if let Some(const_val) = Self::eval_binary_instr(
+                        &constant_values,
+                        &icmp_instr.lhs,
+                        &icmp_instr.rhs,
+                        |lhs, rhs| lhs.cmp(rhs, CmpOp::from(icmp_instr.op)).unwrap(),
+                    ) {
                         instr.kind = InstrKind::Op(OpInstr {
                             value: icmp_instr.value,
                             op: Op::Const(const_val),
@@ -106,28 +137,26 @@ impl BasicBlockPass for ConstantFoldPass {
                 }
             }
         }
-        bb.update_terminator(|terminator| {
-            match &mut terminator.kind {
-                TerminatorKind::Ret(ret_term) => {
-                    if let Some(ret_value) = &mut ret_term.value {
-                        match ret_value {
-                            Op::Const(_) => {}
-                            Op::Vreg(value) => {
-                                if let Some(constant_value) = constant_values.get(value) {
-                                    changes += 1;
-                                    *ret_value = Op::Const(constant_value.clone());
-                                }
+        bb.update_terminator(|terminator| match &mut terminator.kind {
+            TerminatorKind::Ret(ret_term) => {
+                if let Some(ret_value) = &mut ret_term.value {
+                    match ret_value {
+                        Op::Const(_) => {}
+                        Op::Vreg(value) => {
+                            if let Some(constant_value) = constant_values.get(value) {
+                                changes += 1;
+                                *ret_value = Op::Const(constant_value.clone());
                             }
                         }
                     }
                 }
-                TerminatorKind::CondBranch(cond_branch) => {
-                    if Self::try_replace_op(&constant_values, &mut cond_branch.cond) {
-                        changes += 1;
-                    }
-                }
-                TerminatorKind::Branch(_) => {}
             }
+            TerminatorKind::CondBranch(cond_branch) => {
+                if Self::try_replace_op(&constant_values, &mut cond_branch.cond) {
+                    changes += 1;
+                }
+            }
+            TerminatorKind::Branch(_) => {}
         });
         changes
     }
@@ -152,7 +181,15 @@ impl ConstantFoldPass {
         false
     }
 
-    fn eval_binary_instr<E>(constant_values: &FxHashMap<VReg, Const>, lhs: &Op, rhs: &Op, eval: E) -> Option<Const> where E: FnOnce(Const, Const) -> Const {
+    fn eval_binary_instr<E>(
+        constant_values: &FxHashMap<VReg, Const>,
+        lhs: &Op,
+        rhs: &Op,
+        eval: E,
+    ) -> Option<Const>
+    where
+        E: FnOnce(Const, Const) -> Const,
+    {
         let left_const = Self::op_to_const(constant_values, lhs);
         let right_const = Self::op_to_const(constant_values, rhs);
         if let (Some(left_const), Some(right_const)) = (left_const, right_const) {
@@ -164,9 +201,14 @@ impl ConstantFoldPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::cfg;
-    use crate::optimization::PipelineConfig;
-    use crate::test::{assert_module_is_equal_to_src, create_test_module_from_source};
+    use crate::{
+        cfg,
+        optimization::PipelineConfig,
+        test::{
+            assert_module_is_equal_to_src,
+            create_test_module_from_source,
+        },
+    };
 
     #[test]
     fn should_compute_subtraction() {
@@ -178,7 +220,7 @@ mod tests {
                     v1 = sub i32 v0, 7;
                     ret i32 v1;
                 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::all_disabled());
         let function = module.find_function_by_name("test").unwrap();
@@ -204,7 +246,7 @@ bb0:
                     v1 = add i32 v0, 7;
                     ret i32 v1;
                 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::all_disabled());
         assert_module_is_equal_to_src(
@@ -229,7 +271,7 @@ bb0:
                     v2 = add i32 v0, v1;
                     ret i32 v2;
                 }
-            "
+            ",
         );
         module.optimize(PipelineConfig::all_disabled());
         let function = module.find_function_by_name("test").unwrap();

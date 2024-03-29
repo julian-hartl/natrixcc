@@ -1,0 +1,5 @@
+[hooks]
+pre-commit = "cargo fmt --all"
+pre-push = "cargo build"
+[logging]
+verbose = true

@@ -1,12 +1,24 @@
-use tracing::{debug, trace, trace_span};
+use tracing::{
+    debug,
+    trace,
+    trace_span,
+};
 
-use crate::FunctionId;
-use crate::module::Module;
-use crate::optimization::basic_block_pass::constant_fold::ConstantFoldPass;
-use crate::optimization::basic_block_pass::copy_propagation::CopyPropagationPass;
-use crate::optimization::basic_block_pass::cse::CSEPass;
-use crate::optimization::function_pass::dead_code_elimination::DeadCodeEliminationPass;
-use crate::optimization::function_pass::FunctionPass;
+use crate::{
+    module::Module,
+    optimization::{
+        basic_block_pass::{
+            constant_fold::ConstantFoldPass,
+            copy_propagation::CopyPropagationPass,
+            cse::CSEPass,
+        },
+        function_pass::{
+            dead_code_elimination::DeadCodeEliminationPass,
+            FunctionPass,
+        },
+    },
+    FunctionId,
+};
 
 pub mod basic_block_pass;
 pub mod function_pass;
@@ -167,10 +179,7 @@ pub struct Pipeline<'m> {
 
 impl<'a> Pipeline<'a> {
     pub fn new(module: &'a mut Module, config: PipelineConfig) -> Self {
-        Self {
-            module,
-            config,
-        }
+        Self { module, config }
     }
 
     pub fn run(&mut self) {
@@ -218,9 +227,13 @@ impl<'a> Pipeline<'a> {
             passes.push(Box::<DeadCodeEliminationPass>::default());
         }
         if self.config.global_constant_propagation {
-            passes.push(Box::<function_pass::constant_propagation::ConstantPropagation>::default());
+            passes.push(Box::<
+                function_pass::constant_propagation::ConstantPropagation,
+            >::default());
         }
-        passes.push(Box::new(function_pass::cfg_simplify::Pass::new(self.config.cfg_simplify)));
+        passes.push(Box::new(function_pass::cfg_simplify::Pass::new(
+            self.config.cfg_simplify,
+        )));
         passes
     }
 
@@ -228,4 +241,3 @@ impl<'a> Pipeline<'a> {
         &self.config
     }
 }
-
