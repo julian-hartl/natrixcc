@@ -70,7 +70,6 @@ use crate::{
 /// This pass needs to recompute the dominator tree for every merge operation.
 ///
 /// Therefore, it is relatively expensive to run.
-///
 #[derive(Default)]
 pub struct Pass {}
 

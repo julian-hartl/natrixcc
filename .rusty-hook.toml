@@ -1,7 +1,5 @@
 [hooks]
-pre-commit = "cargo build"
-pre-push = "cargo fmt --all"
+pre-commit = "cargo build && cargo fmt --all"
 post-commit = "Ran pre-commit hook"
-
 [logging]
 verbose = true
