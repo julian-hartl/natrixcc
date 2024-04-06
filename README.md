@@ -2,10 +2,12 @@
 
 A collection of common compiler tooling designed and developed for educational purposes.
 
+*Note: The compiler collection is currently work in progress and far away from being finsihed. It is missing any kind of documentation and is not tested very well yet.*
+
 <!-- TOC -->
-* [Fusion compiler collection](#fusion-compiler-collection)
+* [Natrix compiler collection](#natrix-compiler-collection)
   * [General Purpose Codegen Backend](#general-purpose-codegen-backend)
-  * [Example C-Like Language Frontend](#example-c-like-language-frontend)
+  * [Example C-Like Language Frontend](#natrix-language-frontend)
   * [Example Package Manager](#example-package-manager)
 <!-- TOC -->
 
