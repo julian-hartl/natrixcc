@@ -1,3 +1,8 @@
+use std::fmt::{
+    Display,
+    Formatter,
+};
+
 use cranelift_entity::SecondaryMap;
 
 use crate::{
@@ -16,35 +21,41 @@ use crate::{
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct InstrUid(pub BasicBlockId, pub InstrId);
+pub struct IRLocation(pub BasicBlockId, pub InstrId);
 
-impl From<(BasicBlockId, InstrId)> for InstrUid {
+impl Display for IRLocation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.0, self.1)
+    }
+}
+
+impl From<(BasicBlockId, InstrId)> for IRLocation {
     fn from((bb, instr): (BasicBlockId, InstrId)) -> Self {
         Self(bb, instr)
     }
 }
 
-impl From<&Instr> for InstrUid {
+impl From<&Instr> for IRLocation {
     fn from(instr: &Instr) -> Self {
         Self(instr.bb, instr.id)
     }
 }
 
-impl From<&Terminator> for InstrUid {
+impl From<&Terminator> for IRLocation {
     fn from(term: &Terminator) -> Self {
         Self(term.bb, InstrId::from_usize_unchecked(InstrId::MAX_INDEX))
     }
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct UseDef(SecondaryMap<VReg, (Option<InstrUid>, Option<Vec<InstrUid>>)>);
+pub struct UseDef(SecondaryMap<VReg, (Option<IRLocation>, Option<Vec<IRLocation>>)>);
 
 impl UseDef {
-    pub fn register_def(&mut self, def: VReg, instr_uid: InstrUid) -> Option<InstrUid> {
+    pub fn register_def(&mut self, def: VReg, instr_uid: IRLocation) -> Option<IRLocation> {
         self.0[def].0.replace(instr_uid)
     }
 
-    pub fn register_use(&mut self, use_: VReg, instr_uid: InstrUid) {
+    pub fn register_use(&mut self, use_: VReg, instr_uid: IRLocation) {
         let uses = self.0[use_].1.get_or_insert_with(Vec::new);
         uses.push(instr_uid);
     }
@@ -53,7 +64,7 @@ impl UseDef {
         self.0[def].0.is_some()
     }
 
-    pub fn get_def(&self, def: VReg) -> Option<InstrUid> {
+    pub fn get_def(&self, def: VReg) -> Option<IRLocation> {
         self.0[def].0
     }
 

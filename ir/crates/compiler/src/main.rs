@@ -12,6 +12,7 @@ use natrix_back::{
 use natrix_middle::{
     optimization,
     FrontBridge,
+    Verifier,
 };
 use tracing::debug;
 
@@ -51,6 +52,14 @@ fn main() -> Result<()> {
     println!("{:?}", module);
     let mut module = FrontBridge::new().bridge(module);
     println!("{:?}", module);
+    for (_, function) in &module.functions {
+        let verifier = Verifier::new(function);
+        let verify_result = verifier.verify();
+        println!("{:?}", verify_result);
+        for error in verify_result {
+            println!("{error}");
+        }
+    }
     debug!("Took {:?} to bridge module", start.elapsed());
     let start = std::time::Instant::now();
     let mut config = optimization::PipelineConfig::o1();

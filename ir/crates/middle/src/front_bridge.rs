@@ -146,8 +146,9 @@ impl FrontBridge {
             .map(|max_bb_id| max_bb_id < bb_id)
             .unwrap_or(true)
         {
-            builder.create_bb();
+            builder.create_empty_bb();
         }
+        builder.ensure_exists(bb_id);
     }
 
     fn operand_to_op(&self, operand: Operand, context_ty: Type) -> Op {

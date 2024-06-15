@@ -30,3 +30,6 @@ mod front_bridge;
 #[cfg(test)]
 pub mod test;
 pub mod ty;
+mod verifier;
+
+pub use verifier::Verifier;

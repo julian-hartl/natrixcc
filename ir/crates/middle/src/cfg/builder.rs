@@ -3,7 +3,6 @@ use cranelift_entity::EntityRef;
 use crate::{
     cfg::{
         BasicBlockId,
-        Terminator,
         TerminatorKind,
     },
     function::Function,
@@ -12,7 +11,6 @@ use crate::{
         BinOpInstr,
         CmpInstr,
         CmpOp,
-        Instr,
         InstrKind,
         LoadInstr,
         Op,
@@ -48,6 +46,14 @@ impl<'func> Builder<'func> {
 
     pub fn create_bb(&mut self) -> BasicBlockId {
         self.func.cfg.new_basic_block()
+    }
+
+    pub(crate) fn create_empty_bb(&mut self) -> BasicBlockId {
+        self.func.cfg.new_empty_block()
+    }
+
+    pub(crate) fn ensure_exists(&mut self, id: BasicBlockId) {
+        self.func.cfg.ensure_exists(id)
     }
 
     pub fn set_bb(&mut self, bb: BasicBlockId) {
@@ -145,7 +151,7 @@ impl<'func> Builder<'func> {
     }
 
     pub fn vreg(&self, vreg: VReg) -> &VRegData {
-        &self.func.cfg.vregs[vreg]
+        self.func.cfg.vreg(vreg)
     }
 
     fn next_vreg(&mut self, ty: Type) -> VReg {
@@ -154,15 +160,13 @@ impl<'func> Builder<'func> {
                 let vreg_idx = vreg.0 as usize;
                 if vreg_idx < self.func.cfg.vregs.len() {
                     let current_bb = self.current_bb();
-                    let vreg = &mut self.func.cfg.vregs[vreg];
-                    vreg.ty = ty;
-                    vreg.defined_in = current_bb;
+                    self.func.cfg.vregs[vreg].get_or_insert_with(|| VRegData {
+                        ty,
+                        defined_in: current_bb,
+                    });
                 } else {
                     for _ in self.func.cfg.vregs.len()..vreg_idx {
-                        self.func.cfg.new_vreg(VRegData {
-                            ty: Type::Void,
-                            defined_in: self.current_bb(),
-                        });
+                        self.func.cfg.empty_vreg();
                     }
                     self.func.cfg.new_vreg(VRegData {
                         ty,
