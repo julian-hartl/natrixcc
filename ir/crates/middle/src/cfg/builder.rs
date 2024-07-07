@@ -1,9 +1,8 @@
-use cranelift_entity::EntityRef;
-
 use crate::{
     cfg::{
-        BasicBlockId,
-        Terminator,
+        BBArgRef,
+        BasicBlockRef,
+        InstrRef,
         TerminatorKind,
     },
     function::Function,
@@ -12,23 +11,20 @@ use crate::{
         BinOpInstr,
         CmpInstr,
         CmpOp,
-        Instr,
         InstrKind,
         LoadInstr,
         Op,
         OpInstr,
         StoreInstr,
-        VRegData,
     },
     ty::Type,
-    VReg,
+    Value,
 };
 
 #[derive(Debug)]
 pub struct Builder<'func> {
-    func: &'func mut Function,
-    current_bb: Option<BasicBlockId>,
-    next_vreg: Option<VReg>,
+    pub func: &'func mut Function,
+    current_bb: Option<BasicBlockRef>,
 }
 
 impl<'func> Builder<'func> {
@@ -36,21 +32,20 @@ impl<'func> Builder<'func> {
         Self {
             func,
             current_bb: None,
-            next_vreg: None,
         }
     }
 
-    pub fn start_bb(&mut self) -> BasicBlockId {
-        let bb = self.create_bb();
+    pub fn start_bb(&mut self, symbol: String) -> BasicBlockRef {
+        let bb = self.create_bb(symbol);
         self.current_bb = Some(bb);
         bb
     }
 
-    pub fn create_bb(&mut self) -> BasicBlockId {
-        self.func.cfg.new_basic_block()
+    pub fn create_bb(&mut self, symbol: String) -> BasicBlockRef {
+        self.func.cfg.new_basic_block(symbol)
     }
 
-    pub fn set_bb(&mut self, bb: BasicBlockId) {
+    pub fn set_bb(&mut self, bb: BasicBlockRef) {
         self.current_bb = Some(bb);
     }
 
@@ -60,131 +55,64 @@ impl<'func> Builder<'func> {
         self.current_bb = None;
     }
 
-    pub fn alloca(&mut self, ty: Type, num_elements: Option<u32>) -> VReg {
-        let value = self.next_vreg(Type::Ptr(Box::new(ty.clone())));
-        let alloca = AllocaInstr::new(value, num_elements);
-        self.add_instr(ty, InstrKind::Alloca(alloca));
-        value
+    pub fn alloca(&mut self, symbol: String, ty: Type, num_elements: Option<u32>) -> InstrRef {
+        let alloca = AllocaInstr::new(ty.clone(), num_elements);
+        self.add_instr(Type::Ptr(Box::new(ty)), InstrKind::Alloca(alloca), symbol)
     }
 
-    pub fn add(&mut self, ty: Type, lhs: Op, rhs: Op) -> VReg {
-        let value = self.next_vreg(ty.clone());
-        let instr = BinOpInstr { value, lhs, rhs };
-        self.add_instr(ty, InstrKind::Add(instr));
-        value
+    pub fn add(&mut self, symbol: String, ty: Type, lhs: Op, rhs: Op) -> InstrRef {
+        let instr = BinOpInstr { lhs, rhs };
+        self.add_instr(ty, InstrKind::Add(instr), symbol)
     }
 
-    pub fn sub(&mut self, ty: Type, lhs: Op, rhs: Op) -> VReg {
-        let value = self.next_vreg(ty.clone());
-        let sub = BinOpInstr { value, lhs, rhs };
-        self.add_instr(ty, InstrKind::Sub(sub));
-        value
+    pub fn sub(&mut self, symbol: String, ty: Type, lhs: Op, rhs: Op) -> InstrRef {
+        let sub = BinOpInstr { lhs, rhs };
+        self.add_instr(ty, InstrKind::Sub(sub), symbol)
     }
 
-    pub fn store(&mut self, ty: Type, dest: VReg, value: Op) {
+    pub fn store(&mut self, symbol: String, dest: Value, value: Op) {
         let store = InstrKind::Store(StoreInstr { value, dest });
-        self.add_instr(ty, store);
+        self.add_instr(Type::Void, store, symbol);
     }
 
-    pub fn load(&mut self, ty: Type, source: Op) -> VReg {
-        let value = self.next_vreg(ty.clone());
-        let load = InstrKind::Load(LoadInstr {
-            dest: value,
-            source,
-        });
-        self.add_instr(ty, load);
-        value
+    pub fn load(&mut self, symbol: String, ty: Type, source: Op) -> InstrRef {
+        let load = InstrKind::Load(LoadInstr { source });
+        self.add_instr(ty, load, symbol)
     }
 
-    pub fn op(&mut self, ty: Type, op: Op) -> VReg {
-        let value = self.next_vreg(ty.clone());
-        let op_instr = OpInstr { value, op };
-        self.add_instr(ty, InstrKind::Op(op_instr));
-        value
+    pub fn op(&mut self, symbol: String, ty: Type, op: Op) -> InstrRef {
+        let op_instr = OpInstr { op };
+        self.add_instr(ty, InstrKind::Op(op_instr), symbol)
     }
 
-    pub fn icmp(&mut self, condition: CmpOp, op1: Op, op2: Op) -> VReg {
-        let ty = Type::Bool;
-        let value = self.next_vreg(ty.clone());
+    pub fn icmp(&mut self, symbol: String, condition: CmpOp, op1: Op, op2: Op) -> InstrRef {
         self.add_instr(
-            ty,
+            Type::Bool,
             InstrKind::Cmp(CmpInstr {
-                value,
                 op: condition,
                 lhs: op1,
                 rhs: op2,
             }),
-        );
-        value
+            symbol,
+        )
     }
 
-    pub fn add_argument(&mut self, ty: Type) -> VReg {
-        let value = self.next_vreg(ty);
+    pub fn add_argument(&mut self, ty: Type, symbol: String) -> BBArgRef {
         let current_bb = self.current_bb();
+        self.func.cfg.add_bb_argument(current_bb, ty, symbol)
+    }
+
+    pub fn bb_arguments(&self, bb_ref: BasicBlockRef) -> impl Iterator<Item = BBArgRef> + '_ {
+        self.func.cfg.basic_blocks[bb_ref].arguments.iter().copied()
+    }
+
+    pub fn add_instr(&mut self, ty: Type, instr_kind: InstrKind, symbol: String) -> InstrRef {
         self.func
             .cfg
-            .basic_block_mut(current_bb)
-            .add_argument(value);
-        value
+            .add_instruction(self.current_bb(), ty, instr_kind, symbol)
     }
 
-    pub fn get_bb_arguments(&self, bb: BasicBlockId) -> &[VReg] {
-        &self.func.cfg.basic_block(bb).arguments
-    }
-
-    pub fn add_instr(&mut self, ty: Type, instr_kind: InstrKind) {
-        self.func
-            .cfg
-            .add_instruction(self.current_bb(), ty, instr_kind);
-    }
-
-    /// Tells the builder to use this vreg for the next instruction
-    /// instead of continuing serially.
-    pub(crate) fn set_next_vreg(&mut self, vreg: VReg) {
-        self.next_vreg = Some(vreg);
-    }
-
-    pub fn vreg(&self, vreg: VReg) -> &VRegData {
-        &self.func.cfg.vregs[vreg]
-    }
-
-    fn next_vreg(&mut self, ty: Type) -> VReg {
-        match self.next_vreg.take() {
-            Some(vreg) => {
-                let vreg_idx = vreg.0 as usize;
-                if vreg_idx < self.func.cfg.vregs.len() {
-                    let current_bb = self.current_bb();
-                    let vreg = &mut self.func.cfg.vregs[vreg];
-                    vreg.ty = ty;
-                    vreg.defined_in = current_bb;
-                } else {
-                    for _ in self.func.cfg.vregs.len()..vreg_idx {
-                        self.func.cfg.new_vreg(VRegData {
-                            ty: Type::Void,
-                            defined_in: self.current_bb(),
-                        });
-                    }
-                    self.func.cfg.new_vreg(VRegData {
-                        ty,
-                        defined_in: self.current_bb(),
-                    });
-                }
-                vreg
-            }
-            None => self.func.cfg.new_vreg(VRegData {
-                ty,
-                defined_in: self.current_bb(),
-            }),
-        }
-    }
-
-    pub(crate) fn max_bb_id(&self) -> Option<BasicBlockId> {
-        Some(BasicBlockId::new(
-            self.func.cfg.basic_blocks.len().checked_sub(1)?,
-        ))
-    }
-
-    pub fn current_bb(&self) -> BasicBlockId {
+    pub fn current_bb(&self) -> BasicBlockRef {
         self.current_bb.unwrap()
     }
 }
@@ -213,15 +141,15 @@ mod tests {
     fn should_add_allocas_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
+        cfg_builder.start_bb("bb0".into());
 
-        cfg_builder.alloca(Type::I32, None);
+        cfg_builder.alloca("v0".into(), Type::I32, None);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             function.cfg.to_string(),
             "bb0:
-    v0 = alloca i32;
-    ret void;
+    &i32 %v0 = alloca i32;
+    ret;
 "
         );
     }
@@ -230,8 +158,9 @@ mod tests {
     fn should_add_sub_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
+        cfg_builder.start_bb("bb0".into());
         cfg_builder.sub(
+            "v0".into(),
             Type::I32,
             Op::Const(Const::Int(Type::I32, 0)),
             Op::Const(Const::Int(Type::I32, 1)),
@@ -240,8 +169,8 @@ mod tests {
         assert_eq!(
             function.cfg.to_string(),
             "bb0:
-    v0 = sub i32 0, 1;
-    ret void;
+    i32 %v0 = sub 0i32, 1i32;
+    ret;
 "
         );
     }
@@ -250,14 +179,14 @@ mod tests {
     fn should_add_op_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
-        cfg_builder.op(Type::I32, Op::Const(Const::Int(Type::I32, 0)));
+        cfg_builder.start_bb("bb0".into());
+        cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::Int(Type::I32, 0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             function.cfg.to_string(),
             "bb0:
-    v0 = i32 0;
-    ret void;
+    i32 %v0 = 0i32;
+    ret;
 "
         );
     }
@@ -266,15 +195,19 @@ mod tests {
     fn should_add_store_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
-        let alloca_value = cfg_builder.alloca(Type::I32, None);
-        cfg_builder.store(Type::I32, alloca_value, Op::Const(Const::Int(Type::I32, 0)));
+        cfg_builder.start_bb("bb0".into());
+        let alloca_value = cfg_builder.alloca("v0".into(), Type::I32, None);
+        cfg_builder.store(
+            "t".into(),
+            alloca_value.into(),
+            Op::Const(Const::Int(Type::I32, 0)),
+        );
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             "bb0:
-    v0 = alloca i32;
-    store i32 0, ptr v0;
-    ret void;
+    &i32 %v0 = alloca i32;
+    void %t = store 0i32, %v0;
+    ret;
 ",
             function.cfg.to_string()
         );
@@ -284,15 +217,15 @@ mod tests {
     fn should_add_load_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        cfg_builder.start_bb();
-        let alloca_value = cfg_builder.alloca(Type::I32, None);
-        cfg_builder.load(Type::I32, Op::Vreg(alloca_value));
+        cfg_builder.start_bb("bb0".into());
+        let alloca_value = cfg_builder.alloca("v0".into(), Type::I32, None);
+        cfg_builder.load("v1".into(), Type::I32, Op::Value(alloca_value.into()));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             "bb0:
-    v0 = alloca i32;
-    v1 = load i32 ptr v0;
-    ret void;
+    &i32 %v0 = alloca i32;
+    i32 %v1 = load %v0;
+    ret;
 ",
             function.cfg.to_string()
         );
@@ -302,16 +235,17 @@ mod tests {
     fn should_add_conditional_branch_to_entry_block() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        let _bb0 = cfg_builder.start_bb();
-        let bb1 = cfg_builder.create_bb();
-        let bb2 = cfg_builder.create_bb();
+        let _bb0 = cfg_builder.start_bb("bb0".into());
+        let bb1 = cfg_builder.create_bb("bb1".into());
+        let bb2 = cfg_builder.create_bb("bb2".into());
         let cmp_value = cfg_builder.icmp(
+            "v0".into(),
             CmpOp::Eq,
             Op::Const(Const::Int(Type::I32, 0)),
             Op::Const(Const::Int(Type::I32, 1)),
         );
         cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm {
-            cond: Op::Vreg(cmp_value),
+            cond: Op::Value(cmp_value.into()),
             true_target: JumpTarget::no_args(bb1),
             false_target: JumpTarget::no_args(bb2),
         }));
@@ -321,12 +255,12 @@ mod tests {
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             "bb0:
-    v0 = icmp bool eq 0, 1;
-    condbr v0, bb1, bb2;
+    bool %v0 = cmp eq 0i32, 1i32;
+    condbr %v0, bb1, bb2;
 bb1:
-    ret void;
+    ret;
 bb2:
-    ret void;
+    ret;
 ",
             function.cfg.to_string()
         );
@@ -336,49 +270,49 @@ bb2:
     fn should_add_basic_block_arguments() {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
-        let _bb0 = cfg_builder.start_bb();
-        let bb1 = cfg_builder.create_bb();
-        let bb2 = cfg_builder.create_bb();
-        let bb3 = cfg_builder.create_bb();
-        let bb4 = cfg_builder.create_bb();
+        let _bb0 = cfg_builder.start_bb("bb0".into());
+        let bb1 = cfg_builder.create_bb("bb1".into());
+        let bb2 = cfg_builder.create_bb("bb2".into());
+        let bb3 = cfg_builder.create_bb("bb3".into());
+        let bb4 = cfg_builder.create_bb("bb4".into());
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(
             JumpTarget::no_args(bb1),
         )));
         cfg_builder.set_bb(bb1);
-        let var_0 = cfg_builder.op(Type::I32, Op::Const(Const::Int(Type::I32, 0)));
+        let var_0 = cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::Int(Type::I32, 0)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
-            vec![var_0.into()],
+            vec![Op::Value(var_0.into())],
         ))));
         cfg_builder.set_bb(bb2);
-        let var_1 = cfg_builder.op(Type::I32, Op::Const(Const::Int(Type::I32, 1)));
+        let var_1 = cfg_builder.op("v1".into(), Type::I32, Op::Const(Const::Int(Type::I32, 1)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
-            vec![var_1.into()],
+            vec![Op::Value(var_1.into())],
         ))));
         cfg_builder.set_bb(bb3);
-        let var_2 = cfg_builder.add_argument(Type::I32);
-        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Type::I32, var_2.into())));
+        let var_2 = cfg_builder.add_argument(Type::I32, "v2".into());
+        cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(var_2.into()))));
         cfg_builder.set_bb(bb4);
-        let var_3 = cfg_builder.op(Type::I32, Op::Const(Const::Int(Type::I32, 2)));
+        let var_3 = cfg_builder.op("v3".into(), Type::I32, Op::Const(Const::Int(Type::I32, 2)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
-            vec![var_3.into()],
+            vec![Op::Value(var_3.into())],
         ))));
         assert_eq!(
             "bb0:
     br bb1;
 bb1:
-    v0 = i32 0;
-    br bb3(v0);
+    i32 %v0 = 0i32;
+    br bb3(%v0);
 bb2:
-    v1 = i32 1;
-    br bb3(v1);
-bb3(i32 v2):
-    ret i32 v2;
+    i32 %v1 = 1i32;
+    br bb3(%v1);
+bb3(i32 %v2):
+    ret %v2;
 bb4:
-    v3 = i32 2;
-    br bb3(v3);
+    i32 %v3 = 2i32;
+    br bb3(%v3);
 ",
             function.cfg.to_string()
         );

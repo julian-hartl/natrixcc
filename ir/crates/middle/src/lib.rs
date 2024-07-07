@@ -1,25 +1,51 @@
 #![feature(impl_trait_in_assoc_type)]
 #![feature(type_alias_impl_trait)]
 
-use cranelift_entity::entity_impl;
+use derive_more::From;
 pub use front_bridge::FrontBridge;
 pub use function::{
     Function,
-    FunctionId,
+    FunctionRef,
 };
 pub use instruction::{
     Instr,
     InstrKind,
 };
-pub use module::Module;
+use module::Module;
 pub use ty::Type;
+
+use crate::cfg::{
+    BBArgRef,
+    Cfg,
+    InstrRef,
+};
 
 pub mod cfg;
 pub mod function;
 
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
-pub struct VReg(u32);
-entity_impl!(VReg, "v");
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
+pub enum Value {
+    Instr(InstrRef),
+    BBArg(BBArgRef),
+}
+
+impl Value {
+    pub fn display<'cfg>(&self, cfg: &'cfg Cfg) -> ValueDisplay<'cfg> {
+        ValueDisplay(cfg, *self)
+    }
+}
+
+struct ValueDisplay<'cfg>(&'cfg Cfg, Value);
+
+impl<'cfg> std::fmt::Display for ValueDisplay<'cfg> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.1 {
+            Value::Instr(instr) => write!(f, "{}", self.0.instructions[instr]),
+            Value::BBArg(arg) => write!(f, "{}", self.0.basic_block_args[arg]),
+        }
+    }
+}
+
 pub mod instruction;
 
 pub mod module;

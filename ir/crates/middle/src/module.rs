@@ -6,7 +6,7 @@ use std::{
     time::Instant,
 };
 
-use cranelift_entity::PrimaryMap;
+use slotmap::SlotMap;
 use tracing::{
     debug,
     info,
@@ -16,13 +16,13 @@ use crate::{
     optimization,
     optimization::PipelineConfig,
     Function,
-    FunctionId,
+    FunctionRef,
     Instr,
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct Module {
-    pub functions: PrimaryMap<FunctionId, Function>,
+    pub functions: SlotMap<FunctionRef, Function>,
 }
 
 impl Module {

@@ -2,7 +2,7 @@ use tracing::debug;
 
 use crate::{
     cfg::{
-        BasicBlockId,
+        BasicBlockRef,
         BranchTerm,
         TerminatorKind,
     },
@@ -12,7 +12,7 @@ use crate::{
     },
     module::Module,
     optimization::basic_block_pass,
-    FunctionId,
+    FunctionRef,
 };
 
 /// # Jump threading optimization pass
@@ -77,31 +77,32 @@ impl basic_block_pass::BasicBlockPass for Pass {
     fn run_on_basic_block(
         &mut self,
         module: &mut Module,
-        function: FunctionId,
-        basic_block: BasicBlockId,
+        function: FunctionRef,
+        bb_ref: BasicBlockRef,
     ) -> usize {
         let cfg = &mut module.functions[function].cfg;
-        let bb = cfg.basic_block_mut(basic_block);
+        let bb = &mut cfg.basic_blocks[bb_ref];
         let changes = bb.update_terminator(|term| {
             match &mut term.kind {
-                TerminatorKind::Ret(_) |
-                TerminatorKind::Branch(_) => 0,
+                TerminatorKind::Ret(_) | TerminatorKind::Branch(_) => 0,
                 TerminatorKind::CondBranch(condbr_term) => {
                     match &condbr_term.cond {
                         Op::Const(const_val) => {
                             let is_true_branch = match const_val {
                                 // It is important to not check equality with one, as any other value than 0 is evaluated to true at runtime.
                                 // For example: 2 => true, -1 => true, 0 => false
-                                Const::Int (_, value) => *value != 0,
+                                Const::Int(_, value) => *value != 0,
                             };
-                            let target = if is_true_branch { condbr_term.true_target.clone() } else { condbr_term.false_target.clone() };
-                            debug!("Found constant condition in conditional branch. Replacing with branch to {}", target.id);
-                            term.kind = TerminatorKind::Branch(BranchTerm::new(
-                                target
-                            ));
+                            let target = if is_true_branch {
+                                condbr_term.true_target.clone()
+                            } else {
+                                condbr_term.false_target.clone()
+                            };
+                            // debug!("Found constant condition in conditional branch. Replacing with branch to {}", target.display(cfg));
+                            term.kind = TerminatorKind::Branch(BranchTerm::new(target));
                             1
                         }
-                        Op::Vreg(_) => 0,
+                        Op::Value(_) => 0,
                     }
                 }
             }
@@ -109,7 +110,7 @@ impl basic_block_pass::BasicBlockPass for Pass {
         // Only recompute successors if we have changed anything as
         // recompute_successors does not check whether any updates have occurred
         if changes > 0 {
-            cfg.recompute_successors(basic_block);
+            cfg.recompute_successors(bb_ref);
         }
         changes
     }

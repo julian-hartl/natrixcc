@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use cranelift_entity::EntitySet;
+use indexmap::IndexSet;
 
 use crate::{
     analysis::dataflow::{
@@ -8,14 +8,14 @@ use crate::{
         DFState,
         InstrWalker,
     },
-    cfg::BasicBlockId,
+    cfg::BasicBlockRef,
     Function,
     Instr,
 };
 pub struct BackwardAnalysisRunner<'a, A: Analysis> {
     pub state: DFState<A::V>,
-    visited: EntitySet<BasicBlockId>,
-    worklist: VecDeque<BasicBlockId>,
+    visited: IndexSet<BasicBlockRef>,
+    worklist: VecDeque<BasicBlockRef>,
     pub function: &'a mut Function,
     _analysis: std::marker::PhantomData<A>,
 }
@@ -24,14 +24,14 @@ impl<'a, A: Analysis> BackwardAnalysisRunner<'a, A> {
         let worklist = function.cfg.dfs_postorder().collect();
         Self {
             worklist,
-            visited: EntitySet::default(),
+            visited: IndexSet::default(),
             state: DFState::new(),
             function,
             _analysis: std::marker::PhantomData,
         }
     }
 
-    pub fn next_bb(&mut self) -> Option<(BasicBlockId, BAInstrWalker<A>)> {
+    pub fn next_bb(&mut self) -> Option<(BasicBlockRef, BAInstrWalker<A>)> {
         let bb_id = self.worklist.pop_front()?;
         let bb_state = self
             .state
@@ -39,7 +39,7 @@ impl<'a, A: Analysis> BackwardAnalysisRunner<'a, A> {
         assert!(self.visited.insert(bb_id), "Block has already been visited");
         for pred in self.function.cfg.predecessors(bb_id) {
             let mut succs = self.function.cfg.successors(pred);
-            let all_succs_visited = succs.all(|succ| self.visited.contains(succ));
+            let all_succs_visited = succs.all(|succ| self.visited.contains(&succ));
             assert!(all_succs_visited, "Not all successors have been visited");
             // if !all_succs_visited {
             //     continue;
@@ -60,26 +60,27 @@ impl<'a, A: Analysis> BackwardAnalysisRunner<'a, A> {
         while let Some((_, walker)) = self.next_bb() {
             walker.drain();
         }
-        self.state.state[self.function.cfg.entry_block()].clone()
+        self.state.state[self.function.cfg.entry_block_ref()].clone()
     }
 }
 
 pub struct BAInstrWalker<'a, 'b, A: Analysis> {
-    basic_block: BasicBlockId,
+    basic_block: BasicBlockRef,
     pub function: &'b mut Function,
     bb_state: &'a mut A::V,
 }
 
 impl<'a, 'b, A: Analysis> InstrWalker<A::V> for BAInstrWalker<'a, 'b, A> {
-    fn walk<H>(mut self, mut h: H)
+    fn walk<H>(self, mut h: H)
     where
         H: FnMut(&mut Instr, &A::V),
     {
-        let bb = self.function.cfg.basic_block_mut(self.basic_block);
-        A::analyse_term(bb.terminator(), self.bb_state);
-        for instr in bb.instructions_mut().rev() {
+        let bb = &mut self.function.cfg.basic_blocks[self.basic_block];
+        A::analyse_term(bb, bb.terminator(), self.bb_state);
+        for instr in bb.instructions.iter().copied().rev() {
+            let instr = &mut self.function.cfg.instructions[instr];
             h(instr, &*self.bb_state);
-            A::analyse_instr(instr, self.bb_state);
+            A::analyse_instr(bb, instr, self.bb_state);
         }
     }
 }

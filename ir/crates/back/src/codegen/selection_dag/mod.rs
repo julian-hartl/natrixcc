@@ -12,7 +12,7 @@ use daggy::petgraph::dot::{
     Dot,
 };
 use natrix_middle::{
-    cfg::BasicBlockId,
+    cfg::BasicBlockRef,
     instruction::CmpOp,
 };
 use rustc_hash::FxHashMap;
@@ -38,11 +38,11 @@ type Dag<A> = daggy::Dag<Op<A>, Edge>;
 pub struct BasicBlockDAG<TM: TargetMachine> {
     dag: Dag<TM>,
     term_node: Option<daggy::NodeIndex>,
-    bb: natrix_middle::cfg::BasicBlockId,
+    bb: natrix_middle::cfg::BasicBlockRef,
 }
 
 impl<TM: TargetMachine> BasicBlockDAG<TM> {
-    pub fn new(bb: natrix_middle::cfg::BasicBlockId) -> Self {
+    pub fn new(bb: natrix_middle::cfg::BasicBlockRef) -> Self {
         Self {
             dag: Dag::new(),
             term_node: None,
@@ -86,13 +86,13 @@ impl<TM: TargetMachine> DerefMut for BasicBlockDAG<TM> {
 
 #[derive(Debug, Default)]
 pub struct SelectionDAG<TM: TargetMachine> {
-    pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockDAG<TM>>,
+    pub basic_blocks: FxHashMap<natrix_middle::cfg::BasicBlockRef, BasicBlockDAG<TM>>,
 }
 
 impl<TM: TargetMachine> SelectionDAG<TM> {
     pub fn get_bb_dag(
         &mut self,
-        basic_block: natrix_middle::cfg::BasicBlockId,
+        basic_block: natrix_middle::cfg::BasicBlockRef,
     ) -> &mut BasicBlockDAG<TM> {
         self.basic_blocks
             .entry(basic_block)
@@ -241,7 +241,7 @@ pub enum PseudoOp<TM: TargetMachine> {
     Def(VReg),
     Copy(Register<TM>, Register<TM>),
     Ret(Option<Operand<TM>>),
-    Phi(Register<TM>, Vec<(Register<TM>, BasicBlockId)>),
+    Phi(Register<TM>, Vec<(Register<TM>, BasicBlockRef)>),
 }
 
 impl<TM: TargetMachine> PseudoOp<TM> {
@@ -273,8 +273,8 @@ pub enum MachineOp<TM: TargetMachine> {
     Sub(Register<TM>, Operand<TM>, Operand<TM>),
     Add(Register<TM>, Operand<TM>, Operand<TM>),
     Cmp(Register<TM>, CmpOp, Operand<TM>, Operand<TM>),
-    Br(BasicBlockId),
-    CondBr(Operand<TM>, BasicBlockId, BasicBlockId),
+    Br(BasicBlockRef),
+    CondBr(Operand<TM>, BasicBlockRef, BasicBlockRef),
 }
 
 impl<TM: TargetMachine> MachineOp<TM> {

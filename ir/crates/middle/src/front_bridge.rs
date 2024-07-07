@@ -1,17 +1,20 @@
+use itertools::Itertools;
 use natrix_front::module::{
+    Identifier,
     Instruction,
     Literal,
     Operand,
-    RegId,
 };
+use rustc_hash::FxHashMap;
 
 use crate::{
     cfg,
     cfg::{
-        BasicBlockId,
+        BBArgRef,
+        BasicBlockRef,
         BranchTerm,
-        Builder,
         CondBranchTerm,
+        InstrRef,
         JumpTarget,
         RetTerm,
         TerminatorKind,
@@ -24,21 +27,30 @@ use crate::{
     Function,
     Module,
     Type,
-    VReg,
+    Value,
 };
 
-pub struct FrontBridge {}
+#[derive(Debug, Default)]
+pub struct FrontBridge {
+    bb_symbol_table: FxHashMap<Identifier, BasicBlockRef>,
+    bb_arg_symbol_table: FxHashMap<Identifier, BBArgRef>,
+    instr_symbol_table: FxHashMap<Identifier, InstrRef>,
+}
 
 impl FrontBridge {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            bb_symbol_table: FxHashMap::default(),
+            bb_arg_symbol_table: FxHashMap::default(),
+            instr_symbol_table: FxHashMap::default(),
+        }
     }
 
     pub fn bridge(mut self, front_module: natrix_front::Module) -> Module {
         let mut module = Module::default();
         for function in front_module.functions {
             let function = self.bridge_function(function);
-            module.functions.push(function);
+            module.functions.insert(function);
         }
         module
     }
@@ -55,44 +67,65 @@ impl FrontBridge {
         );
         let mut cfg_builder = cfg::Builder::new(&mut function);
         for basic_block in &front_f.basic_blocks {
-            let bb_id = basic_block.id.into();
-            Self::ensure_bb_exists(&mut cfg_builder, bb_id);
+            assert!(
+                self.bb_symbol_table
+                    .insert(
+                        basic_block.id.clone(),
+                        cfg_builder.create_bb(basic_block.id.clone())
+                    )
+                    .is_none(),
+                "Duplicate basic block id {}",
+                basic_block.id
+            );
+        }
+        for basic_block in &front_f.basic_blocks {
+            let bb_id = self.bb_symbol_table[&basic_block.id];
             cfg_builder.set_bb(bb_id);
             for arg in &basic_block.args {
-                cfg_builder.set_next_vreg(arg.id.into());
-                cfg_builder.add_argument(arg.ty.into());
+                let id = cfg_builder.add_argument(arg.ty.clone().into(), arg.id.clone());
+                assert!(
+                    self.bb_arg_symbol_table
+                        .insert(arg.id.clone(), id)
+                        .is_none(),
+                    "Duplicate basic block argument id {}",
+                    arg.id
+                );
             }
         }
         for basic_block in front_f.basic_blocks {
-            let bb_id = basic_block.id.into();
+            let bb_id = self
+                .bb_symbol_table
+                .get(&basic_block.id)
+                .copied()
+                .unwrap_or_else(|| panic!("Basic block id not found: {}", basic_block.id));
             cfg_builder.set_bb(bb_id);
 
             for instruction in basic_block.instructions {
                 match instruction {
                     Instruction::Add(dest, ty, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs, ty.into());
-                        let rhs = self.operand_to_op(rhs, ty.into());
-                        cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.add(ty.into(), lhs, rhs);
+                        let lhs = self.operand_to_op(lhs);
+                        let rhs = self.operand_to_op(rhs);
+                        let id = cfg_builder.add(dest.clone(), ty.into(), lhs, rhs);
+                        self.insert_instr_symbol(&dest, id);
                     }
                     Instruction::Sub(dest, ty, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs, ty.into());
-                        let rhs = self.operand_to_op(rhs, ty.into());
-                        cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.sub(ty.into(), lhs, rhs);
+                        let lhs = self.operand_to_op(lhs);
+                        let rhs = self.operand_to_op(rhs);
+                        let instr_ref = cfg_builder.sub(dest.clone(), ty.into(), lhs, rhs);
+                        self.insert_instr_symbol(&dest, instr_ref);
                     }
-                    Instruction::Ret(ty, op) => {
+                    Instruction::Ret(op) => {
                         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm {
-                            ty: ty.into(),
-                            value: op.map(|op| self.operand_to_op(op, ty.into())),
+                            value: op.map(|op| self.operand_to_op(op)),
                         }));
                     }
                     Instruction::Op(dest, ty, op) => {
-                        cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.op(ty.into(), self.operand_to_op(op, ty.into()));
+                        let instr_ref =
+                            cfg_builder.op(dest.clone(), ty.into(), self.operand_to_op(op));
+                        self.insert_instr_symbol(&dest, instr_ref);
                     }
                     Instruction::Condbr(condition, true_target, false_target) => {
-                        let cond = self.operand_to_op(condition, Type::Bool);
+                        let cond = self.operand_to_op(condition);
                         let true_target = self.map_target(true_target, &mut cfg_builder);
                         let false_target = self.map_target(false_target, &mut cfg_builder);
                         cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm::new(
@@ -105,11 +138,11 @@ impl FrontBridge {
                         let target = self.map_target(target, &mut cfg_builder);
                         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(target)));
                     }
-                    Instruction::ICmp(dest, op, ty, lhs, rhs) => {
-                        let lhs = self.operand_to_op(lhs, ty.into());
-                        let rhs = self.operand_to_op(rhs, ty.into());
-                        cfg_builder.set_next_vreg(dest.into());
-                        cfg_builder.icmp(op.into(), lhs, rhs);
+                    Instruction::Cmp(dest, op, ty, lhs, rhs) => {
+                        let lhs = self.operand_to_op(lhs);
+                        let rhs = self.operand_to_op(rhs);
+                        let instr_ref = cfg_builder.icmp(dest.clone(), op.into(), lhs, rhs);
+                        self.insert_instr_symbol(&dest, instr_ref);
                     }
                 }
             }
@@ -117,45 +150,58 @@ impl FrontBridge {
         function
     }
 
+    fn insert_instr_symbol(&mut self, id: &Identifier, instr_id: InstrRef) {
+        assert!(
+            self.instr_symbol_table
+                .insert(id.clone(), instr_id)
+                .is_none(),
+            "Duplicate instruction id {}",
+            id
+        );
+    }
+
     fn map_target(
         &mut self,
         target: natrix_front::module::Target,
         builder: &mut cfg::Builder,
     ) -> JumpTarget {
-        let target_bb_id = target.0.into();
+        let target_bb_ref = self.bb_symbol_table[&target.0];
         JumpTarget::new(
-            target_bb_id,
+            target_bb_ref,
             target
                 .1
                 .map(|args| {
-                    let bb_args = builder.get_bb_arguments(target_bb_id);
+                    let bb_args = builder.bb_arguments(target_bb_ref).collect_vec();
                     args.into_iter()
                         .enumerate()
-                        .map(|(i, arg_op)| {
-                            self.operand_to_op(arg_op, builder.vreg(bb_args[i]).ty.clone())
-                        })
+                        .map(|(i, arg_op)| self.operand_to_op(arg_op))
                         .collect::<Vec<_>>()
                 })
                 .unwrap_or_default(),
         )
     }
 
-    fn ensure_bb_exists(builder: &mut Builder, bb_id: BasicBlockId) {
-        while builder
-            .max_bb_id()
-            .map(|max_bb_id| max_bb_id < bb_id)
-            .unwrap_or(true)
-        {
-            builder.create_bb();
-        }
-    }
-
-    fn operand_to_op(&self, operand: Operand, context_ty: Type) -> Op {
+    fn operand_to_op(&self, operand: Operand) -> Op {
         match operand {
             Operand::Literal(literal) => Op::Const(match literal {
-                Literal::Int(value) => Const::Int(context_ty, value),
+                Literal::Int(value, ty) => Const::Int(ty.into(), value),
+                Literal::Bool(value) =>
+                // todo: Migrate to Const::Bool
+                {
+                    Const::Int(Type::Bool, value as i64)
+                }
             }),
-            Operand::Register(reg) => Op::Vreg(reg.into()),
+            Operand::Value(value) => {
+                Op::Value(match self.instr_symbol_table.get(&value).copied() {
+                    None => self
+                        .bb_arg_symbol_table
+                        .get(&value)
+                        .copied()
+                        .map(Value::BBArg)
+                        .unwrap_or_else(|| panic!("Variable not defined: {}", value)),
+                    Some(instr_ref) => Value::Instr(instr_ref),
+                })
+            }
         }
     }
 }
@@ -173,6 +219,7 @@ impl From<natrix_front::module::Type> for Type {
             natrix_front::module::Type::I64 => Self::I64,
             natrix_front::module::Type::Void => Self::Void,
             natrix_front::module::Type::Bool => Self::Bool,
+            natrix_front::module::Type::Ptr(ty) => Self::Ptr(Box::new((*ty).into())),
         }
     }
 }
@@ -180,18 +227,6 @@ impl From<natrix_front::module::Type> for Type {
 impl From<natrix_front::Module> for Module {
     fn from(value: natrix_front::Module) -> Self {
         FrontBridge::new().bridge(value)
-    }
-}
-
-impl From<natrix_front::module::BasicBlockId> for BasicBlockId {
-    fn from(value: natrix_front::module::BasicBlockId) -> Self {
-        Self::from_u32(value.0)
-    }
-}
-
-impl From<RegId> for VReg {
-    fn from(value: RegId) -> Self {
-        Self::from_u32(value.0)
     }
 }
 

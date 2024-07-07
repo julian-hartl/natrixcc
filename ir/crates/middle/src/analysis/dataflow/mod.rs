@@ -3,16 +3,17 @@ use std::{
     hash::Hash,
 };
 
-use cranelift_entity::SecondaryMap;
 use lattice::Value;
 use rustc_hash::{
     FxHashMap,
     FxHashSet,
 };
+use slotmap::SecondaryMap;
 
 use crate::{
     cfg::{
-        BasicBlockId,
+        BasicBlock,
+        BasicBlockRef,
         Terminator,
     },
     Instr,
@@ -24,14 +25,14 @@ mod forward;
 pub mod lattice;
 pub mod use_def;
 
-type InstrValue = crate::VReg;
+type InstrValue = crate::Value;
 
 #[derive(Default)]
 pub struct DFState<V>
 where
     V: Clone,
 {
-    state: SecondaryMap<BasicBlockId, V>,
+    state: SecondaryMap<BasicBlockRef, V>,
 }
 
 impl<V> DFState<V>
@@ -42,18 +43,18 @@ where
         Self::default()
     }
 
-    pub fn get_mut(&mut self, bb: BasicBlockId) -> &mut V {
+    pub fn get_mut(&mut self, bb: BasicBlockRef) -> &mut V {
         &mut self.state[bb]
     }
 
-    pub fn get(&self, bb: BasicBlockId) -> &V {
+    pub fn get(&self, bb: BasicBlockRef) -> &V {
         &self.state[bb]
     }
 
     pub fn create(
         &mut self,
-        bb: BasicBlockId,
-        join_partners: impl IntoIterator<Item = BasicBlockId>,
+        bb: BasicBlockRef,
+        join_partners: impl IntoIterator<Item = BasicBlockRef>,
     ) -> &mut V {
         for join_partner in join_partners {
             let pred_state = self.get(join_partner).clone();
@@ -77,9 +78,9 @@ pub trait InstrWalker<V: Value>: Sized {
 pub trait Analysis {
     type V: Value;
 
-    fn analyse_instr(instr: &Instr, v: &mut Self::V);
+    fn analyse_instr(bb: &BasicBlock, instr: &Instr, v: &mut Self::V);
 
-    fn analyse_term(term: &Terminator, v: &mut Self::V);
+    fn analyse_term(bb: &BasicBlock, term: &Terminator, v: &mut Self::V);
 }
 
 pub type DFValueState<V> = FxHashMap<InstrValue, V>;

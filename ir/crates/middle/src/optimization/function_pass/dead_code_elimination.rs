@@ -1,17 +1,14 @@
-use cranelift_entity::SecondaryMap;
 use tracing::debug;
 
 use crate::{
-    analysis::{
-        dataflow,
-        dataflow::use_def::InstrUid,
-    },
+    analysis::dataflow,
     module::Module,
     optimization::{
         FunctionPass,
         Pass,
     },
-    FunctionId,
+    FunctionRef,
+    Value,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -24,20 +21,34 @@ impl Pass for DeadCodeEliminationPass {
 }
 
 impl FunctionPass for DeadCodeEliminationPass {
-    fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
-        let runner = dataflow::use_def::AnalysisRunner::new(&mut module.functions[function]);
+    fn run_on_function(&mut self, module: &mut Module, function: FunctionRef) -> usize {
+        let function = &mut module.functions[function];
+        let runner = dataflow::use_def::AnalysisRunner::new(function);
         let state = runner.collect();
         let mut changes = 0;
-        let mut removed_instr_count = SecondaryMap::new();
-        for vreg in state.unused_regs() {
-            debug!("Removing unused def {vreg}");
-            let InstrUid(bb_id, instr_id) = state.get_def(vreg).unwrap();
-            let bb = &mut module.functions[function].cfg.basic_block_mut(bb_id);
-            let removed_instrs = removed_instr_count.get(bb_id).copied().unwrap_or(0);
-            let instr_id = instr_id - removed_instrs;
-            bb.remove_instruction(instr_id);
-            removed_instr_count[bb_id] = removed_instrs + 1;
-            changes += 1;
+        let mut instructions_to_remove = Vec::new();
+        for value in state.unused_values(function.cfg.values()) {
+            match value {
+                Value::Instr(instr_id) => {
+                    let instr = &function.cfg.instructions[instr_id];
+                    debug!("Removing unused def {instr}");
+                    changes += 1;
+                    instructions_to_remove.push(instr_id);
+                }
+                Value::BBArg(_) => {}
+            }
+        }
+
+        for instr_id in instructions_to_remove {
+            let defined_in = function
+                .cfg
+                .instructions
+                .remove(instr_id)
+                .expect("Tried to remove an instruction that does not exist")
+                .defined_in;
+            function.cfg.basic_blocks[defined_in]
+                .instructions
+                .shift_remove(&instr_id);
         }
 
         changes
@@ -60,12 +71,12 @@ mod tests {
             "
             fun i32 @test() {
             bb0:
-                v0 = i32 20;
-                v1 = add i32 v0, 8;
-                v2 = sub i32 v0, 9;
+                i32 %0 = 20i32;
+                i32 %1 = add %0, 8i32;
+                i32 %2 = sub %0, 9i32;
                 br bb1;
             bb1:
-                ret i32 v0;
+                ret %0;
             }
         ",
         );
@@ -75,10 +86,10 @@ mod tests {
             "
             fun i32 @test() {
             bb0:
-                v0 = i32 20;
+                %0 = i32 20;
                 br bb1;
             bb1:
-                ret i32 v0;
+                ret i32 %0;
             }
         ",
         );

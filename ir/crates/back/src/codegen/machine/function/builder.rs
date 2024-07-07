@@ -40,7 +40,7 @@ use crate::codegen::{
 pub struct FunctionBuilder<TM: TargetMachine> {
     function: Function<TM>,
     backend: TM::Backend,
-    bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockId>,
+    bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockRef, BasicBlockId>,
 }
 
 impl<TM: TargetMachine> FunctionBuilder<TM> {
@@ -222,7 +222,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         self.function
     }
 
-    fn create_bb(&mut self, bb: natrix_middle::cfg::BasicBlockId) -> BasicBlockId {
+    fn create_bb(&mut self, bb: natrix_middle::cfg::BasicBlockRef) -> BasicBlockId {
         let mbb = self.function.create_bb();
         self.bb_mapping.insert(bb, mbb);
         mbb

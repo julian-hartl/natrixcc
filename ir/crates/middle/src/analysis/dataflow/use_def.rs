@@ -1,4 +1,4 @@
-use cranelift_entity::SecondaryMap;
+use rustc_hash::FxHashMap;
 
 use crate::{
     analysis::dataflow::{
@@ -6,84 +6,42 @@ use crate::{
         lattice,
     },
     cfg::{
-        BasicBlockId,
-        InstrId,
+        BasicBlock,
+        BasicBlockRef,
         Terminator,
     },
     instruction::Op,
     Instr,
-    VReg,
+    Value,
 };
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct InstrUid(pub BasicBlockId, pub InstrId);
-
-impl From<(BasicBlockId, InstrId)> for InstrUid {
-    fn from((bb, instr): (BasicBlockId, InstrId)) -> Self {
-        Self(bb, instr)
-    }
-}
-
-impl From<&Instr> for InstrUid {
-    fn from(instr: &Instr) -> Self {
-        Self(instr.bb, instr.id)
-    }
-}
-
-impl From<&Terminator> for InstrUid {
-    fn from(term: &Terminator) -> Self {
-        Self(term.bb, InstrId::from_usize_unchecked(InstrId::MAX_INDEX))
-    }
-}
-
 #[derive(Debug, Default, Clone)]
-pub struct UseDef(SecondaryMap<VReg, (Option<InstrUid>, Option<Vec<InstrUid>>)>);
+pub struct Uses(FxHashMap<Value, Vec<BasicBlockRef>>);
 
-impl UseDef {
-    pub fn register_def(&mut self, def: VReg, instr_uid: InstrUid) -> Option<InstrUid> {
-        self.0[def].0.replace(instr_uid)
+impl Uses {
+    pub fn register_use(&mut self, use_: Value, bb_ref: BasicBlockRef) {
+        let uses = self.0.entry(use_).or_insert_with(Vec::new);
+        uses.push(bb_ref);
     }
 
-    pub fn register_use(&mut self, use_: VReg, instr_uid: InstrUid) {
-        let uses = self.0[use_].1.get_or_insert_with(Vec::new);
-        uses.push(instr_uid);
+    pub fn is_used(&self, value: Value) -> bool {
+        self.0.contains_key(&value)
     }
-
-    pub fn is_defined(&self, def: VReg) -> bool {
-        self.0[def].0.is_some()
-    }
-
-    pub fn get_def(&self, def: VReg) -> Option<InstrUid> {
-        self.0[def].0
-    }
-
-    /// Returns all defined, but unused registers
-    pub fn unused_regs(&self) -> impl Iterator<Item = VReg> + '_ {
-        self.0.iter().filter_map(|(vreg, (def, uses))| {
-            def.and_then(|_| {
-                let is_unused = uses.as_ref().map(|uses| uses.is_empty()).unwrap_or(true);
-                if is_unused {
-                    Some(vreg)
-                } else {
-                    None
-                }
-            })
-        })
+    /// Returns all defined, but unused values
+    pub fn unused_values<'v>(
+        &'v self,
+        values: impl Iterator<Item = Value> + 'v,
+    ) -> impl Iterator<Item = Value> + 'v {
+        values.filter(|value| !self.is_used(*value))
     }
 }
 
-impl lattice::Value for UseDef {
+impl lattice::Value for Uses {
     fn join(&mut self, other: Self) -> bool {
         let mut changed = false;
-        for (vreg, (def, uses)) in other.0.iter() {
-            if let Some(def) = def {
-                let old_def = self.register_def(vreg, *def);
-                if old_def.is_none() || old_def != Some(*def) {
-                    changed = true;
-                }
-            }
-            for use_ in uses.iter().flatten().copied() {
-                self.register_use(vreg, use_);
+        for (value, uses) in other.0.iter() {
+            for use_ in uses.iter().copied() {
+                self.register_use(*value, use_);
                 changed = true;
             }
         }
@@ -96,27 +54,19 @@ pub struct Analysis;
 pub type AnalysisRunner<'a> = BackwardAnalysisRunner<'a, Analysis>;
 
 impl super::Analysis for Analysis {
-    type V = UseDef;
+    type V = Uses;
 
-    fn analyse_instr(instr: &Instr, use_def: &mut Self::V) {
-        let def = instr.defined_vreg();
-        if let Some(def) = def {
-            use_def.register_def(def, instr.into());
-        }
+    fn analyse_instr(bb: &BasicBlock, instr: &Instr, use_def: &mut Self::V) {
         for op in instr.used() {
-            if let Op::Vreg(use_) = op {
-                use_def.register_use(*use_, instr.into());
+            if let Op::Value(use_) = op {
+                use_def.register_use(*use_, bb.id);
             }
         }
     }
 
-    fn analyse_term(term: &Terminator, use_def: &mut Self::V) {
-        for used_vreg in term
-            .used()
-            .into_iter()
-            .flat_map(|op| op.try_as_vreg_ref().copied())
-        {
-            use_def.register_use(used_vreg, term.into());
+    fn analyse_term(bb: &BasicBlock, term: &Terminator, use_def: &mut Self::V) {
+        for used_value in term.used().into_iter().flat_map(|op| op.referenced_value()) {
+            use_def.register_use(used_value, bb.id);
         }
     }
 }

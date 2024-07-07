@@ -11,7 +11,7 @@ use daggy::{
 use iter_tools::Itertools;
 use natrix_middle::{
     cfg::{
-        BasicBlockId,
+        BasicBlockRef,
         BranchTerm,
         JumpTarget,
         Terminator,
@@ -53,7 +53,7 @@ pub struct Builder<'func, TM: TargetMachine> {
     function: &'func mut Function<TM>,
     sel_dag: SelectionDAG<TM>,
     reg_mapping: SecondaryMap<natrix_middle::VReg, Option<VReg>>,
-    defining_nodes: FxHashMap<(VReg, BasicBlockId), NodeIndex>,
+    defining_nodes: FxHashMap<(VReg, BasicBlockRef), NodeIndex>,
 }
 
 impl<'func, TM: TargetMachine> Builder<'func, TM> {
@@ -71,7 +71,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         let basic_blocks = func
             .cfg
             .basic_block_ids()
-            .filter(|bb_id| *bb_id != func.cfg.entry_block())
+            .filter(|bb_id| *bb_id != func.cfg.entry_block_ref())
             .collect::<Vec<_>>();
 
         for bb_id in basic_blocks {
@@ -158,7 +158,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         }
         for (bb_id, bb) in func.cfg.basic_blocks() {
             debug!("Building SelectionDAG for basic block {}", bb_id);
-            if bb_id == func.cfg.entry_block() {
+            if bb_id == func.cfg.entry_block_ref() {
                 for arg in bb.arguments() {
                     let mapped_reg = self.map_vreg(arg, func);
                     self.function.params.push(mapped_reg);
@@ -253,7 +253,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         func: &natrix_middle::Function,
     ) -> Operand<TM> {
         match op {
-            natrix_middle::instruction::Op::Vreg(vreg) => {
+            natrix_middle::instruction::Op::Value(vreg) => {
                 Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func)))
             }
             natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
@@ -279,7 +279,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
 
     fn add_dependency(
         &mut self,
-        bb_id: BasicBlockId,
+        bb_id: BasicBlockRef,
         depending_node: NodeIndex,
         producing_node: NodeIndex,
     ) {
@@ -290,7 +290,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
             .unwrap();
     }
 
-    fn define_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockId, op: Op<TM>) -> NodeIndex {
+    fn define_node(&mut self, bb_id: natrix_middle::cfg::BasicBlockRef, op: Op<TM>) -> NodeIndex {
         let used_regs = op.consumed_regs();
         let out_reg = op.out().and_then(|reg| reg.try_as_virtual());
         debug!(
@@ -315,7 +315,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
 
     fn define_term_node(
         &mut self,
-        bb_id: natrix_middle::cfg::BasicBlockId,
+        bb_id: natrix_middle::cfg::BasicBlockRef,
         op: Op<TM>,
     ) -> NodeIndex {
         let term_node = self.define_node(bb_id, op);
@@ -341,11 +341,11 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         }
     }
 
-    fn define_out_val(&mut self, node: NodeIndex, reg: VReg, bb_id: BasicBlockId) {
+    fn define_out_val(&mut self, node: NodeIndex, reg: VReg, bb_id: BasicBlockRef) {
         self.defining_nodes.insert((reg, bb_id), node);
     }
 
-    fn get_defining_node(&self, vreg: VReg, bb_id: BasicBlockId) -> Option<NodeIndex> {
+    fn get_defining_node(&self, vreg: VReg, bb_id: BasicBlockRef) -> Option<NodeIndex> {
         self.defining_nodes.get(&(vreg, bb_id)).copied()
     }
 }

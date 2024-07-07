@@ -21,24 +21,24 @@ pub struct Function {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Arg {
-    pub id: RegId,
+    pub id: Identifier,
     pub ty: Type,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct BasicBlock {
     pub args: Vec<Arg>,
-    pub id: BasicBlockId,
+    pub id: Identifier,
     pub instructions: Vec<Instruction>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Instruction {
-    Add(RegId, Type, Operand, Operand),
-    Sub(RegId, Type, Operand, Operand),
-    ICmp(RegId, CmpOp, Type, Operand, Operand),
-    Op(RegId, Type, Operand),
-    Ret(Type, Option<Operand>),
+    Add(Identifier, Type, Operand, Operand),
+    Sub(Identifier, Type, Operand, Operand),
+    Cmp(Identifier, CmpOp, Type, Operand, Operand),
+    Op(Identifier, Type, Operand),
+    Ret(Option<Operand>),
     Condbr(Operand, Target, Target),
     Br(Target),
 }
@@ -50,15 +50,15 @@ pub enum CmpOp {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Target(pub BasicBlockId, pub Option<Vec<Operand>>);
+pub struct Target(pub Identifier, pub Option<Vec<Operand>>);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand {
     Literal(Literal),
-    Register(RegId),
+    Value(Identifier),
 }
 
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     Bool,
     U8,
@@ -70,18 +70,16 @@ pub enum Type {
     I32,
     I64,
     Void,
+    Ptr(Box<Type>),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Literal {
-    Int(i64),
+    Int(i64, Type),
+    Bool(bool),
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RegId(pub u32);
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct BasicBlockId(pub u32);
+pub type Identifier = String;
 
 #[cfg(test)]
 mod tests {
@@ -90,12 +88,11 @@ mod tests {
         module::{
             Arg,
             BasicBlock,
-            BasicBlockId,
             Function,
             Instruction,
             Operand,
-            RegId,
             Type,
+            ValueId,
         },
     };
 
@@ -108,7 +105,7 @@ fun i32 @add(i32, i32) {
 bb0(i32 v0, i32 v1):
     v2 = add i32 v0, v1;
     v3 = add i32 v2, v1;
-    ret i32 v3;
+    ret v3;
 }
         ",
             )
@@ -123,26 +120,26 @@ bb0(i32 v0, i32 v1):
                     id: BasicBlockId(0),
                     instructions: vec![
                         Instruction::Add(
-                            RegId(2),
+                            ValueId(2),
                             Type::I32,
-                            Operand::Register(RegId(0)),
-                            Operand::Register(RegId(1))
+                            Operand::Value(ValueId(0)),
+                            Operand::Value(ValueId(1))
                         ),
                         Instruction::Add(
-                            RegId(3),
+                            ValueId(3),
                             Type::I32,
-                            Operand::Register(RegId(2)),
-                            Operand::Register(RegId(1))
+                            Operand::Value(ValueId(2)),
+                            Operand::Value(ValueId(1))
                         ),
-                        Instruction::Ret(Type::I32, Some(Operand::Register(RegId(3)))),
+                        Instruction::Ret(Type::I32, Some(Operand::Value(ValueId(3)))),
                     ],
                     args: vec![
                         Arg {
-                            id: RegId(0),
+                            id: ValueId(0),
                             ty: Type::I32,
                         },
                         Arg {
-                            id: RegId(1),
+                            id: ValueId(1),
                             ty: Type::I32,
                         },
                     ],

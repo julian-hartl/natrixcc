@@ -3,7 +3,7 @@ use tracing::debug;
 
 use crate::{
     cfg::{
-        BasicBlockId,
+        BasicBlockRef,
         TerminatorKind,
     },
     instruction::{
@@ -18,8 +18,8 @@ use crate::{
         basic_block_pass::BasicBlockPass,
         Pass,
     },
-    FunctionId,
-    VReg,
+    FunctionRef,
+    Value,
 };
 
 pub struct ConstantFoldPass {}
@@ -34,14 +34,15 @@ impl BasicBlockPass for ConstantFoldPass {
     fn run_on_basic_block(
         &mut self,
         module: &mut Module,
-        function: FunctionId,
-        basic_block_id: BasicBlockId,
+        function: FunctionRef,
+        basic_block_id: BasicBlockRef,
     ) -> usize {
         let cfg = &mut module.functions[function].cfg;
-        let bb = cfg.basic_block_mut(basic_block_id);
+        let bb = &mut cfg.basic_blocks[basic_block_id];
         let mut changes = 0;
-        let mut constant_values: FxHashMap<VReg, Const> = FxHashMap::default();
-        for instr in bb.instructions_mut() {
+        let mut constant_values: FxHashMap<Value, Const> = FxHashMap::default();
+        for instr_id in bb.instructions() {
+            let instr = &mut cfg.instructions[instr_id];
             match &mut instr.kind {
                 InstrKind::Alloca(_) => {}
                 InstrKind::Sub(sub_instr) => {
@@ -58,7 +59,6 @@ impl BasicBlockPass for ConstantFoldPass {
                         |lhs, rhs| lhs.sub(rhs).unwrap(),
                     ) {
                         instr.kind = InstrKind::Op(OpInstr {
-                            value: sub_instr.value,
                             op: Op::Const(const_val),
                         });
                         changes += 1;
@@ -78,7 +78,6 @@ impl BasicBlockPass for ConstantFoldPass {
                         |lhs, rhs| lhs.add(rhs).unwrap(),
                     ) {
                         instr.kind = InstrKind::Op(OpInstr {
-                            value: add_instr.value,
                             op: Op::Const(const_val),
                         });
                         changes += 1;
@@ -87,10 +86,10 @@ impl BasicBlockPass for ConstantFoldPass {
                 InstrKind::Op(op_instr) => {
                     let updated_op = match &op_instr.op {
                         Op::Const(constant) => {
-                            constant_values.insert(op_instr.value, constant.clone());
+                            constant_values.insert(Value::Instr(instr_id), constant.clone());
                             None
                         }
-                        Op::Vreg(place) => {
+                        Op::Value(place) => {
                             constant_values
                                 .get(place)
                                 .cloned()
@@ -129,7 +128,6 @@ impl BasicBlockPass for ConstantFoldPass {
                         |lhs, rhs| lhs.cmp(rhs, CmpOp::from(icmp_instr.op)).unwrap(),
                     ) {
                         instr.kind = InstrKind::Op(OpInstr {
-                            value: icmp_instr.value,
                             op: Op::Const(const_val),
                         });
                         changes += 1;
@@ -142,7 +140,7 @@ impl BasicBlockPass for ConstantFoldPass {
                 if let Some(ret_value) = &mut ret_term.value {
                     match ret_value {
                         Op::Const(_) => {}
-                        Op::Vreg(value) => {
+                        Op::Value(value) => {
                             if let Some(constant_value) = constant_values.get(value) {
                                 changes += 1;
                                 *ret_value = Op::Const(constant_value.clone());
@@ -163,17 +161,17 @@ impl BasicBlockPass for ConstantFoldPass {
 }
 
 impl ConstantFoldPass {
-    fn op_to_const(constant_values: &FxHashMap<VReg, Const>, op: &Op) -> Option<Const> {
+    fn op_to_const(constant_values: &FxHashMap<Value, Const>, op: &Op) -> Option<Const> {
         match op {
             Op::Const(constant) => Some(constant.clone()),
-            Op::Vreg(place) => constant_values.get(place).cloned(),
+            Op::Value(place) => constant_values.get(place).cloned(),
         }
     }
 
-    fn try_replace_op(constant_values: &FxHashMap<VReg, Const>, op: &mut Op) -> bool {
-        if let Op::Vreg(value) = op {
+    fn try_replace_op(constant_values: &FxHashMap<Value, Const>, op: &mut Op) -> bool {
+        if let Op::Value(value) = op {
             if let Some(const_val) = constant_values.get(value) {
-                debug!("Replacing {value} with {const_val}");
+                // debug!("Replacing {value} with {const_val}");
                 *op = Op::Const(const_val.clone());
                 return true;
             }
@@ -182,7 +180,7 @@ impl ConstantFoldPass {
     }
 
     fn eval_binary_instr<E>(
-        constant_values: &FxHashMap<VReg, Const>,
+        constant_values: &FxHashMap<Value, Const>,
         lhs: &Op,
         rhs: &Op,
         eval: E,
@@ -216,9 +214,9 @@ mod tests {
             "
                 fun i32 @test() {
                 bb0:
-                    v0 = i32 8;
-                    v1 = sub i32 v0, 7;
-                    ret i32 v1;
+                    i32 %0 = 8i32;
+                    i32 %1 = sub %0, 7i32;
+                    ret %1;
                 }
             ",
         );
@@ -227,9 +225,9 @@ mod tests {
         assert_eq!(
             "fun i32 @test() {
 bb0:
-    v0 = i32 8;
-    v1 = i32 1;
-    ret i32 1;
+    i32 %0 = 8i32;
+    i32 %1 = 1i32;
+    ret 1i32;
 }
 ",
             function.to_string(),
@@ -242,9 +240,9 @@ bb0:
             "
                 fun i32 @test() {
                 bb0:
-                    v0 = i32 8;
-                    v1 = add i32 v0, 7;
-                    ret i32 v1;
+                    i32 %0 = 8i32;
+                    i32 %1 = add %0, 7i32;
+                    ret %1;
                 }
             ",
         );
@@ -254,9 +252,9 @@ bb0:
             "
             fun i32 @test() {
             bb0:
-                v0 = i32 8;
-                v1 = i32 15;
-                ret i32 15;
+                i32 %0 = 8i32;
+                i32 %1 = 15i32;
+                ret 15i32;
             }",
         )
     }
@@ -266,10 +264,10 @@ bb0:
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 v0):
-                    v1 = i32 8;
-                    v2 = add i32 v0, v1;
-                    ret i32 v2;
+                bb0(i32 %0):
+                    i32 %1 = 8i32;
+                    i32 %2 = add %0, %1;
+                    ret %2;
                 }
             ",
         );
@@ -277,10 +275,10 @@ bb0:
         let function = module.find_function_by_name("test").unwrap();
         assert_eq!(
             "fun i32 @test(i32) {
-bb0(i32 v0):
-    v1 = i32 8;
-    v2 = add i32 v0, 8;
-    ret i32 v2;
+bb0(i32 %0):
+    i32 %1 = 8i32;
+    i32 %2 = add %0, 8i32;
+    ret %2;
 }
 ",
             function.to_string()

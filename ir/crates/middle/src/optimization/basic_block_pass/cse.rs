@@ -1,7 +1,7 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    cfg::BasicBlockId,
+    cfg::BasicBlockRef,
     instruction::{
         InstrIdentifyingKey,
         InstrKind,
@@ -13,8 +13,8 @@ use crate::{
         basic_block_pass::BasicBlockPass,
         Pass,
     },
-    FunctionId,
-    VReg,
+    FunctionRef,
+    Value,
 };
 
 /// # Common Subexpression Elimination
@@ -33,28 +33,25 @@ impl BasicBlockPass for CSEPass {
     fn run_on_basic_block(
         &mut self,
         module: &mut Module,
-        function: FunctionId,
-        basic_block: BasicBlockId,
+        function: FunctionRef,
+        basic_block: BasicBlockRef,
     ) -> usize {
         let cfg = &mut module.functions[function].cfg;
-        let bb = cfg.basic_block_mut(basic_block);
+        let bb = &mut cfg.basic_blocks[basic_block];
         let mut changes = 0;
-        let mut expr_cache: FxHashMap<InstrIdentifyingKey, VReg> = FxHashMap::default();
-        for instr in bb.instructions_mut() {
+        let mut expr_cache: FxHashMap<InstrIdentifyingKey, Value> = FxHashMap::default();
+        for instr_id in bb.instructions() {
+            let instr = &mut cfg.instructions[instr_id];
             let key = instr.identifying_key();
             if let Some(key) = key {
-                let produced_value = instr.defined_vreg();
-                if let Some(produced_value) = produced_value {
-                    let cached_value = expr_cache.get(&key).copied();
-                    if let Some(cached_value) = cached_value {
-                        instr.kind = InstrKind::Op(OpInstr {
-                            value: produced_value,
-                            op: Op::Vreg(cached_value),
-                        });
-                        changes += 1;
-                    } else {
-                        expr_cache.insert(key, produced_value);
-                    }
+                let cached_value = expr_cache.get(&key).copied();
+                if let Some(cached_value) = cached_value {
+                    instr.kind = InstrKind::Op(OpInstr {
+                        op: Op::Value(cached_value),
+                    });
+                    changes += 1;
+                } else {
+                    expr_cache.insert(key, instr.value());
                 }
             }
         }
@@ -66,23 +63,8 @@ impl BasicBlockPass for CSEPass {
 mod tests {
     use crate::{
         cfg,
-        cfg::{
-            RetTerm,
-            TerminatorKind,
-        },
-        instruction::{
-            Const,
-            Op,
-        },
-        optimization,
-        optimization::{
-            Pipeline,
-            PipelineConfig,
-        },
-        test::{
-            create_test_module,
-            create_test_module_from_source,
-        },
+        optimization::PipelineConfig,
+        test::create_test_module_from_source,
     };
 
     #[test]
@@ -90,11 +72,11 @@ mod tests {
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 v0):
-                    v1 = sub i32 v0, 3;
-                    v2 = sub i32 v0, 3;
-                    v3 = sub i32 v2, v1;
-                    ret i32 v3;
+                bb0(i32 %0):
+                    i32 %1 = sub %0, 3i32;
+                    i32 %2 = sub %0, 3i32;
+                    i32 %3 = sub %2, %1;
+                    ret %3;
                 }
             ",
         );
@@ -102,11 +84,11 @@ mod tests {
         let function = module.find_function_by_name("test").unwrap();
         assert_eq!(
             "fun i32 @test(i32) {
-bb0(i32 v0):
-    v1 = sub i32 v0, 3;
-    v2 = i32 v1;
-    v3 = sub i32 v2, v1;
-    ret i32 v3;
+bb0(i32 %0):
+    i32 %1 = sub %0, 3i32;
+    i32 %2 = %1;
+    i32 %3 = sub %2, %1;
+    ret %3;
 }
 ",
             function.to_string()

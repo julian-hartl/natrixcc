@@ -1,4 +1,4 @@
-use cranelift_entity::EntitySet;
+use indexmap::IndexSet;
 
 use crate::{
     analysis::dataflow::{
@@ -6,15 +6,15 @@ use crate::{
         DFState,
         InstrWalker,
     },
-    cfg::BasicBlockId,
+    cfg::BasicBlockRef,
     Function,
     Instr,
 };
 
 pub struct ForwardAnalysisRunner<'a, A: Analysis> {
     pub state: DFState<A::V>,
-    visited: EntitySet<BasicBlockId>,
-    worklist: Vec<BasicBlockId>,
+    visited: IndexSet<BasicBlockRef>,
+    worklist: Vec<BasicBlockRef>,
     pub function: &'a mut Function,
     _analysis: std::marker::PhantomData<A>,
 }
@@ -22,15 +22,15 @@ pub struct ForwardAnalysisRunner<'a, A: Analysis> {
 impl<'a, A: Analysis> ForwardAnalysisRunner<'a, A> {
     pub fn new(function: &'a mut Function) -> Self {
         Self {
-            worklist: vec![function.cfg.entry_block()],
-            visited: EntitySet::default(),
+            worklist: vec![function.cfg.entry_block_ref()],
+            visited: IndexSet::default(),
             state: DFState::new(),
             function,
             _analysis: std::marker::PhantomData,
         }
     }
 
-    pub fn next_bb(&mut self) -> Option<(BasicBlockId, FAInstrWalker<A>)> {
+    pub fn next_bb(&mut self) -> Option<(BasicBlockRef, FAInstrWalker<A>)> {
         let bb_id = self.worklist.pop()?;
         let bb_state = self
             .state
@@ -39,7 +39,7 @@ impl<'a, A: Analysis> ForwardAnalysisRunner<'a, A> {
         for successor in self.function.cfg.successors(bb_id) {
             let mut predecessors = self.function.cfg.predecessors(successor);
             let all_preds_visited =
-                predecessors.all(|predecessor| self.visited.contains(predecessor));
+                predecessors.all(|predecessor| self.visited.contains(&predecessor));
             if !all_preds_visited {
                 continue;
             }
@@ -48,7 +48,7 @@ impl<'a, A: Analysis> ForwardAnalysisRunner<'a, A> {
         Some((
             bb_id,
             FAInstrWalker {
-                basic_block: bb_id,
+                bb_ref: bb_id,
                 function: self.function,
                 bb_state,
             },
@@ -57,21 +57,23 @@ impl<'a, A: Analysis> ForwardAnalysisRunner<'a, A> {
 }
 
 pub struct FAInstrWalker<'a, 'b, A: Analysis> {
-    basic_block: BasicBlockId,
+    bb_ref: BasicBlockRef,
     pub function: &'b mut Function,
     bb_state: &'a mut A::V,
 }
 
 impl<'a, 'b, A: Analysis> InstrWalker<A::V> for FAInstrWalker<'a, 'b, A> {
-    fn walk<H>(mut self, mut h: H)
+    fn walk<H>(self, mut h: H)
     where
         H: FnMut(&mut Instr, &A::V),
     {
-        let bb = self.function.cfg.basic_block_mut(self.basic_block);
-        for instr in bb.instructions_mut() {
+        let bb = &self.function.cfg.basic_blocks[self.bb_ref];
+        let instructions = bb.instructions.clone();
+        for instr_ref in instructions {
+            let instr = &mut self.function.cfg.instructions[instr_ref];
             h(instr, &*self.bb_state);
-            A::analyse_instr(instr, &mut self.bb_state);
+            A::analyse_instr(bb, instr, self.bb_state);
         }
-        A::analyse_term(&bb.terminator(), &mut self.bb_state);
+        A::analyse_term(bb, bb.terminator(), self.bb_state);
     }
 }

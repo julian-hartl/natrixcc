@@ -21,7 +21,7 @@ use crate::{
         FunctionPass,
         Pass,
     },
-    FunctionId,
+    FunctionRef,
 };
 
 #[derive(Default)]
@@ -34,11 +34,11 @@ impl Pass for ConstantPropagation {
 }
 
 impl FunctionPass for ConstantPropagation {
-    fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
+    fn run_on_function(&mut self, module: &mut Module, function: FunctionRef) -> usize {
         let mut changes = 0;
         let mut analysis_runner =
             concrete_value::AnalysisRunner::new(&mut module.functions[function]);
-        while let Some((bb_id, mut instr_walker)) = analysis_runner.next_bb() {
+        while let Some((bb_ref, mut instr_walker)) = analysis_runner.next_bb() {
             // let bb = instr_walker.function.cfg.basic_block(bb_id);
             // let bb_args = bb.arguments();
             // if !bb_args.is_empty() {
@@ -138,41 +138,37 @@ impl FunctionPass for ConstantPropagation {
                 InstrKind::Alloca(_) | InstrKind::Load(_) | InstrKind::Store(_) => {}
             });
 
-            analysis_runner
-                .function
-                .cfg
-                .basic_block_mut(bb_id)
-                .update_terminator(|terminator| {
-                    let state = analysis_runner.state.get(bb_id);
-                    match &mut terminator.kind {
-                        TerminatorKind::Ret(ret) => {
-                            if let Some(op) = &mut ret.value {
-                                if Self::maybe_replace_op(op, state) {
-                                    changes += 1;
-                                }
-                            }
-                        }
-                        TerminatorKind::CondBranch(branch) => {
-                            if Self::maybe_replace_op(&mut branch.cond, state) {
+            analysis_runner.function.cfg.basic_blocks[bb_ref].update_terminator(|terminator| {
+                let state = analysis_runner.state.get(bb_ref);
+                match &mut terminator.kind {
+                    TerminatorKind::Ret(ret) => {
+                        if let Some(op) = &mut ret.value {
+                            if Self::maybe_replace_op(op, state) {
                                 changes += 1;
                             }
-                            for target in branch.targets_mut() {
-                                for arg in &mut target.arguments {
-                                    if Self::maybe_replace_op(arg, state) {
-                                        changes += 1;
-                                    }
-                                }
-                            }
                         }
-                        TerminatorKind::Branch(branch) => {
-                            for arg in &mut branch.target.arguments {
+                    }
+                    TerminatorKind::CondBranch(branch) => {
+                        if Self::maybe_replace_op(&mut branch.cond, state) {
+                            changes += 1;
+                        }
+                        for target in branch.targets_mut() {
+                            for arg in &mut target.arguments {
                                 if Self::maybe_replace_op(arg, state) {
                                     changes += 1;
                                 }
                             }
                         }
                     }
-                });
+                    TerminatorKind::Branch(branch) => {
+                        for arg in &mut branch.target.arguments {
+                            if Self::maybe_replace_op(arg, state) {
+                                changes += 1;
+                            }
+                        }
+                    }
+                }
+            });
         }
         changes
     }
@@ -182,10 +178,10 @@ impl ConstantPropagation {
     fn maybe_replace_op(op: &mut Op, state: &DFValueState<ConcreteValues>) -> bool {
         match op {
             Op::Const(_) => false,
-            Op::Vreg(value) => match state.get(value).and_then(|s| s.as_single_value()) {
+            Op::Value(value) => match state.get(value).and_then(|s| s.as_single_value()) {
                 None => false,
                 Some(const_value) => {
-                    debug!("Replaced {value} with {const_value}");
+                    // debug!("Replaced {value} with {const_value}");
                     *op = Op::Const(const_value.clone());
                     true
                 }
@@ -213,15 +209,15 @@ mod tests {
             "
 fun i32 @test() {
 bb0:
-    v0 = i32 7;
+    i32 %0 = 7i32;
     br bb1;
 bb1:
-    v1 = add i32 v0, 8;
+    i32 %1 = add %0, 8i32;
     br bb2;
 bb2:
-    v2 = i32 9;
-    v3 = add i32 v2, v0;
-    ret i32 v3;
+    i32 %2 = 9i32;
+    i32 %3 = add %2, %0;
+    ret %3;
 }
             ",
         );
@@ -231,15 +227,15 @@ bb2:
             "
         fun i32 @test() {
 bb0:
-    v0 = i32 7;
+    i32 %0 = 7i32;
     br bb1;
 bb1:
-    v1 = i32 15;
+    i32 %1 = 15i32;
     br bb2;
 bb2:
-    v2 = i32 9;
-    v3 = i32 16;
-    ret i32 16;
+    i32 %2 = 9i32;
+    i32 %3 = 16i32;
+    ret 16i32;
 }
  ",
         );
