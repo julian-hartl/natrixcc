@@ -92,7 +92,6 @@ mod tests {
             Instruction,
             Operand,
             Type,
-            ValueId,
         },
     };
 
@@ -102,10 +101,10 @@ mod tests {
             .parse(
                 r"
 fun i32 @add(i32, i32) {
-bb0(i32 v0, i32 v1):
-    v2 = add i32 v0, v1;
-    v3 = add i32 v2, v1;
-    ret v3;
+bb0(i32 %v0, i32 %v1):
+    i32 %v2 = add %v0, %v1;
+    i32 %v3 = add %v2, %v1;
+    ret %v3;
 }
         ",
             )
@@ -117,29 +116,29 @@ bb0(i32 v0, i32 v1):
                 ret_ty: Type::I32,
                 args: vec![Type::I32, Type::I32,],
                 basic_blocks: vec![BasicBlock {
-                    id: BasicBlockId(0),
+                    id: "bb0".into(),
                     instructions: vec![
                         Instruction::Add(
-                            ValueId(2),
+                            "v2".into(),
                             Type::I32,
-                            Operand::Value(ValueId(0)),
-                            Operand::Value(ValueId(1))
+                            Operand::Value("v0".into()),
+                            Operand::Value("v1".into())
                         ),
                         Instruction::Add(
-                            ValueId(3),
+                            "v3".into(),
                             Type::I32,
-                            Operand::Value(ValueId(2)),
-                            Operand::Value(ValueId(1))
+                            Operand::Value("v2".into()),
+                            Operand::Value("v1".into())
                         ),
-                        Instruction::Ret(Type::I32, Some(Operand::Value(ValueId(3)))),
+                        Instruction::Ret(Some(Operand::Value("v3".into()))),
                     ],
                     args: vec![
                         Arg {
-                            id: ValueId(0),
+                            id: "v0".into(),
                             ty: Type::I32,
                         },
                         Arg {
-                            id: ValueId(1),
+                            id: "v1".into(),
                             ty: Type::I32,
                         },
                     ],
