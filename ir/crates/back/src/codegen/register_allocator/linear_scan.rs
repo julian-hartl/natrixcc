@@ -6,7 +6,7 @@ use crate::codegen::{
         isa::PhysicalRegister,
         Size,
         TargetMachine,
-        VReg,
+        VRegRef,
     },
     register_allocator::{
         LiveRange,
@@ -21,15 +21,15 @@ use crate::codegen::{
 #[derive(Debug)]
 pub struct RegAlloc<'liveness, TM: TargetMachine> {
     /// Liveness representation.
-    liveness_repr: &'liveness LivenessRepr,
+    liveness_repr: &'liveness LivenessRepr<TM>,
     /// List of free registers.
     free_regs: Vec<TM::Reg>,
-    active: Vec<(VReg, TM::Reg)>,
-    inactive: Vec<(VReg, TM::Reg)>,
+    active: Vec<(VRegRef, TM::Reg)>,
+    inactive: Vec<(VRegRef, TM::Reg)>,
 }
 
 impl<'liveness, TM: TargetMachine> RegAllocAlgorithm<'liveness, TM> for RegAlloc<'liveness, TM> {
-    fn new(liveness_repr: &'liveness LivenessRepr) -> Self {
+    fn new(liveness_repr: &'liveness LivenessRepr<TM>) -> Self {
         let free_regs = TM::Reg::all()
             .iter()
             .copied()
@@ -92,7 +92,7 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
     }
 
     /// Inserts a new live interval into the active list.
-    fn insert_active(&mut self, vreg: VReg, reg: TM::Reg) {
+    fn insert_active(&mut self, vreg: VRegRef, reg: TM::Reg) {
         self.free_regs.retain(|r| {
             if reg.interferes_with(*r) {
                 debug!("Removing {} from free list", r.name());
@@ -110,9 +110,9 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         self.active.push((vreg, reg));
     }
 
-    fn remove_active(&mut self, i: usize) -> (VReg, TM::Reg) {
+    fn remove_active(&mut self, i: usize) -> (VRegRef, TM::Reg) {
         let (vreg, reg) = self.active.remove(i);
-        debug!("Removing active interval: {}", vreg);
+        // debug!("Removing active interval: {}");
         for reg in reg.regclass().filter(|r| reg.interferes_with(*r)) {
             self.free_reg(reg);
         }
@@ -124,14 +124,14 @@ impl<TM: TargetMachine> RegAlloc<'_, TM> {
         self.free_regs.push(reg);
     }
 
-    fn insert_inactive(&mut self, vreg: VReg, reg: TM::Reg) {
-        debug!("Inserting inactive vreg: {}", vreg);
+    fn insert_inactive(&mut self, vreg: VRegRef, reg: TM::Reg) {
+        // debug!("Inserting inactive vreg: {}", vreg);
         self.inactive.push((vreg, reg));
     }
 
-    fn remove_inactive(&mut self, i: usize) -> (VReg, TM::Reg) {
+    fn remove_inactive(&mut self, i: usize) -> (VRegRef, TM::Reg) {
         let (vreg, reg) = self.inactive.remove(i);
-        debug!("Removing inactive interval: {}", vreg);
+        // debug!("Removing inactive interval: {}", vreg);
         (vreg, reg)
     }
 

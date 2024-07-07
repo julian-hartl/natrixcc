@@ -1,8 +1,4 @@
 use codegen::selection_dag;
-use cranelift_entity::{
-    EntityRef,
-    SecondaryMap,
-};
 use daggy::{
     petgraph::visit::IntoNodeIdentifiers,
     NodeIndex,
@@ -11,20 +7,25 @@ use daggy::{
 use iter_tools::Itertools;
 use natrix_middle::{
     cfg::{
+        BBArgRef,
         BasicBlockRef,
         BranchTerm,
+        InstrRef,
         JumpTarget,
         Terminator,
         TerminatorKind,
     },
     instruction::{
         Const,
-        VRegData,
+        OpInstr,
     },
     ty::Type,
+    InstrKind,
+    Value,
 };
 use rustc_hash::FxHashMap;
 use selection_dag::SelectionDAG;
+use slotmap::SecondaryMap;
 use tracing::debug;
 
 use crate::{
@@ -34,7 +35,7 @@ use crate::{
             function::Function,
             reg::{
                 Register,
-                VReg,
+                VRegRef,
             },
             TargetMachine,
         },
@@ -48,12 +49,12 @@ use crate::{
     },
 };
 
-#[derive(Debug)]
 pub struct Builder<'func, TM: TargetMachine> {
     function: &'func mut Function<TM>,
     sel_dag: SelectionDAG<TM>,
-    reg_mapping: SecondaryMap<natrix_middle::VReg, Option<VReg>>,
-    defining_nodes: FxHashMap<(VReg, BasicBlockRef), NodeIndex>,
+    reg_mapping: SecondaryMap<InstrRef, Option<VRegRef>>,
+    bb_arg_reg_mapping: SecondaryMap<BBArgRef, Option<VRegRef>>,
+    defining_nodes: FxHashMap<(VRegRef, BasicBlockRef), NodeIndex>,
 }
 
 impl<'func, TM: TargetMachine> Builder<'func, TM> {
@@ -61,6 +62,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         Self {
             function,
             reg_mapping: SecondaryMap::new(),
+            bb_arg_reg_mapping: SecondaryMap::new(),
             sel_dag: SelectionDAG::default(),
             defining_nodes: FxHashMap::default(),
         }
@@ -70,25 +72,23 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         debug!("Building SelectionDAGs for function {}", func.name);
         let basic_blocks = func
             .cfg
-            .basic_block_ids()
+            .basic_blocks
+            .keys()
             .filter(|bb_id| *bb_id != func.cfg.entry_block_ref())
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         for bb_id in basic_blocks {
+            let bb = &func.cfg.basic_blocks[bb_id];
             // Eliminate basic block arguments
-            debug!("Eliminating basic block arguments for {}", bb_id);
-            let bb_args = func
-                .cfg
-                .basic_block(bb_id)
+            debug!("Eliminating basic block arguments for {}", bb);
+            let bb_args = bb
                 .arguments()
-                .map(|arg| (arg, func.cfg.vreg_ty_cloned(arg)))
+                .map(|arg| (arg, func.cfg.bb_args[arg].ty.clone()))
                 .collect_vec();
             let mut temp_regs = FxHashMap::<_, Vec<_>>::default();
             let preds = func.cfg.predecessors(bb_id).collect::<Vec<_>>();
             for pred_id in preds {
-                let args = func
-                    .cfg
-                    .basic_block(pred_id)
+                let args = func.cfg.basic_blocks[pred_id]
                     .terminator()
                     .branch_args(bb_id)
                     .unwrap()
@@ -100,21 +100,24 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                 let succ_len = func.cfg.successors(pred_id).count();
                 let copy_instr_bb = if succ_len == 1 {
                     // No need to split the critical edge
-                    func.cfg.basic_block_mut(pred_id).update_terminator(|term| {
+                    func.cfg.basic_blocks[pred_id].update_terminator(|term| {
                         term.clear_args(bb_id);
                     });
                     pred_id
                 } else {
                     // Create new basic block for copying the argument ops to temp regs
-                    let critical_edge_split_bb = func.cfg.new_basic_block();
-                    func.cfg
-                        .basic_block_mut(critical_edge_split_bb)
-                        .set_terminator(Terminator::new(
-                            TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(bb_id))),
-                            critical_edge_split_bb,
-                        ));
+                    let split_crit_bb_symbol = format!(
+                        "$split_crit:{}->{}",
+                        bb_id.display(&func.cfg),
+                        pred_id.display(&func.cfg)
+                    );
+                    let critical_edge_split_bb = func.cfg.new_basic_block(split_crit_bb_symbol);
+                    func.cfg.basic_blocks[critical_edge_split_bb].set_terminator(Terminator::new(
+                        TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(bb_id))),
+                        critical_edge_split_bb,
+                    ));
                     func.cfg.recompute_successors(critical_edge_split_bb);
-                    func.cfg.basic_block_mut(pred_id).update_terminator(|term| {
+                    func.cfg.basic_blocks[pred_id].update_terminator(|term| {
                         term.clear_args(bb_id);
                         term.update_references_to_bb(bb_id, critical_edge_split_bb);
                     });
@@ -123,49 +126,58 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                     critical_edge_split_bb
                 };
 
-                for (arg, (bb_arg, ty)) in args.into_iter().zip(bb_args.iter()) {
+                for (arg, (bb_arg_ref, ty)) in args.into_iter().zip(bb_args.iter()) {
                     // Create a temp reg and copy the jump arg to it
-                    let temp_reg = func.cfg.new_vreg(VRegData {
-                        defined_in: pred_id,
-                        ty: ty.clone(),
-                    });
-                    temp_regs.entry(*bb_arg).or_default().push(temp_reg);
-                    let instr = func.cfg.copy_op_instr(temp_reg, arg);
-                    func.cfg.add_instruction(copy_instr_bb, ty.clone(), instr);
+
+                    let bb_arg = &func.cfg.bb_args[*bb_arg_ref];
+                    let instr_ref = func.cfg.add_instruction(
+                        copy_instr_bb,
+                        ty.clone(),
+                        InstrKind::Op(OpInstr { op: arg }),
+                        // Use $ to create a unique name, because $ can't be used to create a symbol
+                        format!("${}", bb_arg.symbol),
+                    );
+                    temp_regs.entry(*bb_arg_ref).or_default().push(instr_ref);
                 }
             }
-            let _ = func.cfg.basic_block_mut(bb_id).clear_arguments();
+            let _ = func.cfg.basic_blocks[bb_id].clear_arguments();
             for (arg, _) in bb_args {
-                let mapped_arg = self.map_vreg(arg, func);
+                let mapped_arg = self.map_value(arg.into(), func);
                 let operands = temp_regs
                     .remove(&arg)
                     .unwrap()
                     .into_iter()
-                    .map(|reg| {
-                        let mapped = self.map_vreg(reg, func);
+                    .map(|instr_ref| {
+                        let mapped = self.map_value(instr_ref.into(), func);
                         // Ensure that the temp reg and arg reg will be placed in the same location => we can trivially remove the phi instruction later on
                         self.function.tie_vreg(mapped, mapped_arg);
                         // Using defined_in here is fine, because the reg that we use here is always defined in the immediate pred of bb_id
-                        (Register::Virtual(mapped), func.cfg.vreg(reg).defined_in)
+                        (
+                            Register::Virtual(mapped),
+                            func.cfg.instructions[instr_ref].defined_in,
+                        )
                     })
                     .collect_vec();
                 let pseudo_op = PseudoOp::Phi(Register::Virtual(mapped_arg), operands);
-                debug!("Adding phi to {bb_id}: {:?}", pseudo_op);
+                let bb = &func.cfg.basic_blocks[bb_id];
+                debug!("Adding phi to {bb}: {:?}", pseudo_op);
                 let phi_op = Op::Pseudo(pseudo_op);
                 self.define_node(bb_id, phi_op);
             }
-            debug!("Eliminated basic block arguments for {}", bb_id);
+            let bb = &func.cfg.basic_blocks[bb_id];
+            debug!("Eliminated basic block arguments for {}", bb);
         }
-        for (bb_id, bb) in func.cfg.basic_blocks() {
-            debug!("Building SelectionDAG for basic block {}", bb_id);
+        for (bb_id, bb) in &func.cfg.basic_blocks {
+            debug!("Building SelectionDAG for basic block {}", bb);
             if bb_id == func.cfg.entry_block_ref() {
                 for arg in bb.arguments() {
-                    let mapped_reg = self.map_vreg(arg, func);
+                    let mapped_reg = self.map_value(arg.into(), func);
                     self.function.params.push(mapped_reg);
                     self.define_node(bb_id, Op::Pseudo(PseudoOp::Def(mapped_reg)));
                 }
             }
-            for instr in bb.instructions() {
+            for instr_ref in bb.instructions() {
+                let instr = &func.cfg.instructions[instr_ref];
                 debug!("Add instruction to SelectionDAG: {:?}", instr);
 
                 match &instr.kind {
@@ -173,7 +185,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                     natrix_middle::InstrKind::Store(_) => unimplemented!(),
                     natrix_middle::InstrKind::Load(_) => unimplemented!(),
                     natrix_middle::InstrKind::Op(op_instr) => {
-                        let out_reg = self.map_vreg(op_instr.value, func);
+                        let out_reg = self.map_value(instr.id.into(), func);
                         let op = match self.map_op(&op_instr.op, func) {
                             Operand::Reg(reg) => {
                                 Op::Pseudo(PseudoOp::Copy(Register::Virtual(out_reg), reg))
@@ -186,7 +198,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                         self.define_node(bb_id, op);
                     }
                     natrix_middle::InstrKind::Sub(sub_instr) => {
-                        let out_reg = self.map_vreg(sub_instr.value, func);
+                        let out_reg = self.map_value(instr.id.into(), func);
                         let lhs = self.map_op(&sub_instr.lhs, func);
                         let rhs = self.map_op(&sub_instr.rhs, func);
                         self.define_node(
@@ -195,7 +207,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                         );
                     }
                     natrix_middle::InstrKind::Add(add_instr) => {
-                        let out_reg = self.map_vreg(add_instr.value, func);
+                        let out_reg = self.map_value(instr.id.into(), func);
                         let lhs = self.map_op(&add_instr.lhs, func);
                         let rhs = self.map_op(&add_instr.rhs, func);
                         self.define_node(
@@ -204,7 +216,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                         );
                     }
                     natrix_middle::InstrKind::Cmp(cmp_instr) => {
-                        let out_reg = self.map_vreg(cmp_instr.value, func);
+                        let out_reg = self.map_value(instr.id.into(), func);
                         let lhs = self.map_op(&cmp_instr.lhs, func);
                         let rhs = self.map_op(&cmp_instr.rhs, func);
                         self.define_node(
@@ -254,7 +266,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
     ) -> Operand<TM> {
         match op {
             natrix_middle::instruction::Op::Value(vreg) => {
-                Operand::Reg(Register::Virtual(self.map_vreg(*vreg, func)))
+                Operand::Reg(Register::Virtual(self.map_value(*vreg, func)))
             }
             natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
                 Const::Int(ty, value) => {
@@ -328,24 +340,43 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
         term_node
     }
 
-    fn map_vreg(&mut self, vreg: natrix_middle::VReg, func: &natrix_middle::Function) -> VReg {
-        let mapped = self.reg_mapping[vreg];
-        match mapped {
-            Some(reg) => reg,
-            None => {
-                let vreg_ty = func.cfg.vreg_ty(vreg);
-                let mapped_vreg = self.function.alloc_vreg(vreg_ty.into());
-                self.reg_mapping[vreg] = Some(mapped_vreg);
+    fn map_value(&mut self, value: Value, func: &natrix_middle::Function) -> VRegRef {
+        match value {
+            Value::Instr(instr_ref) => {
+                if let Some(reg) = self.reg_mapping[instr_ref] {
+                    return reg;
+                }
+            }
+            Value::BBArg(bb_arg_ref) => {
+                if let Some(reg) = self.bb_arg_reg_mapping[bb_arg_ref] {
+                    return reg;
+                }
+            }
+        };
+        match value {
+            Value::Instr(instr_ref) => {
+                let instr = &func.cfg.instructions[instr_ref];
+                let ty = &instr.ty;
+                let mapped_vreg = self.function.alloc_vreg(ty.into(), instr.symbol.clone());
+                self.reg_mapping[instr_ref] = Some(mapped_vreg);
+                mapped_vreg
+            }
+
+            Value::BBArg(bb_arg_ref) => {
+                let bb_arg = &func.cfg.bb_args[bb_arg_ref];
+                let ty = &bb_arg.ty;
+                let mapped_vreg = self.function.alloc_vreg(ty.into(), bb_arg.symbol.clone());
+                self.bb_arg_reg_mapping[bb_arg_ref] = Some(mapped_vreg);
                 mapped_vreg
             }
         }
     }
 
-    fn define_out_val(&mut self, node: NodeIndex, reg: VReg, bb_id: BasicBlockRef) {
+    fn define_out_val(&mut self, node: NodeIndex, reg: VRegRef, bb_id: BasicBlockRef) {
         self.defining_nodes.insert((reg, bb_id), node);
     }
 
-    fn get_defining_node(&self, vreg: VReg, bb_id: BasicBlockRef) -> Option<NodeIndex> {
+    fn get_defining_node(&self, vreg: VRegRef, bb_id: BasicBlockRef) -> Option<NodeIndex> {
         self.defining_nodes.get(&(vreg, bb_id)).copied()
     }
 }

@@ -22,7 +22,7 @@ impl<'module, TM: TargetMachine> Builder<'module, TM> {
     pub fn build(mut self) -> Module<TM> {
         for (_, function) in &mut self.module.functions {
             let builder = FunctionBuilder::<TM>::new();
-            self.mtbb.functions.push(builder.build(function));
+            self.mtbb.functions.insert(builder.build(function));
         }
         self.mtbb
     }

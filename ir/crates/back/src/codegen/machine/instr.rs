@@ -12,6 +12,7 @@ use crate::codegen::{
     machine::{
         function::BasicBlockId,
         isa::MachInstr as MInstr,
+        Function,
         Register,
         TargetMachine,
     },
@@ -108,6 +109,14 @@ pub enum InstrOperand<TM: TargetMachine> {
     Label(BasicBlockId),
 }
 
+impl<TM: TargetMachine> InstrOperand<TM> {
+    pub fn display<'func>(&self, func: &'func Function<TM>) -> InstrOperandDisplay<'func, '_, TM> {
+        InstrOperandDisplay {
+            operand: self,
+            func,
+        }
+    }
+}
 #[derive(Debug)]
 pub enum InstrOperandMut<'a, TM: TargetMachine> {
     Reg(&'a mut Register<TM>),
@@ -115,12 +124,17 @@ pub enum InstrOperandMut<'a, TM: TargetMachine> {
     Label(&'a mut BasicBlockId),
 }
 
-impl<TM: TargetMachine> Display for InstrOperand<TM> {
+pub struct InstrOperandDisplay<'func, 'op, TM: TargetMachine> {
+    operand: &'op InstrOperand<TM>,
+    func: &'func Function<TM>,
+}
+
+impl<TM: TargetMachine> Display for InstrOperandDisplay<'_, '_, TM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Reg(reg) => write!(f, "{}", reg),
-            Self::Imm(imm) => write!(f, "{}", imm),
-            Self::Label(label) => write!(f, "{}", label),
+        match self.operand {
+            InstrOperand::Reg(reg) => write!(f, "{}", reg.display(self.func)),
+            InstrOperand::Imm(imm) => write!(f, "{}", imm),
+            InstrOperand::Label(label) => write!(f, "{}", label),
         }
     }
 }

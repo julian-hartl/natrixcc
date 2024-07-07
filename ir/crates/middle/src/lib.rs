@@ -11,7 +11,7 @@ pub use instruction::{
     Instr,
     InstrKind,
 };
-use module::Module;
+pub use module::Module;
 pub use ty::Type;
 
 use crate::cfg::{
@@ -41,7 +41,7 @@ impl<'cfg> std::fmt::Display for ValueDisplay<'cfg> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.1 {
             Value::Instr(instr) => write!(f, "{}", self.0.instructions[instr]),
-            Value::BBArg(arg) => write!(f, "{}", self.0.basic_block_args[arg]),
+            Value::BBArg(arg) => write!(f, "{}", self.0.bb_args[arg]),
         }
     }
 }

@@ -130,7 +130,7 @@ impl FunctionPass for Pass {
                     .clear_arguments()
                     .collect_vec();
                 for (argument, op) in successors_args.into_iter().zip(branch_args) {
-                    let ty = function.cfg.basic_block_args[argument].ty.clone();
+                    let ty = function.cfg.bb_args[argument].ty.clone();
                     // To keep the program consistent, we need to insert move instruction for each argument
                     // They look like this:
                     // <previous argument> = <previous value argument in branch instruction>

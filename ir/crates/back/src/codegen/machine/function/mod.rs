@@ -8,13 +8,13 @@ pub use cfg::{
     BasicBlockId,
     Cfg,
 };
-use cranelift_entity::{
-    entity_impl,
-    PrimaryMap,
-};
 use daggy::Walker;
 use index_vec::IndexVec;
 use iter_tools::Itertools;
+use slotmap::{
+    new_key_type,
+    SlotMap,
+};
 use smallvec::{
     smallvec,
     SmallVec,
@@ -33,30 +33,29 @@ use crate::codegen::machine::{
         PseudoInstr,
     },
     isa::PhysicalRegister,
-    reg::VRegInfo,
+    reg::VReg,
     Instr,
     InstrId,
     MachInstr,
     Register,
     Size,
     TargetMachine,
-    VReg,
+    VRegRef,
 };
 
 pub mod builder;
 pub mod cfg;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub struct FunctionId(u32);
-
-entity_impl!(FunctionId, "fun");
+new_key_type! {
+    pub struct FunctionId;
+}
 
 #[derive(Debug, Clone)]
 pub struct Function<TM: TargetMachine> {
     pub name: String,
     pub basic_blocks: IndexVec<BasicBlockId, BasicBlock<TM>>,
-    pub(crate) vregs: PrimaryMap<VReg, VRegInfo<TM>>,
-    pub(crate) params: SmallVec<[VReg; 2]>,
+    pub(crate) vregs: SlotMap<VRegRef, VReg<TM>>,
+    pub(crate) params: SmallVec<[VRegRef; 2]>,
     pub(crate) return_ty_size: Size,
     cfg: Option<Cfg>,
 }
@@ -66,31 +65,32 @@ impl<TM: TargetMachine> Function<TM> {
         Self {
             name,
             basic_blocks: IndexVec::default(),
-            vregs: PrimaryMap::new(),
+            vregs: SlotMap::with_key(),
             cfg: None,
             params: SmallVec::new(),
             return_ty_size: Size::Byte,
         }
     }
 
-    pub fn alloc_vreg(&mut self, size: Size) -> VReg {
-        self.vregs.push(VRegInfo {
+    pub fn alloc_vreg(&mut self, size: Size, symbol: String) -> VRegRef {
+        self.vregs.insert(VReg {
             size,
             tied_to: None,
             fixed: None,
+            symbol,
         })
     }
 
-    pub fn get_vreg(&self, vreg: VReg) -> &VRegInfo<TM> {
+    pub fn get_vreg(&self, vreg: VRegRef) -> &VReg<TM> {
         &self.vregs[vreg]
     }
-    pub fn tie_vreg(&mut self, vreg: VReg, to: VReg) {
-        debug!("Tying {vreg} to {to}");
+    pub fn tie_vreg(&mut self, vreg: VRegRef, to: VRegRef) {
+        // debug!("Tying {vreg} to {to}");
         self.vregs[vreg].tied_to = Some(to);
     }
 
-    pub fn fix_vreg(&mut self, vreg: VReg, to: TM::Reg) {
-        debug!("Fixing {vreg} to {}", to.name());
+    pub fn fix_vreg(&mut self, vreg: VRegRef, to: TM::Reg) {
+        // debug!("Fixing {vreg} to {}", to.name());
         self.vregs[vreg].fixed = Some(to);
     }
 
@@ -240,9 +240,9 @@ impl<TM: TargetMachine> Display for Function<TM> {
             let bb = &self.basic_blocks[bb_id];
             writeln!(f, "{bb_id}: ")?;
             for (dest, operands) in &bb.phis {
-                write!(f, "  {dest} = phi ")?;
+                write!(f, "  {} = phi ", dest.display(self))?;
                 for (i, (reg, bb)) in operands.iter().enumerate() {
-                    write!(f, "{reg}:{bb}")?;
+                    write!(f, "{}:{bb}", reg.display(self))?;
                     if i < operands.len() - 1 {
                         write!(f, ", ")?;
                     }
@@ -252,13 +252,13 @@ impl<TM: TargetMachine> Display for Function<TM> {
             for instr in &bb.instructions {
                 write!(f, "  ")?;
                 if let Some(out) = instr.writes() {
-                    write!(f, "{out} = ")?;
+                    write!(f, "{} = ", out.display(self))?;
                 }
                 write!(f, "{}", instr.name())?;
                 let operands = instr.operands();
                 let operands_len = operands.len();
                 for (i, operand) in operands.into_iter().enumerate() {
-                    write!(f, " {operand}")?;
+                    write!(f, " {}", operand.display(self))?;
                     if i < operands_len - 1 {
                         write!(f, ",")?;
                     }
@@ -268,7 +268,7 @@ impl<TM: TargetMachine> Display for Function<TM> {
                 if !reads_impl.is_empty() {
                     write!(f, " {{implicit reads: ")?;
                     for (i, reg) in reads_impl.into_iter().enumerate() {
-                        write!(f, "{reg}")?;
+                        write!(f, "{}", reg.display(self))?;
                         if i < reads_impl_len - 1 {
                             write!(f, ", ")?;
                         }

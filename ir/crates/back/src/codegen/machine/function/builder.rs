@@ -68,11 +68,17 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
                 .find(|(_, mbb)| **mbb == mbb_id)
                 .unwrap()
                 .0;
-            debug!("Building machine basic block for basic block {}", bb);
+            debug!(
+                "Building machine basic block for basic block {}",
+                bb.display(&function.cfg)
+            );
             let dag = sel_dag.get_bb_dag(bb);
-            dag.save_graphviz("out").unwrap();
+            dag.save_graphviz("out", &function.cfg).unwrap();
             let mut node_list = Vec::with_capacity(dag.node_count());
-            debug!("Determining traversal order for basic block {}", bb);
+            debug!(
+                "Determining traversal order for basic block {}",
+                bb.display(&function.cfg)
+            );
             let bfs = Bfs::new(dag.graph(), dag.term_node());
             for n in bfs.iter(dag.graph()) {
                 node_list.push(n);

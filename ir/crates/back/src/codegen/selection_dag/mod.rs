@@ -12,7 +12,10 @@ use daggy::petgraph::dot::{
     Dot,
 };
 use natrix_middle::{
-    cfg::BasicBlockRef,
+    cfg::{
+        BasicBlockRef,
+        Cfg,
+    },
     instruction::CmpOp,
 };
 use rustc_hash::FxHashMap;
@@ -24,7 +27,7 @@ use smallvec::{
 use crate::codegen::machine::{
     reg::{
         Register,
-        VReg,
+        VRegRef,
     },
     Size,
     TargetMachine,
@@ -38,11 +41,11 @@ type Dag<A> = daggy::Dag<Op<A>, Edge>;
 pub struct BasicBlockDAG<TM: TargetMachine> {
     dag: Dag<TM>,
     term_node: Option<daggy::NodeIndex>,
-    bb: natrix_middle::cfg::BasicBlockRef,
+    bb: BasicBlockRef,
 }
 
 impl<TM: TargetMachine> BasicBlockDAG<TM> {
-    pub fn new(bb: natrix_middle::cfg::BasicBlockRef) -> Self {
+    pub fn new(bb: BasicBlockRef) -> Self {
         Self {
             dag: Dag::new(),
             term_node: None,
@@ -61,10 +64,18 @@ impl<TM: TargetMachine> BasicBlockDAG<TM> {
         format!("{:?}", Dot::with_config(&self.dag, &[Config::EdgeNoLabel]))
     }
 
-    pub fn save_graphviz<P: AsRef<std::path::Path>>(&self, path: P) -> std::io::Result<()> {
+    pub fn save_graphviz<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+        cfg: &Cfg,
+    ) -> std::io::Result<()> {
         std::fs::create_dir_all(&path)?;
         std::fs::write(
-            format!("{}/{}.dot", path.as_ref().display(), self.bb),
+            format!(
+                "{}/{}.dot",
+                path.as_ref().display(),
+                cfg.basic_blocks[self.bb]
+            ),
             self.graphviz(),
         )
     }
@@ -238,7 +249,7 @@ impl<TM: TargetMachine> Op<TM> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PseudoOp<TM: TargetMachine> {
-    Def(VReg),
+    Def(VRegRef),
     Copy(Register<TM>, Register<TM>),
     Ret(Option<Operand<TM>>),
     Phi(Register<TM>, Vec<(Register<TM>, BasicBlockRef)>),

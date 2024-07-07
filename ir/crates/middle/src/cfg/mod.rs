@@ -34,6 +34,12 @@ mod builder;
 mod domtree;
 
 new_key_type! { pub struct BasicBlockRef; }
+
+impl BasicBlockRef {
+    pub fn display(self, cfg: &Cfg) -> &String {
+        &cfg.basic_blocks[self].symbol
+    }
+}
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct CFGNode {
     bb_ref: BasicBlockRef,
@@ -45,7 +51,7 @@ pub struct Cfg {
     graph: Graph,
     pub basic_blocks: SlotMap<BasicBlockRef, BasicBlock>,
     pub instructions: SlotMap<InstrRef, Instr>,
-    pub basic_block_args: SlotMap<BBArgRef, BBArg>,
+    pub bb_args: SlotMap<BBArgRef, BBArg>,
     entry_block: Option<BasicBlockRef>,
 }
 
@@ -172,9 +178,7 @@ impl Cfg {
     }
 
     pub fn add_bb_argument(&mut self, bb_id: BasicBlockRef, ty: Type, symbol: String) -> BBArgRef {
-        let arg_ref = self
-            .basic_block_args
-            .insert_with_key(|id| BBArg { id, ty, symbol });
+        let arg_ref = self.bb_args.insert_with_key(|id| BBArg { id, ty, symbol });
         self.basic_blocks[bb_id].arguments.insert(arg_ref);
         arg_ref
     }
@@ -183,11 +187,7 @@ impl Cfg {
         self.instructions
             .keys()
             .map(move |instr_id| Value::Instr(instr_id))
-            .chain(
-                self.basic_block_args
-                    .keys()
-                    .map(move |arg_id| Value::BBArg(arg_id)),
-            )
+            .chain(self.bb_args.keys().map(move |arg_id| Value::BBArg(arg_id)))
     }
 }
 
@@ -199,8 +199,8 @@ impl Display for Cfg {
             if !bb.arguments.is_empty() {
                 write!(f, "(")?;
                 for (index, arg_ref) in bb.arguments.iter().copied().enumerate() {
-                    let arg = &self.basic_block_args[arg_ref];
-                    let arg_ty = &self.basic_block_args[arg_ref].ty;
+                    let arg = &self.bb_args[arg_ref];
+                    let arg_ty = &self.bb_args[arg_ref].ty;
                     write!(f, "{arg_ty} {arg}")?;
                     if index < bb.arguments.len() - 1 {
                         write!(f, ", ")?;
@@ -244,8 +244,8 @@ new_key_type! { pub struct BBArgRef; }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BBArg {
-    pub(crate) id: BBArgRef,
-    pub(crate) ty: Type,
+    pub id: BBArgRef,
+    pub ty: Type,
     pub symbol: String,
 }
 

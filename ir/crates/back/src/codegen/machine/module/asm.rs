@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use cranelift_entity::SecondaryMap;
+use slotmap::SecondaryMap;
 
 use crate::codegen::machine::{
     FunctionId,

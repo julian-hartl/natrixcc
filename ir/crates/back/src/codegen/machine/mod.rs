@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 pub use backend::Backend;
-pub use cranelift_entity::EntityRef;
 pub use function::{
     Function,
     FunctionId,
@@ -18,7 +17,7 @@ pub use module::Module;
 use natrix_middle::ty::Type;
 pub use reg::{
     Register,
-    VReg,
+    VRegRef,
 };
 
 use crate::codegen::machine::{
