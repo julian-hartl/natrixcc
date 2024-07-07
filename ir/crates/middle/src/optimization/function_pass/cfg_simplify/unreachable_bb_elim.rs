@@ -12,7 +12,6 @@ use crate::{
     module::Module,
     optimization::function_pass::FunctionPass,
     FunctionRef,
-    Instr,
 };
 
 /// # Unreachable Basic Block Elimination
@@ -153,10 +152,8 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        cfg,
         optimization::{
             CFGSimplifyPipelineConfig,
-            Pipeline,
             PipelineConfig,
         },
         test::{

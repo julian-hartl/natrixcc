@@ -17,7 +17,6 @@ use crate::{
     optimization::PipelineConfig,
     Function,
     FunctionRef,
-    Instr,
 };
 
 #[derive(Debug, Clone, Default)]

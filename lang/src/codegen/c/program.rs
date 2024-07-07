@@ -12,7 +12,6 @@ use crate::{
             CAst,
             CBlock,
             CExpr,
-            CFunctionDecl,
             CItem,
             CParameter,
             CStmt,

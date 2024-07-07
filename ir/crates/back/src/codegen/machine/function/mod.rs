@@ -37,7 +37,6 @@ use crate::codegen::machine::{
     Instr,
     InstrId,
     MachInstr,
-    Register,
     Size,
     TargetMachine,
     VRegRef,

@@ -1,5 +1,3 @@
-use tracing::debug;
-
 use crate::{
     cfg::{
         BasicBlockRef,

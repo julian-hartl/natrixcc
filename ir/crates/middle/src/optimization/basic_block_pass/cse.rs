@@ -62,7 +62,6 @@ impl BasicBlockPass for CSEPass {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cfg,
         optimization::PipelineConfig,
         test::create_test_module_from_source,
     };

@@ -121,7 +121,7 @@ impl<'a> CTranspiler<'a> {
             CItem::FunctionDecl(function_decl) => function_decl,
             _ => unreachable!(),
         };
-        let mut body_stmts = function
+        let body_stmts = function
             .body
             .iter()
             .map(|stmt| self.transpile_stmt(ast, *stmt))

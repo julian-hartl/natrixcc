@@ -1,9 +1,6 @@
-use std::{
-    fmt::{
-        Display,
-        Formatter,
-    },
-    ops::Sub,
+use std::fmt::{
+    Display,
+    Formatter,
 };
 
 use smallvec::{

@@ -9,7 +9,6 @@ use crate::codegen::{
         VRegRef,
     },
     register_allocator::{
-        LiveRange,
         LivenessRepr,
         ProgPoint,
         RegAllocAlgorithm,

@@ -1,5 +1,4 @@
 use rustc_hash::FxHashMap;
-use tracing::debug;
 
 use crate::{
     cfg::{
@@ -200,7 +199,6 @@ impl ConstantFoldPass {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cfg,
         optimization::PipelineConfig,
         test::{
             assert_module_is_equal_to_src,

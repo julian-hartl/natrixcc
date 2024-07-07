@@ -57,7 +57,6 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        cfg,
         optimization::{
             CFGSimplifyPipelineConfig,
             PipelineConfig,

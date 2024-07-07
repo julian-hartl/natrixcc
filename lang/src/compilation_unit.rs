@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    ops::Deref,
     rc::Rc,
 };
 
@@ -30,7 +29,6 @@ use crate::{
         BoolExpr,
         CallExpr,
         Expr,
-        ExprId,
         FunctionDeclaration,
         IfExpr,
         ItemId,
@@ -39,7 +37,6 @@ use crate::{
         ParenthesizedExpr,
         ReturnStmt,
         Stmt,
-        StmtId,
         StmtKind,
         UnOpKind,
         UnaryExpr,

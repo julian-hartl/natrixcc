@@ -1,12 +1,6 @@
-use std::{
-    collections::{
-        HashMap,
-        HashSet,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+use std::collections::{
+    HashMap,
+    HashSet,
 };
 
 use fusion_compiler::{

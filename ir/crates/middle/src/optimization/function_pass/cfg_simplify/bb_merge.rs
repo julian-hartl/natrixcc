@@ -115,7 +115,6 @@ impl FunctionPass for Pass {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cfg,
         optimization::{
             CFGSimplifyPipelineConfig,
             PipelineConfig,

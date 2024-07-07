@@ -1,8 +1,3 @@
-use tracing::{
-    debug,
-    debug_span,
-};
-
 use crate::{
     analysis::dataflow::{
         concrete_value,
@@ -12,7 +7,6 @@ use crate::{
     },
     cfg::TerminatorKind,
     instruction::{
-        Const,
         InstrKind,
         Op,
     },
@@ -38,7 +32,7 @@ impl FunctionPass for ConstantPropagation {
         let mut changes = 0;
         let mut analysis_runner =
             concrete_value::AnalysisRunner::new(&mut module.functions[function]);
-        while let Some((bb_ref, mut instr_walker)) = analysis_runner.next_bb() {
+        while let Some((bb_ref, instr_walker)) = analysis_runner.next_bb() {
             // let bb = instr_walker.function.cfg.basic_block(bb_id);
             // let bb_args = bb.arguments();
             // if !bb_args.is_empty() {
