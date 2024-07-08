@@ -3,14 +3,9 @@ use std::collections::VecDeque;
 use indexmap::IndexSet;
 
 use crate::{
-    analysis::dataflow::{
-        Analysis,
-        DFState,
-        InstrWalker,
-    },
+    analysis::dataflow::{Analysis, DFState, InstrWalker},
     cfg::BasicBlockRef,
-    Function,
-    Instr,
+    Function, Instr,
 };
 pub struct BackwardAnalysisRunner<'a, A: Analysis> {
     pub state: DFState<A::V>,

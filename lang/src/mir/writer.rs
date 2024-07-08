@@ -1,24 +1,11 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-use fusion_compiler::{
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{Idx, IdxVec};
 
 use crate::mir::{
-    basic_block::BasicBlock,
-    BasicBlockIdx,
-    Function,
-    FunctionIdx,
-    Instruction,
-    InstructionIdx,
-    InstructionKind,
-    Terminator,
-    TerminatorKind,
-    Type,
-    Value,
-    MIR,
+    basic_block::BasicBlock, BasicBlockIdx, Function, FunctionIdx, Instruction, InstructionIdx,
+    InstructionKind, Terminator, TerminatorKind, Type, Value, MIR,
 };
 
 pub struct MIRWriter<W> {

@@ -1,9 +1,6 @@
 use crate::codegen::{
     machine::{
-        abi::{
-            calling_convention::Slot,
-            CallingConvention,
-        },
+        abi::{calling_convention::Slot, CallingConvention},
         Size,
     },
     targets::x86_64,

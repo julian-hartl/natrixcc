@@ -1,16 +1,8 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
 use slotmap::new_key_type;
 
-use crate::codegen::machine::{
-    function::Function,
-    isa::PhysicalRegister,
-    Size,
-    TargetMachine,
-};
+use crate::codegen::machine::{function::Function, isa::PhysicalRegister, Size, TargetMachine};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Register<TM: TargetMachine> {

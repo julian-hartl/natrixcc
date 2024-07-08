@@ -1,21 +1,12 @@
-use std::{
-    fmt::Debug,
-    hash::Hash,
-};
+use std::{fmt::Debug, hash::Hash};
 
-use lattice::Value;
-use rustc_hash::{
-    FxHashMap,
-    FxHashSet,
-};
+use rustc_hash::{FxHashMap, FxHashSet};
 use slotmap::SecondaryMap;
 
+use lattice::Value;
+
 use crate::{
-    cfg::{
-        BasicBlock,
-        BasicBlockRef,
-        Terminator,
-    },
+    cfg::{BasicBlock, BasicBlockRef, Terminator},
     Instr,
 };
 
@@ -44,6 +35,9 @@ where
     }
 
     pub fn get_mut(&mut self, bb: BasicBlockRef) -> &mut V {
+        if !self.state.contains_key(bb) {
+            self.state.insert(bb, V::default());
+        }
         &mut self.state[bb]
     }
 

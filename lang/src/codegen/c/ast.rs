@@ -1,20 +1,12 @@
 use std::{
-    fmt::{
-        Display,
-        Formatter,
-    },
+    fmt::{Display, Formatter},
     io::Write,
 };
 
 use anyhow::Result;
 
 use crate::{
-    ast::{
-        BinOpKind,
-        BinOperator,
-        UnOpKind,
-        UnOperator,
-    },
+    ast::{BinOpKind, BinOperator, UnOpKind, UnOperator},
     typings::Type,
 };
 

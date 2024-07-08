@@ -1,9 +1,6 @@
 use termion::color;
 
-use crate::{
-    ast::*,
-    text::span::TextSpan,
-};
+use crate::{ast::*, text::span::TextSpan};
 
 pub struct ASTPrinter {
     indent: usize,

@@ -1,21 +1,8 @@
 use crate::{
-    cfg::{
-        BBArgRef,
-        BasicBlockRef,
-        InstrRef,
-        TerminatorKind,
-    },
+    cfg::{BBArgRef, BasicBlockRef, InstrRef, TerminatorKind},
     function::Function,
     instruction::{
-        AllocaInstr,
-        BinOpInstr,
-        CmpInstr,
-        CmpOp,
-        InstrKind,
-        LoadInstr,
-        Op,
-        OpInstr,
-        StoreInstr,
+        AllocaInstr, BinOpInstr, CmpInstr, CmpOp, InstrKind, LoadInstr, Op, OpInstr, StoreInstr,
     },
     ty::Type,
     Value,
@@ -121,18 +108,8 @@ impl<'func> Builder<'func> {
 mod tests {
     use crate::{
         cfg,
-        cfg::{
-            BranchTerm,
-            CondBranchTerm,
-            JumpTarget,
-            RetTerm,
-            TerminatorKind,
-        },
-        instruction::{
-            CmpOp,
-            Const,
-            Op,
-        },
+        cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind},
+        instruction::{CmpOp, Const, Op},
         test::create_test_function,
         ty::Type,
     };

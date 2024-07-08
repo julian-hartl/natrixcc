@@ -3,10 +3,7 @@ use itertools::Itertools;
 use crate::{
     cfg::BasicBlockRef,
     module::Module,
-    optimization::{
-        FunctionPass,
-        Pass,
-    },
+    optimization::{FunctionPass, Pass},
     FunctionRef,
 };
 

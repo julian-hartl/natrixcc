@@ -1,27 +1,11 @@
 use codegen::selection_dag;
-use daggy::{
-    petgraph::visit::IntoNodeIdentifiers,
-    NodeIndex,
-    Walker,
-};
+use daggy::{petgraph::visit::IntoNodeIdentifiers, NodeIndex, Walker};
 use iter_tools::Itertools;
 use natrix_middle::{
-    cfg::{
-        BBArgRef,
-        BasicBlockRef,
-        BranchTerm,
-        InstrRef,
-        JumpTarget,
-        Terminator,
-        TerminatorKind,
-    },
-    instruction::{
-        Const,
-        OpInstr,
-    },
+    cfg::{BBArgRef, BasicBlockRef, BranchTerm, InstrRef, JumpTarget, Terminator, TerminatorKind},
+    instruction::{Const, OpInstr},
     ty::Type,
-    InstrKind,
-    Value,
+    InstrKind, Value,
 };
 use rustc_hash::FxHashMap;
 use selection_dag::SelectionDAG;
@@ -33,19 +17,10 @@ use crate::{
     codegen::{
         machine::{
             function::Function,
-            reg::{
-                Register,
-                VRegRef,
-            },
+            reg::{Register, VRegRef},
             TargetMachine,
         },
-        selection_dag::{
-            Immediate,
-            MachineOp,
-            Op,
-            Operand,
-            PseudoOp,
-        },
+        selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp},
     },
 };
 

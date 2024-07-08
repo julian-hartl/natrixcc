@@ -1,11 +1,7 @@
 use itertools::Itertools;
 use tracing::debug;
 
-use crate::{
-    module::Module,
-    optimization::FunctionPass,
-    FunctionRef,
-};
+use crate::{module::Module, optimization::FunctionPass, FunctionRef};
 
 /// # Basic block merge
 ///
@@ -115,14 +111,8 @@ impl FunctionPass for Pass {
 #[cfg(test)]
 mod tests {
     use crate::{
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]

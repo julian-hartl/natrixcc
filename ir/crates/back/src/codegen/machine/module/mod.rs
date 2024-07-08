@@ -1,22 +1,13 @@
 pub use asm::AsmModule;
-use asm::{
-    FunctionSymbolTable,
-    FunctionSymbolTableEntry,
-};
+use asm::{FunctionSymbolTable, FunctionSymbolTableEntry};
 pub use builder::Builder;
 use slotmap::SlotMap;
-use tracing::{
-    debug,
-    info,
-};
+use tracing::{debug, info};
 
 use crate::codegen::{
     machine::{
         backend::Backend,
-        function::{
-            Function,
-            FunctionId,
-        },
+        function::{Function, FunctionId},
         TargetMachine,
     },
     register_allocator,

@@ -1,7 +1,4 @@
-use crate::codegen::{
-    machine,
-    machine::Size,
-};
+use crate::codegen::{machine, machine::Size};
 
 pub trait CallingConvention {
     type Reg: machine::PhysicalRegister;

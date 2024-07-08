@@ -3,12 +3,8 @@ use tracing::debug;
 use crate::{
     analysis::dataflow,
     module::Module,
-    optimization::{
-        FunctionPass,
-        Pass,
-    },
-    FunctionRef,
-    Value,
+    optimization::{FunctionPass, Pass},
+    FunctionRef, Value,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -59,10 +55,7 @@ impl FunctionPass for DeadCodeEliminationPass {
 mod tests {
     use crate::{
         optimization::PipelineConfig,
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]
@@ -86,10 +79,10 @@ mod tests {
             "
             fun i32 @test() {
             bb0:
-                %0 = i32 20;
+                i32 %0 = 20i32;
                 br bb1;
             bb1:
-                ret i32 %0;
+                ret %0;
             }
         ",
         );

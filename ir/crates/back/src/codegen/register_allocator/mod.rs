@@ -1,47 +1,24 @@
 use std::{
     cmp::Ordering,
     collections::VecDeque,
-    fmt::{
-        Display,
-        Formatter,
-    },
+    fmt::{Display, Formatter},
 };
 
 pub use coalescer::Coalescer;
 pub use daggy::Walker;
 pub use iter_tools::Itertools;
-use rustc_hash::{
-    FxHashMap,
-    FxHashSet,
-};
+use rustc_hash::{FxHashMap, FxHashSet};
 use slotmap::SecondaryMap;
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
+use smallvec::{smallvec, SmallVec};
 use tracing::debug;
 
 use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
-    },
-    function::{
-        BasicBlockId,
-        Function,
-    },
-    instr::{
-        Instr,
-        PseudoInstr,
-    },
+    abi::{calling_convention::Slot, CallingConvention},
+    function::{BasicBlockId, Function},
+    instr::{Instr, PseudoInstr},
     isa::PhysicalRegister,
-    reg::{
-        Register,
-        VRegRef,
-    },
-    InstrId,
-    Size,
-    TargetMachine,
+    reg::{Register, VRegRef},
+    InstrId, Size, TargetMachine,
 };
 
 mod coalescer;
@@ -265,10 +242,7 @@ mod prog_point_tests {
 
 #[cfg(test)]
 mod lifetime_tests {
-    use crate::codegen::register_allocator::{
-        LiveRange,
-        ProgPoint,
-    };
+    use crate::codegen::register_allocator::{LiveRange, ProgPoint};
 
     #[test]
     fn lifetimes_overlap() {

@@ -1,10 +1,6 @@
 use crate::mir::{
-    basic_block::BasicBlockIdx,
-    optimizations::local::LocalMIRPass,
-    FunctionIdx,
-    InstructionKind,
-    Value,
-    MIR,
+    basic_block::BasicBlockIdx, optimizations::local::LocalMIRPass, FunctionIdx, InstructionKind,
+    Value, MIR,
 };
 
 // todo: we should move this to the mir construction and just remove all unneeded phi nodes at the end of construction

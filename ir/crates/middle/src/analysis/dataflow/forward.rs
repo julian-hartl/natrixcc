@@ -1,14 +1,9 @@
 use indexmap::IndexSet;
 
 use crate::{
-    analysis::dataflow::{
-        Analysis,
-        DFState,
-        InstrWalker,
-    },
+    analysis::dataflow::{Analysis, DFState, InstrWalker},
     cfg::BasicBlockRef,
-    Function,
-    Instr,
+    Function, Instr,
 };
 
 pub struct ForwardAnalysisRunner<'a, A: Analysis> {

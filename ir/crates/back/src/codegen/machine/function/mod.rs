@@ -1,45 +1,21 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
-pub use cfg::{
-    BasicBlock,
-    BasicBlockId,
-    Cfg,
-};
+pub use cfg::{BasicBlock, BasicBlockId, Cfg};
 use daggy::Walker;
 use index_vec::IndexVec;
 use iter_tools::Itertools;
-use slotmap::{
-    new_key_type,
-    SlotMap,
-};
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
+use slotmap::{new_key_type, SlotMap};
+use smallvec::{smallvec, SmallVec};
 use tracing::debug;
 
 use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
-    },
+    abi::{calling_convention::Slot, CallingConvention},
     asm::Assembler,
     backend::Backend,
-    instr::{
-        InstrOperand,
-        PseudoInstr,
-    },
+    instr::{InstrOperand, PseudoInstr},
     isa::PhysicalRegister,
     reg::VReg,
-    Instr,
-    InstrId,
-    MachInstr,
-    Size,
-    TargetMachine,
-    VRegRef,
+    Instr, InstrId, MachInstr, Size, TargetMachine, VRegRef,
 };
 
 pub mod builder;

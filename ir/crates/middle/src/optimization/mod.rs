@@ -1,22 +1,13 @@
 use itertools::Itertools;
-use tracing::{
-    debug,
-    trace,
-    trace_span,
-};
+use tracing::{debug, trace, trace_span};
 
 use crate::{
     module::Module,
     optimization::{
         basic_block_pass::{
-            constant_fold::ConstantFoldPass,
-            copy_propagation::CopyPropagationPass,
-            cse::CSEPass,
+            constant_fold::ConstantFoldPass, copy_propagation::CopyPropagationPass, cse::CSEPass,
         },
-        function_pass::{
-            dead_code_elimination::DeadCodeEliminationPass,
-            FunctionPass,
-        },
+        function_pass::{dead_code_elimination::DeadCodeEliminationPass, FunctionPass},
     },
     FunctionRef,
 };

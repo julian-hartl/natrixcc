@@ -1,14 +1,8 @@
 use itertools::Itertools;
-use tracing::{
-    debug,
-    trace,
-};
+use tracing::{debug, trace};
 
 use crate::{
-    instruction::{
-        InstrKind,
-        OpInstr,
-    },
+    instruction::{InstrKind, OpInstr},
     module::Module,
     optimization::function_pass::FunctionPass,
     FunctionRef,
@@ -128,8 +122,9 @@ impl FunctionPass for Pass {
                 let successors_args = function.cfg.basic_blocks[successor_ref]
                     .clear_arguments()
                     .collect_vec();
-                for (argument, op) in successors_args.into_iter().zip(branch_args) {
-                    let ty = function.cfg.bb_args[argument].ty.clone();
+                for (bb_arg_ref, op) in successors_args.into_iter().zip(branch_args) {
+                    let bb_arg = &function.cfg.bb_args[bb_arg_ref];
+                    let ty = bb_arg.ty.clone();
                     // To keep the program consistent, we need to insert move instruction for each argument
                     // They look like this:
                     // <previous argument> = <previous value argument in branch instruction>
@@ -137,9 +132,16 @@ impl FunctionPass for Pass {
                         pred_id,
                         ty,
                         InstrKind::Op(OpInstr { op }),
-                        "todo".into(),
+                        bb_arg.symbol.clone(),
                     );
-                    todo!("Replace references to 'argument' with 'instr_id' in the function");
+                    for instruction in function.cfg.instructions.values_mut() {
+                        instruction.update_refs(bb_arg_ref.into(), instr_id.into());
+                    }
+                    for bb in function.cfg.basic_blocks.values_mut() {
+                        bb.update_terminator(|term| {
+                            term.update_refs(bb_arg_ref.into(), instr_id.into())
+                        });
+                    }
                 }
             }
         }
@@ -152,14 +154,8 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]

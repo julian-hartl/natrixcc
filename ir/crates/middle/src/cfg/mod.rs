@@ -1,33 +1,18 @@
 #![doc = include_str!("cfg.md")]
 
-use std::fmt::{
-    Debug,
-    Display,
-    Formatter,
-};
+use std::fmt::{Debug, Display, Formatter};
 
 pub use builder::Builder;
 pub use domtree::DomTree;
 use indexmap::IndexSet;
 #[allow(unused_imports)]
-pub use petgraph::{
-    prelude::*,
-    visit::Walker,
-};
-use slotmap::{
-    new_key_type,
-    SlotMap,
-};
+pub use petgraph::{prelude::*, visit::Walker};
+use slotmap::{new_key_type, SlotMap};
 use smallvec::SmallVec;
 
 use crate::{
-    instruction::{
-        Instr,
-        Op,
-    },
-    InstrKind,
-    Type,
-    Value,
+    instruction::{Instr, Op},
+    InstrKind, Type, Value,
 };
 
 mod builder;
@@ -344,19 +329,9 @@ impl Display for BasicBlock {
 
 #[cfg(test)]
 mod bb_tests {
-    use super::{
-        BranchTerm,
-        Cfg,
-        CondBranchTerm,
-        JumpTarget,
-        RetTerm,
-        TerminatorKind,
-    };
+    use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
     use crate::{
-        instruction::{
-            Const,
-            Op,
-        },
+        instruction::{Const, Op},
         Type,
     };
 
@@ -463,6 +438,34 @@ impl Terminator {
                         target.id = new;
                     }
                 }
+            }
+        }
+    }
+
+    pub fn update_refs(&mut self, from: Value, to: Value) -> u32 {
+        match &mut self.kind {
+            TerminatorKind::Ret(ret_term) => {
+                if let Some(value) = &mut ret_term.value {
+                    return value.update_refs(from, to);
+                }
+                0
+            }
+            TerminatorKind::Branch(branch_term) => {
+                let mut changes = 0;
+                for arg in &mut branch_term.target.arguments {
+                    changes += arg.update_refs(from, to);
+                }
+                changes
+            }
+            TerminatorKind::CondBranch(condbr_term) => {
+                let mut changes = 0;
+                changes += condbr_term.cond.update_refs(from, to);
+                for target in condbr_term.targets_mut() {
+                    for arg in &mut target.arguments {
+                        changes += arg.update_refs(from, to);
+                    }
+                }
+                changes
             }
         }
     }

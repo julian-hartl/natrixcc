@@ -1,12 +1,7 @@
 use std::collections::HashSet;
 
 use crate::mir::{
-    optimizations::MIRPass,
-    InstructionIdx,
-    InstructionKind,
-    TerminatorKind,
-    Value,
-    MIR,
+    optimizations::MIRPass, InstructionIdx, InstructionKind, TerminatorKind, Value, MIR,
 };
 
 struct ReferencedInstructions(HashSet<InstructionIdx>);

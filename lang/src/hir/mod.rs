@@ -6,15 +6,8 @@ pub use builder::HIRBuilder;
 pub use writer::HIRWriter;
 
 use crate::{
-    ast::{
-        BinOpKind,
-        UnOpKind,
-    },
-    compilation_unit::{
-        FunctionIdx,
-        Type,
-        VariableIdx,
-    },
+    ast::{BinOpKind, UnOpKind},
+    compilation_unit::{FunctionIdx, Type, VariableIdx},
 };
 
 mod builder;

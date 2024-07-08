@@ -1,24 +1,14 @@
-#![feature(impl_trait_in_assoc_type)]
-#![feature(type_alias_impl_trait)]
+// #![feature(impl_trait_in_assoc_type)]
+// #![feature(type_alias_impl_trait)]
 
 use derive_more::From;
 pub use front_bridge::FrontBridge;
-pub use function::{
-    Function,
-    FunctionRef,
-};
-pub use instruction::{
-    Instr,
-    InstrKind,
-};
+pub use function::{Function, FunctionRef};
+pub use instruction::{Instr, InstrKind};
 pub use module::Module;
 pub use ty::Type;
 
-use crate::cfg::{
-    BBArgRef,
-    Cfg,
-    InstrRef,
-};
+use crate::cfg::{BBArgRef, Cfg, InstrRef};
 
 pub mod cfg;
 pub mod function;
@@ -32,6 +22,14 @@ pub enum Value {
 impl Value {
     pub fn display<'cfg>(&self, cfg: &'cfg Cfg) -> ValueDisplay<'cfg> {
         ValueDisplay(cfg, *self)
+    }
+
+    pub fn update(&mut self, from: Value, to: Value) -> u32 {
+        if *self == from {
+            *self = to;
+            return 1;
+        }
+        0
     }
 }
 

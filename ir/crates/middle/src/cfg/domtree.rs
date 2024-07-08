@@ -1,12 +1,6 @@
-use petgraph::{
-    algo::dominators::Dominators,
-    prelude::NodeIndex,
-};
+use petgraph::{algo::dominators::Dominators, prelude::NodeIndex};
 
-use super::{
-    BasicBlockRef,
-    Cfg,
-};
+use super::{BasicBlockRef, Cfg};
 
 pub struct DomTree<'a> {
     dominators: Dominators<NodeIndex>,

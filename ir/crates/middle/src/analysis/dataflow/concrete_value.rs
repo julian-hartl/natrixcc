@@ -1,24 +1,10 @@
-use rustc_hash::{
-    FxHashMap,
-    FxHashSet,
-};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    analysis::dataflow::{
-        forward::ForwardAnalysisRunner,
-        lattice,
-    },
-    cfg::{
-        BasicBlock,
-        Terminator,
-    },
-    instruction::{
-        Const,
-        Op,
-    },
-    Instr,
-    InstrKind,
-    Value,
+    analysis::dataflow::{forward::ForwardAnalysisRunner, lattice},
+    cfg::{BasicBlock, Terminator},
+    instruction::{Const, Op},
+    Instr, InstrKind, Value,
 };
 
 #[derive(Debug, Default, Clone)]

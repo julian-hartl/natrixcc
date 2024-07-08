@@ -1,9 +1,4 @@
-use crate::mir::{
-    optimizations::MIRPass,
-    BasicBlockIdx,
-    FunctionIdx,
-    MIR,
-};
+use crate::mir::{optimizations::MIRPass, BasicBlockIdx, FunctionIdx, MIR};
 
 mod algebraic_simplification;
 mod constants_folding;

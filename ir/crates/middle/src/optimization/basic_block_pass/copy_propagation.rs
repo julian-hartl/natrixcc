@@ -1,21 +1,11 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    cfg::{
-        BasicBlockRef,
-        TerminatorKind,
-    },
-    instruction::{
-        InstrKind,
-        Op,
-    },
+    cfg::{BasicBlockRef, TerminatorKind},
+    instruction::{InstrKind, Op},
     module::Module,
-    optimization::{
-        basic_block_pass::BasicBlockPass,
-        Pass,
-    },
-    FunctionRef,
-    Value,
+    optimization::{basic_block_pass::BasicBlockPass, Pass},
+    FunctionRef, Value,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
@@ -140,10 +130,7 @@ impl CopyPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        optimization::PipelineConfig,
-        test::create_test_module_from_source,
-    };
+    use crate::{optimization::PipelineConfig, test::create_test_module_from_source};
 
     #[test]
     fn should_propagate_copies() {

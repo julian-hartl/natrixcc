@@ -1,39 +1,17 @@
-use daggy::{
-    petgraph::prelude::Bfs,
-    Walker,
-};
+use daggy::{petgraph::prelude::Bfs, Walker};
 use natrix_middle::instruction::CmpOp;
 use rustc_hash::FxHashMap;
 use tracing::debug;
 
 use crate::codegen::{
     machine::{
-        backend::{
-            Backend,
-            Pattern,
-        },
-        function::{
-            cfg::BasicBlockId,
-            Function,
-        },
-        instr::{
-            InstrOperand,
-            PseudoInstr,
-        },
-        Instr,
-        MachInstr,
-        Register,
-        Size,
-        TargetMachine,
+        backend::{Backend, Pattern},
+        function::{cfg::BasicBlockId, Function},
+        instr::{InstrOperand, PseudoInstr},
+        Instr, MachInstr, Register, Size, TargetMachine,
     },
     selection_dag,
-    selection_dag::{
-        Immediate,
-        MachineOp,
-        Op,
-        Operand,
-        PseudoOp,
-    },
+    selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp},
 };
 
 #[derive(Debug)]

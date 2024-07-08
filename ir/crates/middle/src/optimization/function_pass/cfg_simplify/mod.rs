@@ -1,9 +1,6 @@
 use crate::{
     module::Module,
-    optimization::{
-        CFGSimplifyPipelineConfig,
-        FunctionPass,
-    },
+    optimization::{CFGSimplifyPipelineConfig, FunctionPass},
     FunctionRef,
 };
 
@@ -57,14 +54,8 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]

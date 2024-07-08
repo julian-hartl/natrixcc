@@ -1,19 +1,8 @@
-use std::ops::{
-    Deref,
-    DerefMut,
-};
+use std::ops::{Deref, DerefMut};
 
 use iced_x86::{
-    code_asm::{
-        CodeAssembler,
-        CodeLabel,
-    },
-    Code,
-    Formatter,
-    Instruction,
-    IntelFormatter,
-    NumberBase,
-    Register,
+    code_asm::{CodeAssembler, CodeLabel},
+    Code, Formatter, Instruction, IntelFormatter, NumberBase, Register,
 };
 use rustc_hash::FxHashMap;
 
@@ -22,10 +11,7 @@ use crate::codegen::{
     machine::function::cfg::BasicBlockId,
     targets::{
         x86_64,
-        x86_64::{
-            PhysicalRegister,
-            CC,
-        },
+        x86_64::{PhysicalRegister, CC},
     },
 };
 

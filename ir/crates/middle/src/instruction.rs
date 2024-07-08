@@ -1,25 +1,11 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
-use strum_macros::{
-    Display,
-    EnumTryAs,
-};
+use smallvec::{smallvec, SmallVec};
+use strum_macros::{Display, EnumTryAs};
 
 use crate::{
-    cfg::{
-        BasicBlockRef,
-        Cfg,
-        InstrRef,
-    },
-    Type,
-    Value,
+    cfg::{BasicBlockRef, Cfg, InstrRef},
+    Type, Value,
 };
 
 /// An instruction in a basic block.
@@ -81,6 +67,23 @@ impl Instr {
             InstrKind::Load(instr) => smallvec![&instr.source],
             InstrKind::Store(instr) => smallvec![&instr.value],
             InstrKind::Cmp(instr) => smallvec![&instr.lhs, &instr.rhs],
+        }
+    }
+
+    pub fn update_refs(&mut self, from: Value, to: Value) -> u32 {
+        match &mut self.kind {
+            InstrKind::Alloca(_) => 0,
+            InstrKind::Store(instr) => {
+                instr.dest.update(from, to) + instr.value.update_refs(from, to)
+            }
+            InstrKind::Load(instr) => instr.source.update_refs(from, to),
+            InstrKind::Op(instr) => instr.op.update_refs(from, to),
+            InstrKind::Sub(instr) | InstrKind::Add(instr) => {
+                instr.lhs.update_refs(from, to) + instr.rhs.update_refs(from, to)
+            }
+            InstrKind::Cmp(instr) => {
+                instr.lhs.update_refs(from, to) + instr.rhs.update_refs(from, to)
+            }
         }
     }
 }
@@ -212,6 +215,13 @@ impl Op {
     pub fn display<'cfg>(&self, cfg: &'cfg Cfg) -> OpDisplay<'cfg, '_> {
         OpDisplay { cfg, op: self }
     }
+
+    pub fn update_refs(&mut self, from: Value, to: Value) -> u32 {
+        match self {
+            Op::Const(_) => 0,
+            Op::Value(value) => value.update(from, to),
+        }
+    }
 }
 
 pub struct OpDisplay<'cfg, 'op> {
@@ -308,14 +318,8 @@ mod tests {
     mod instruction_type {
         use crate::{
             cfg,
-            cfg::{
-                RetTerm,
-                TerminatorKind,
-            },
-            instruction::{
-                Const,
-                Op,
-            },
+            cfg::{RetTerm, TerminatorKind},
+            instruction::{Const, Op},
             test::create_test_function,
             ty::Type,
         };

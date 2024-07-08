@@ -2,19 +2,8 @@ use iter_tools::Itertools;
 use tracing::debug;
 
 use crate::codegen::{
-    machine::{
-        isa::PhysicalRegister,
-        Size,
-        TargetMachine,
-        VRegRef,
-    },
-    register_allocator::{
-        LivenessRepr,
-        ProgPoint,
-        RegAllocAlgorithm,
-        RegAllocHints,
-        RegAllocVReg,
-    },
+    machine::{isa::PhysicalRegister, Size, TargetMachine, VRegRef},
+    register_allocator::{LivenessRepr, ProgPoint, RegAllocAlgorithm, RegAllocHints, RegAllocVReg},
 };
 
 #[derive(Debug)]

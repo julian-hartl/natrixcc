@@ -1,24 +1,11 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    cfg::{
-        BasicBlockRef,
-        TerminatorKind,
-    },
-    instruction::{
-        CmpOp,
-        Const,
-        InstrKind,
-        Op,
-        OpInstr,
-    },
+    cfg::{BasicBlockRef, TerminatorKind},
+    instruction::{CmpOp, Const, InstrKind, Op, OpInstr},
     module::Module,
-    optimization::{
-        basic_block_pass::BasicBlockPass,
-        Pass,
-    },
-    FunctionRef,
-    Value,
+    optimization::{basic_block_pass::BasicBlockPass, Pass},
+    FunctionRef, Value,
 };
 
 pub struct ConstantFoldPass {}
@@ -200,10 +187,7 @@ impl ConstantFoldPass {
 mod tests {
     use crate::{
         optimization::PipelineConfig,
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]

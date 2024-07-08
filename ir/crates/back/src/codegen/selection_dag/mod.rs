@@ -1,36 +1,20 @@
 use std::{
     fmt::Display,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
 };
 
 pub use builder::Builder;
-use daggy::petgraph::dot::{
-    Config,
-    Dot,
-};
+use daggy::petgraph::dot::{Config, Dot};
 use natrix_middle::{
-    cfg::{
-        BasicBlockRef,
-        Cfg,
-    },
+    cfg::{BasicBlockRef, Cfg},
     instruction::CmpOp,
 };
 use rustc_hash::FxHashMap;
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
+use smallvec::{smallvec, SmallVec};
 
 use crate::codegen::machine::{
-    reg::{
-        Register,
-        VRegRef,
-    },
-    Size,
-    TargetMachine,
+    reg::{Register, VRegRef},
+    Size, TargetMachine,
 };
 
 pub mod builder;

@@ -2,32 +2,12 @@ use std::cell::Cell;
 
 use crate::{
     ast::{
-        lexer::{
-            Token,
-            TokenKind,
-        },
-        Ast,
-        BinOpAssociativity,
-        BinOpKind,
-        BinOperator,
-        Body,
-        ElseBranch,
-        Expr,
-        ExprId,
-        FuncDeclParameter,
-        FunctionReturnTypeSyntax,
-        Item,
-        ItemKind,
-        StaticTypeAnnotation,
-        Stmt,
-        StmtId,
-        UnOpKind,
-        UnOperator,
+        lexer::{Token, TokenKind},
+        Ast, BinOpAssociativity, BinOpKind, BinOperator, Body, ElseBranch, Expr, ExprId,
+        FuncDeclParameter, FunctionReturnTypeSyntax, Item, ItemKind, StaticTypeAnnotation, Stmt,
+        StmtId, UnOpKind, UnOperator,
     },
-    compilation_unit::{
-        resolve_type_from_string,
-        GlobalScope,
-    },
+    compilation_unit::{resolve_type_from_string, GlobalScope},
     diagnostics::DiagnosticsBagCell,
     typings::Type,
 };

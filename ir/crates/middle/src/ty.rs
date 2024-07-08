@@ -1,7 +1,4 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {

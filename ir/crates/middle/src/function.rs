@@ -1,14 +1,8 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
 use slotmap::new_key_type;
 
-use crate::{
-    cfg::Cfg,
-    ty::Type,
-};
+use crate::{cfg::Cfg, ty::Type};
 
 new_key_type! {
     pub struct FunctionRef;

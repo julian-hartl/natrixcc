@@ -1,20 +1,10 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
+use smallvec::{smallvec, SmallVec};
 
 use crate::codegen::{
     machine::{
-        function::BasicBlockId,
-        isa::MachInstr as MInstr,
-        Function,
-        Register,
-        TargetMachine,
+        function::BasicBlockId, isa::MachInstr as MInstr, Function, Register, TargetMachine,
     },
     selection_dag::Immediate,
 };

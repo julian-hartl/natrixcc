@@ -1,21 +1,10 @@
-use std::{
-    fs::File,
-    io::Write,
-    process::Command,
-};
+use std::{fs::File, io::Write, process::Command};
 
 use anyhow::anyhow;
 
 use crate::{
     codegen::c::{
-        ast::{
-            CAst,
-            CBlock,
-            CExpr,
-            CItem,
-            CParameter,
-            CStmt,
-        },
+        ast::{CAst, CBlock, CExpr, CItem, CParameter, CStmt},
         CTranspiler,
     },
     compilation_unit::CompilationUnit,

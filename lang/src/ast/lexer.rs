@@ -1,7 +1,4 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
 use crate::text::span::TextSpan;
 

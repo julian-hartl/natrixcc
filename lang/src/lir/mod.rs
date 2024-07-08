@@ -1,8 +1,4 @@
-use fusion_compiler::{
-    idx,
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{idx, Idx, IdxVec};
 
 use crate::mir;
 

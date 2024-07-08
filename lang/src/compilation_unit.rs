@@ -1,53 +1,21 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
-use fusion_compiler::{
-    idx,
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{idx, Idx, IdxVec};
 
 #[allow(unused_imports)]
 pub use crate::typings::Type;
 use crate::{
     ast::{
         evaluator::ASTEvaluator,
-        lexer::{
-            Lexer,
-            Token,
-        },
+        lexer::{Lexer, Token},
         parser::Parser,
         visitor::ASTVisitor,
-        AssignExpr,
-        Ast,
-        BinOpKind,
-        BinaryExpr,
-        BlockExpr,
-        Body,
-        BoolExpr,
-        CallExpr,
-        Expr,
-        FunctionDeclaration,
-        IfExpr,
-        ItemId,
-        LetStmt,
-        NumberExpr,
-        ParenthesizedExpr,
-        ReturnStmt,
-        Stmt,
-        StmtKind,
-        UnOpKind,
-        UnaryExpr,
-        VarExpr,
-        WhileStmt,
+        AssignExpr, Ast, BinOpKind, BinaryExpr, BlockExpr, Body, BoolExpr, CallExpr, Expr,
+        FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt,
+        Stmt, StmtKind, UnOpKind, UnaryExpr, VarExpr, WhileStmt,
     },
     diagnostics,
-    diagnostics::{
-        printer::DiagnosticsPrinter,
-        DiagnosticsBagCell,
-    },
+    diagnostics::{printer::DiagnosticsPrinter, DiagnosticsBagCell},
     text,
     text::span::TextSpan,
 };

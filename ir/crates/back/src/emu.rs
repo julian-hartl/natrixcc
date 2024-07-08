@@ -1,34 +1,18 @@
 use std::ops::Range;
 
-use anyhow::{
-    anyhow,
-    bail,
-    Result,
-};
-use tracing::{
-    debug,
-    warn,
-};
+use anyhow::{anyhow, bail, Result};
+use tracing::{debug, warn};
 use unicorn_engine::{
-    unicorn_const::{
-        uc_error,
-        Arch,
-        Mode,
-        Permission,
-    },
+    unicorn_const::{uc_error, Arch, Mode, Permission},
     SECOND_SCALE,
 };
 
 use crate::codegen::machine::{
-    abi::{
-        calling_convention::Slot,
-        CallingConvention,
-    },
+    abi::{calling_convention::Slot, CallingConvention},
     function::FunctionId,
     isa::PhysicalRegister,
     module::asm::AsmModule,
-    Architecture,
-    TargetMachine,
+    Architecture, TargetMachine,
 };
 
 pub struct Emulator<'module, 'code, 'unicorn, TM: TargetMachine> {

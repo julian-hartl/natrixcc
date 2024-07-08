@@ -3,16 +3,7 @@
 use std::str::FromStr;
 
 use crate::module::{
-    Arg,
-    BasicBlock,
-    CmpOp,
-    Function,
-    Identifier,
-    Instruction,
-    Literal,
-    Module,
-    Operand,
-    Target,
+    Arg, BasicBlock, CmpOp, Function, Identifier, Instruction, Literal, Module, Operand, Target,
     Type,
 };
 #[allow(unused_extern_crates)]

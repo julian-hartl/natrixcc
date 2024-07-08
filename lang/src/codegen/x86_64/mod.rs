@@ -1,33 +1,15 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Result;
 use fusion_compiler::bug;
 use iced_x86::{
-    code_asm::*,
-    Code,
-    Decoder,
-    DecoderOptions,
-    Formatter,
-    Instruction,
-    IntelFormatter,
-    MemoryOperand,
-    NumberBase,
-    Register,
+    code_asm::*, Code, Decoder, DecoderOptions, Formatter, Instruction, IntelFormatter,
+    MemoryOperand, NumberBase, Register,
 };
 
 use crate::{
     lir,
-    lir::{
-        ConstOp,
-        InstructionKind,
-        OperandKind,
-        PlaceIdx,
-        Terminator,
-        Type,
-    },
+    lir::{ConstOp, InstructionKind, OperandKind, PlaceIdx, Terminator, Type},
 };
 
 pub struct CallingConvention<'a>(&'a lir::Function);

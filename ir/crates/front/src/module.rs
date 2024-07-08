@@ -85,14 +85,7 @@ pub type Identifier = String;
 mod tests {
     use crate::{
         grammar,
-        module::{
-            Arg,
-            BasicBlock,
-            Function,
-            Instruction,
-            Operand,
-            Type,
-        },
+        module::{Arg, BasicBlock, Function, Instruction, Operand, Type},
     };
 
     #[test]

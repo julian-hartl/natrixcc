@@ -1,13 +1,6 @@
 use crate::{
-    cfg::{
-        BasicBlockRef,
-        BranchTerm,
-        TerminatorKind,
-    },
-    instruction::{
-        Const,
-        Op,
-    },
+    cfg::{BasicBlockRef, BranchTerm, TerminatorKind},
+    instruction::{Const, Op},
     module::Module,
     optimization::basic_block_pass,
     FunctionRef,

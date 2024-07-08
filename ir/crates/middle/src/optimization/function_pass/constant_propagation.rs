@@ -1,20 +1,11 @@
 use crate::{
     analysis::dataflow::{
-        concrete_value,
-        concrete_value::ConcreteValues,
-        DFValueState,
-        InstrWalker,
+        concrete_value, concrete_value::ConcreteValues, DFValueState, InstrWalker,
     },
     cfg::TerminatorKind,
-    instruction::{
-        InstrKind,
-        Op,
-    },
+    instruction::{InstrKind, Op},
     module::Module,
-    optimization::{
-        FunctionPass,
-        Pass,
-    },
+    optimization::{FunctionPass, Pass},
     FunctionRef,
 };
 
@@ -190,10 +181,7 @@ mod tests {
 
     use crate::{
         optimization::PipelineConfig,
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]

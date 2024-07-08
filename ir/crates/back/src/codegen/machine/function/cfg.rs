@@ -1,34 +1,17 @@
 use daggy::{
     petgraph::{
-        prelude::{
-            Bfs,
-            DfsPostOrder,
-            StableGraph,
-        },
-        Directed,
-        Direction,
+        prelude::{Bfs, DfsPostOrder, StableGraph},
+        Directed, Direction,
     },
-    NodeIndex,
-    Walker,
+    NodeIndex, Walker,
 };
 use index_vec::IndexVec;
 use iter_tools::Itertools;
 use rustc_hash::FxHashMap;
 
 use crate::codegen::{
-    machine::{
-        instr::InstrOperand,
-        Instr,
-        InstrId,
-        MachInstr,
-        Register,
-        TargetMachine,
-    },
-    register_allocator::{
-        InstrNumbering,
-        InstrUid,
-        ProgPoint,
-    },
+    machine::{instr::InstrOperand, Instr, InstrId, MachInstr, Register, TargetMachine},
+    register_allocator::{InstrNumbering, InstrUid, ProgPoint},
 };
 
 index_vec::define_index_type! {

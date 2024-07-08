@@ -1,18 +1,10 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    analysis::dataflow::{
-        backward::BackwardAnalysisRunner,
-        lattice,
-    },
-    cfg::{
-        BasicBlock,
-        BasicBlockRef,
-        Terminator,
-    },
+    analysis::dataflow::{backward::BackwardAnalysisRunner, lattice},
+    cfg::{BasicBlock, BasicBlockRef, Terminator},
     instruction::Op,
-    Instr,
-    Value,
+    Instr, Value,
 };
 
 #[derive(Debug, Default, Clone)]

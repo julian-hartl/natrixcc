@@ -1,12 +1,6 @@
 use crate::mir::{
-    optimizations::local::LocalMIRPass,
-    BasicBlockIdx,
-    Binop,
-    FunctionIdx,
-    InstructionKind,
-    Type,
-    Value,
-    MIR,
+    optimizations::local::LocalMIRPass, BasicBlockIdx, Binop, FunctionIdx, InstructionKind, Type,
+    Value, MIR,
 };
 
 pub struct AlgebraicSimplification;

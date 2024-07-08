@@ -2,19 +2,10 @@ use rustc_hash::FxHashMap;
 
 use crate::{
     cfg::BasicBlockRef,
-    instruction::{
-        InstrIdentifyingKey,
-        InstrKind,
-        Op,
-        OpInstr,
-    },
+    instruction::{InstrIdentifyingKey, InstrKind, Op, OpInstr},
     module::Module,
-    optimization::{
-        basic_block_pass::BasicBlockPass,
-        Pass,
-    },
-    FunctionRef,
-    Value,
+    optimization::{basic_block_pass::BasicBlockPass, Pass},
+    FunctionRef, Value,
 };
 
 /// # Common Subexpression Elimination
@@ -61,10 +52,7 @@ impl BasicBlockPass for CSEPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        optimization::PipelineConfig,
-        test::create_test_module_from_source,
-    };
+    use crate::{optimization::PipelineConfig, test::create_test_module_from_source};
 
     #[test]
     fn should_replace_duplicate_subtraction() {

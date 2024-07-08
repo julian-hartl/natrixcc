@@ -1,23 +1,12 @@
 use std::{
-    fmt::{
-        Display,
-        Formatter,
-    },
+    fmt::{Display, Formatter},
     time::Instant,
 };
 
 use slotmap::SlotMap;
-use tracing::{
-    debug,
-    info,
-};
+use tracing::{debug, info};
 
-use crate::{
-    optimization,
-    optimization::PipelineConfig,
-    Function,
-    FunctionRef,
-};
+use crate::{optimization, optimization::PipelineConfig, Function, FunctionRef};
 
 #[derive(Debug, Clone, Default)]
 pub struct Module {

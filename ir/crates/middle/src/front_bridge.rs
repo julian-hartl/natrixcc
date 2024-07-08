@@ -1,33 +1,15 @@
 use itertools::Itertools;
-use natrix_front::module::{
-    Identifier,
-    Instruction,
-    Literal,
-    Operand,
-};
+use natrix_front::module::{Identifier, Instruction, Literal, Operand};
 use rustc_hash::FxHashMap;
 
 use crate::{
     cfg,
     cfg::{
-        BBArgRef,
-        BasicBlockRef,
-        BranchTerm,
-        CondBranchTerm,
-        InstrRef,
-        JumpTarget,
-        RetTerm,
+        BBArgRef, BasicBlockRef, BranchTerm, CondBranchTerm, InstrRef, JumpTarget, RetTerm,
         TerminatorKind,
     },
-    instruction::{
-        CmpOp,
-        Const,
-        Op,
-    },
-    Function,
-    Module,
-    Type,
-    Value,
+    instruction::{CmpOp, Const, Op},
+    Function, Module, Type, Value,
 };
 
 #[derive(Debug, Default)]
