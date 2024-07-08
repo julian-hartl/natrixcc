@@ -2,7 +2,4 @@
 #[allow(warnings)]
 pub(crate) mod grammar;
 pub mod module;
-pub use module::{
-    parse,
-    Module,
-};
+pub use module::{parse, Module};

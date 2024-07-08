@@ -1,15 +1,8 @@
 use std::cmp;
 
-use termion::color::{
-    Fg,
-    Red,
-    Reset,
-};
+use termion::color::{Fg, Red, Reset};
 
-use crate::{
-    diagnostics::Diagnostic,
-    text::SourceText,
-};
+use crate::{diagnostics::Diagnostic, text::SourceText};
 
 pub struct DiagnosticsPrinter<'a> {
     text: &'a SourceText,

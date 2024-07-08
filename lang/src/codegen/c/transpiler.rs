@@ -2,49 +2,15 @@ use std::collections::HashMap;
 
 use crate::{
     ast::{
-        Ast,
-        BinaryExpr,
-        BlockExpr,
-        CallExpr,
-        Expr,
-        ExprId,
-        ExprKind,
-        FunctionDeclaration,
-        IfExpr,
-        Item,
-        ItemKind,
-        StmtId,
-        StmtKind,
-        UnaryExpr,
+        Ast, BinaryExpr, BlockExpr, CallExpr, Expr, ExprId, ExprKind, FunctionDeclaration, IfExpr,
+        Item, ItemKind, StmtId, StmtKind, UnaryExpr,
     },
     codegen::c::ast::{
-        CAssignExpr,
-        CAst,
-        CBinOperator,
-        CBinaryExpr,
-        CBlock,
-        CBool,
-        CCallExpr,
-        CExpr,
-        CFunctionDecl,
-        CFunctionImpl,
-        CIfStmt,
-        CItem,
-        CNumber,
-        CParameter,
-        CReturn,
-        CStmt,
-        CType,
-        CUnOperator,
-        CUnaryExpr,
-        CVarDecl,
-        CVarExpr,
-        CWhile,
+        CAssignExpr, CAst, CBinOperator, CBinaryExpr, CBlock, CBool, CCallExpr, CExpr,
+        CFunctionDecl, CFunctionImpl, CIfStmt, CItem, CNumber, CParameter, CReturn, CStmt, CType,
+        CUnOperator, CUnaryExpr, CVarDecl, CVarExpr, CWhile,
     },
-    compilation_unit::{
-        GlobalScope,
-        VariableIdx,
-    },
+    compilation_unit::{GlobalScope, VariableIdx},
     typings::Type,
 };
 
@@ -121,7 +87,7 @@ impl<'a> CTranspiler<'a> {
             CItem::FunctionDecl(function_decl) => function_decl,
             _ => unreachable!(),
         };
-        let mut body_stmts = function
+        let body_stmts = function
             .body
             .iter()
             .map(|stmt| self.transpile_stmt(ast, *stmt))
@@ -499,10 +465,7 @@ impl CTranspiler<'_> {
 mod test {
     use serial_test::serial;
 
-    use crate::{
-        codegen::c::CProgram,
-        compilation_unit::CompilationUnit,
-    };
+    use crate::{codegen::c::CProgram, compilation_unit::CompilationUnit};
 
     fn expect_return_value(input: &str, expected_return_value: i32, include_main: bool) {
         let input = if include_main {

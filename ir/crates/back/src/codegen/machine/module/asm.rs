@@ -1,12 +1,8 @@
 use std::ops::Range;
 
-use cranelift_entity::SecondaryMap;
+use slotmap::SecondaryMap;
 
-use crate::codegen::machine::{
-    FunctionId,
-    Module,
-    TargetMachine,
-};
+use crate::codegen::machine::{FunctionId, Module, TargetMachine};
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 pub struct FunctionSymbolTableEntry {

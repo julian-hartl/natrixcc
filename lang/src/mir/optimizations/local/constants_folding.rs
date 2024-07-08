@@ -1,23 +1,11 @@
 use std::{
     collections::HashMap,
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    ops::{Deref, DerefMut},
 };
 
 use crate::mir::{
-    optimizations::local::LocalMIRPass,
-    BasicBlockIdx,
-    Binop,
-    FunctionIdx,
-    Instruction,
-    InstructionIdx,
-    InstructionKind,
-    TerminatorKind,
-    Unop,
-    Value,
-    MIR,
+    optimizations::local::LocalMIRPass, BasicBlockIdx, Binop, FunctionIdx, Instruction,
+    InstructionIdx, InstructionKind, TerminatorKind, Unop, Value, MIR,
 };
 
 struct ComputedConstantValues(HashMap<InstructionIdx, Value>);

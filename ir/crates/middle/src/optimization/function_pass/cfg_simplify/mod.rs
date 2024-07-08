@@ -1,10 +1,7 @@
 use crate::{
     module::Module,
-    optimization::{
-        CFGSimplifyPipelineConfig,
-        FunctionPass,
-    },
-    FunctionId,
+    optimization::{CFGSimplifyPipelineConfig, FunctionPass},
+    FunctionRef,
 };
 
 mod bb_merge;
@@ -36,7 +33,7 @@ impl crate::optimization::Pass for Pass {
 }
 
 impl FunctionPass for Pass {
-    fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
+    fn run_on_function(&mut self, module: &mut Module, function: FunctionRef) -> usize {
         let mut changed = 0;
         let config = &self.config;
         if config.jump_threading {
@@ -57,15 +54,8 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        cfg,
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]
@@ -74,12 +64,12 @@ mod tests {
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 v0):
-                   condbr 1 bb1, bb2;
+                bb0(i32 %0):
+                   condbr true bb1, bb2;
                 bb1:
                    br bb2;
                 bb2:
-                   ret i32 v0;
+                   ret %0;
                 }
             ",
         );
@@ -89,8 +79,8 @@ mod tests {
         assert_module_is_equal_to_src(
             &module,
             "fun i32 @test(i32) {
-             bb0(i32 v0):
-                ret i32 v0;
+             bb0(i32 %0):
+                ret %0;
              }
              ",
         )

@@ -1,16 +1,9 @@
-use std::collections::{
-    HashMap,
-    HashSet,
-};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 
 use crate::mir::{
-    basic_block::BasicBlockIdx,
-    optimizations::MIRPass,
-    InstructionKind,
-    TerminatorKind,
-    MIR,
+    basic_block::BasicBlockIdx, optimizations::MIRPass, InstructionKind, TerminatorKind, MIR,
 };
 
 /// Branch elimination is a global optimization that removes branches that are not needed.

@@ -2,17 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use clap::Parser;
-use natrix_back::{
-    codegen::{
-        register_allocator,
-        targets::x86_64,
-    },
-    emu::Emulator,
-};
-use natrix_middle::{
-    optimization,
-    FrontBridge,
-};
+use natrix_back::{codegen::targets::x86_64, emu::Emulator};
+use natrix_middle::{optimization, FrontBridge};
 use tracing::debug;
 
 #[derive(Parser, Debug)]

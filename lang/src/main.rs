@@ -1,26 +1,11 @@
-#![feature(exit_status_error)]
+use std::{fs::File, io::Write};
 
-use std::{
-    fs::File,
-    io::Write,
-};
-
-use anyhow::{
-    anyhow,
-    Result,
-};
+use anyhow::{anyhow, Result};
 
 use crate::{
     compilation_unit::CompilationUnit,
-    hir::{
-        HIRBuilder,
-        HIRWriter,
-    },
-    mir::{
-        optimizations::Optimizer,
-        MIRBuilder,
-        MIRWriter,
-    },
+    hir::{HIRBuilder, HIRWriter},
+    mir::{optimizations::Optimizer, MIRBuilder, MIRWriter},
 };
 
 mod ast;

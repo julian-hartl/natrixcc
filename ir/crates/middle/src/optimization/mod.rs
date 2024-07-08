@@ -1,23 +1,15 @@
-use tracing::{
-    debug,
-    trace,
-    trace_span,
-};
+use itertools::Itertools;
+use tracing::{debug, trace, trace_span};
 
 use crate::{
     module::Module,
     optimization::{
         basic_block_pass::{
-            constant_fold::ConstantFoldPass,
-            copy_propagation::CopyPropagationPass,
-            cse::CSEPass,
+            constant_fold::ConstantFoldPass, copy_propagation::CopyPropagationPass, cse::CSEPass,
         },
-        function_pass::{
-            dead_code_elimination::DeadCodeEliminationPass,
-            FunctionPass,
-        },
+        function_pass::{dead_code_elimination::DeadCodeEliminationPass, FunctionPass},
     },
-    FunctionId,
+    FunctionRef,
 };
 
 pub mod basic_block_pass;
@@ -183,35 +175,34 @@ impl<'a> Pipeline<'a> {
     }
 
     pub fn run(&mut self) {
-        for function in self.module.functions.keys() {
-            trace!("Optimizing {function}");
-            self.run_on_function(function);
-            trace!("Optimized {function}");
+        let functions = self.module.functions.keys().collect_vec();
+        for function_ref in functions {
+            let function_name = self.module.functions[function_ref].name.clone();
+            trace!("Optimizing {function_name}");
+            self.run_on_function(function_ref);
+            trace!("Optimized {function_name}");
         }
     }
 
-    fn run_on_function(&mut self, function: FunctionId) {
-        let span = trace_span!("func_opt", %function);
-        span.in_scope(|| {
-            let mut passes = self.get_passes();
-            debug!("Running {} passes", passes.len());
-            loop {
-                let mut changes = 0;
-                for pass in &mut passes {
-                    debug!("Running pass {}", pass.name());
-                    let name = pass.name();
-                    let span = trace_span!("pass", %name);
-                    span.in_scope(|| {
-                        changes += pass.run_on_function(self.module, function);
-                    });
-                }
-                debug!("{changes} changes");
-                if changes == 0 {
-                    debug!("Reached fixpoint. Stopping optimization");
-                    break;
-                }
+    fn run_on_function(&mut self, function: FunctionRef) {
+        let mut passes = self.get_passes();
+        debug!("Running {} passes", passes.len());
+        loop {
+            let mut changes = 0;
+            for pass in &mut passes {
+                debug!("Running pass {}", pass.name());
+                let name = pass.name();
+                let span = trace_span!("pass", %name);
+                span.in_scope(|| {
+                    changes += pass.run_on_function(self.module, function);
+                });
             }
-        });
+            debug!("{changes} changes");
+            if changes == 0 {
+                debug!("Reached fixpoint. Stopping optimization");
+                break;
+            }
+        }
     }
 
     fn get_passes(&mut self) -> Vec<Box<dyn FunctionPass>> {

@@ -5,14 +5,10 @@ use smallvec::SmallVec;
 use crate::codegen::{
     machine::{
         function::{
-            builder::{
-                MatchedPattern,
-                PatternIn,
-            },
+            builder::{MatchedPattern, PatternIn},
             Function,
         },
-        Instr,
-        TargetMachine,
+        Instr, TargetMachine,
     },
     selection_dag::Immediate,
 };

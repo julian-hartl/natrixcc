@@ -1,16 +1,8 @@
-use std::{
-    fmt::Debug,
-    hash::Hash,
-};
+use std::{fmt::Debug, hash::Hash};
 
 use smallvec::SmallVec;
 
-use crate::codegen::machine::{
-    instr::InstrOperand,
-    reg::Register,
-    Size,
-    TargetMachine,
-};
+use crate::codegen::machine::{instr::InstrOperand, reg::Register, Size, TargetMachine};
 
 pub trait PhysicalRegister: Debug + Clone + Copy + PartialEq + Eq + Sized + Hash + 'static {
     fn name(&self) -> &'static str;

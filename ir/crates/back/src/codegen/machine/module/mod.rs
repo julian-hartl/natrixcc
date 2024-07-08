@@ -1,22 +1,13 @@
 pub use asm::AsmModule;
-use asm::{
-    FunctionSymbolTable,
-    FunctionSymbolTableEntry,
-};
+use asm::{FunctionSymbolTable, FunctionSymbolTableEntry};
 pub use builder::Builder;
-use cranelift_entity::PrimaryMap;
-use tracing::{
-    debug,
-    info,
-};
+use slotmap::SlotMap;
+use tracing::{debug, info};
 
 use crate::codegen::{
     machine::{
         backend::Backend,
-        function::{
-            Function,
-            FunctionId,
-        },
+        function::{Function, FunctionId},
         TargetMachine,
     },
     register_allocator,
@@ -28,20 +19,20 @@ mod builder;
 
 #[derive(Debug, Clone)]
 pub struct Module<TM: TargetMachine> {
-    pub(crate) functions: PrimaryMap<FunctionId, Function<TM>>,
+    pub(crate) functions: SlotMap<FunctionId, Function<TM>>,
 }
 
 impl<TM: TargetMachine> Default for Module<TM> {
     fn default() -> Self {
         Self {
-            functions: PrimaryMap::new(),
+            functions: SlotMap::with_key(),
         }
     }
 }
 
 impl<TM: TargetMachine> Module<TM> {
     pub fn add_function(&mut self, function: Function<TM>) -> FunctionId {
-        self.functions.push(function)
+        self.functions.insert(function)
     }
 
     pub fn functions(&self) -> impl ExactSizeIterator<Item = (FunctionId, &Function<TM>)> {

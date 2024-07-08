@@ -1,7 +1,4 @@
-use crate::codegen::machine::{
-    function::cfg::BasicBlockId,
-    TargetMachine,
-};
+use crate::codegen::machine::{function::cfg::BasicBlockId, TargetMachine};
 
 pub trait Assembler {
     type TM: TargetMachine;

@@ -1,30 +1,14 @@
 use std::fmt::Debug;
 
 pub use backend::Backend;
-pub use cranelift_entity::EntityRef;
-pub use function::{
-    Function,
-    FunctionId,
-};
-pub use instr::{
-    Instr,
-    InstrId,
-};
-pub use isa::{
-    MachInstr,
-    PhysicalRegister,
-};
+pub use function::{Function, FunctionId};
+pub use instr::{Instr, InstrId};
+pub use isa::{MachInstr, PhysicalRegister};
 pub use module::Module;
 use natrix_middle::ty::Type;
-pub use reg::{
-    Register,
-    VReg,
-};
+pub use reg::{Register, VRegRef};
 
-use crate::codegen::machine::{
-    abi::CallingConvention,
-    asm::Assembler,
-};
+use crate::codegen::machine::{abi::CallingConvention, asm::Assembler};
 
 pub mod abi;
 pub mod asm;

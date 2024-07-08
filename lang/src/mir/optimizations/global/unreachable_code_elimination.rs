@@ -1,11 +1,6 @@
 use fusion_compiler::Idx;
 
-use crate::mir::{
-    basic_block::BasicBlockIdx,
-    optimizations::MIRPass,
-    InstructionKind,
-    MIR,
-};
+use crate::mir::{basic_block::BasicBlockIdx, optimizations::MIRPass, InstructionKind, MIR};
 
 pub struct UnreachableCodeElimination;
 

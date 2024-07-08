@@ -1,7 +1,4 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
@@ -59,7 +56,7 @@ impl Display for Type {
             Type::I32 => write!(f, "i32"),
             Type::I64 => write!(f, "i64"),
             Type::Bool => write!(f, "bool"),
-            Type::Ptr(_ty) => write!(f, "ptr"),
+            Type::Ptr(ty) => write!(f, "&{}", ty),
             Type::Void => write!(f, "void"),
         }
     }

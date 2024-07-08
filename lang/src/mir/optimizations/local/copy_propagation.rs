@@ -1,13 +1,8 @@
 use std::collections::HashMap;
 
 use crate::mir::{
-    optimizations::local::LocalMIRPass,
-    BasicBlockIdx,
-    FunctionIdx,
-    InstructionIdx,
-    InstructionKind,
-    TerminatorKind,
-    MIR,
+    optimizations::local::LocalMIRPass, BasicBlockIdx, FunctionIdx, InstructionIdx,
+    InstructionKind, TerminatorKind, MIR,
 };
 
 pub struct CopyPropagation;

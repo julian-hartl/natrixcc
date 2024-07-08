@@ -1,31 +1,11 @@
-use std::{
-    cell::Cell,
-    collections::HashMap,
-};
+use std::{cell::Cell, collections::HashMap};
 
 use fusion_compiler::bug;
 
 use crate::{
-    ast::{
-        Ast,
-        ExprId,
-        ExprKind,
-        ItemKind,
-        StmtId,
-        StmtKind,
-    },
-    compilation_unit::{
-        GlobalScope,
-        VariableIdx,
-    },
-    hir::{
-        HIRExpr,
-        HIRExprKind,
-        HIRStmt,
-        HIRStmtKind,
-        Type,
-        HIR,
-    },
+    ast::{Ast, ExprId, ExprKind, ItemKind, StmtId, StmtKind},
+    compilation_unit::{GlobalScope, VariableIdx},
+    hir::{HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind, Type, HIR},
 };
 
 struct Ctx {

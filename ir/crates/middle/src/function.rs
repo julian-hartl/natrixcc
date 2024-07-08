@@ -1,24 +1,13 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
-use cranelift_entity::{
-    entity_impl,
-    PrimaryMap,
-};
+use slotmap::new_key_type;
 
-use crate::{
-    cfg::Cfg,
-    instruction::VRegData,
-    ty::Type,
-    VReg,
-};
+use crate::{cfg::Cfg, ty::Type};
 
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub struct FunctionId(u32);
+new_key_type! {
+    pub struct FunctionRef;
+}
 
-entity_impl!(FunctionId, "fun");
 pub type Symbol = String;
 
 #[derive(Debug, Clone)]

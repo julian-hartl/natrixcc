@@ -1,47 +1,14 @@
-use std::{
-    collections::{
-        HashMap,
-        HashSet,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
-};
+use std::collections::{HashMap, HashSet};
 
-use fusion_compiler::{
-    bug,
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{bug, Idx, IdxVec};
 
 use crate::{
-    compilation_unit::{
-        GlobalScope,
-        VariableIdx,
-    },
-    hir::{
-        HIRExpr,
-        HIRExprKind,
-        HIRStmt,
-        HIRStmtKind,
-        HIR,
-    },
+    compilation_unit::{GlobalScope, VariableIdx},
+    hir::{HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind, HIR},
     mir::{
-        basic_block::{
-            BasicBlock,
-            BasicBlockIdx,
-        },
-        BasicBlocks,
-        Function,
-        FunctionIdx,
-        Instruction,
-        InstructionIdx,
-        InstructionKind,
-        PhiNode,
-        TerminatorKind,
-        Value,
-        MIR,
+        basic_block::{BasicBlock, BasicBlockIdx},
+        BasicBlocks, Function, FunctionIdx, Instruction, InstructionIdx, InstructionKind, PhiNode,
+        TerminatorKind, Value, MIR,
     },
 };
 
@@ -1016,11 +983,7 @@ mod test {
 
     use fusion_compiler::Idx;
 
-    use crate::mir::{
-        BasicBlockIdx,
-        FunctionIdx,
-        MIR,
-    };
+    use crate::mir::{BasicBlockIdx, FunctionIdx, MIR};
 
     pub fn assert_mir(input: &str, expected_mir: &str) -> MIR {
         let mut compilation_unit =

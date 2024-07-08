@@ -1,10 +1,7 @@
+use itertools::Itertools;
 use tracing::debug;
 
-use crate::{
-    module::Module,
-    optimization::FunctionPass,
-    FunctionId,
-};
+use crate::{module::Module, optimization::FunctionPass, FunctionRef};
 
 /// # Basic block merge
 ///
@@ -80,9 +77,9 @@ impl crate::optimization::Pass for Pass {
 }
 
 impl FunctionPass for Pass {
-    fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
+    fn run_on_function(&mut self, module: &mut Module, function: FunctionRef) -> usize {
         let function = &mut module.functions[function];
-        let mut worklist = function.cfg.basic_block_ids().collect::<Vec<_>>();
+        let mut worklist = function.cfg.basic_blocks.keys().collect_vec();
         let mut merged = 0;
         while let Some(b_id) = worklist.pop() {
             let cfg = &mut function.cfg;
@@ -96,11 +93,13 @@ impl FunctionPass for Pass {
             if cfg.successors(a_id).count() != 1 {
                 continue;
             }
-            debug!("Merging {b_id} into {a_id}");
-            let (instructions, b_term) = cfg.remove_basic_block(b_id);
-            let a = cfg.basic_block_mut(a_id);
-            a.append_instructions(instructions.into_iter());
-            a.update_terminator(|term| *term = b_term);
+            let b = cfg
+                .remove_basic_block(b_id)
+                .expect("Basic block does not exist");
+            let a = &mut cfg.basic_blocks[a_id];
+            debug!("Merging {b} into {a}");
+            a.append_instructions(b.instructions.into_iter());
+            a.update_terminator(|term| *term = b.terminator.unwrap());
             cfg.recompute_successors(a_id);
             merged += 1;
         }
@@ -112,15 +111,8 @@ impl FunctionPass for Pass {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cfg,
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]
@@ -129,23 +121,23 @@ mod tests {
             "
             fun void @test() {
             bb0:
-                v0 = bool 1;
-                condbr v0 bb1, bb2;
+                bool %0 = true;
+                condbr %0 bb1, bb2;
             bb1:
-                v1 = add i32 1, 2;
+                i32 %1 = add 1i32, 2i32;
                 br bb4;
             bb2:
-                v2 = add i32 3, 4;
+                i32 %2 = add 3i32, 4i32;
                 br bb3;
             bb3:
-                v3 = add i32 5, 6;
+                i32 %3 = add 5i32, 6i32;
                 br bb5;
             bb4:
-                v4 = add i32 7, 8;
+                i32 %4 = add 7i32, 8i32;
                 br bb5;
             bb5:
-                v5 = add i32 9, 10;
-                ret void;
+                i32 %5 = add 9i32, 10i32;
+                ret;
             }
 ",
         );
@@ -158,19 +150,19 @@ mod tests {
             "
         fun void @test() {
         bb0:
-            v0 = bool 1;
-            condbr 1 bb1, bb2;
+            bool %0 = true;
+            condbr true bb1, bb2;
         bb1:
-            v1 = i32 3;
-            v4 = i32 15;
+            i32 %1 = 3i32;
+            i32 %4 = 15i32;
             br bb5;
         bb2:
-            v2 = i32 7;
-            v3 = i32 11;
+            i32 %2 = 7i32;
+            i32 %3 = 11i32;
             br bb5;
         bb5:
-            v5 = i32 19;
-            ret void;
+            i32 %5 = 19i32;
+            ret;
         }
 ",
         );

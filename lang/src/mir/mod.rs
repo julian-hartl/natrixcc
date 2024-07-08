@@ -1,35 +1,17 @@
 use std::{
     collections::HashMap,
-    fmt::{
-        Display,
-        Formatter,
-    },
-    ops::{
-        Deref,
-        DerefMut,
-    },
+    fmt::{Display, Formatter},
+    ops::{Deref, DerefMut},
 };
 
-use basic_block::{
-    BasicBlock,
-    BasicBlockIdx,
-};
+use basic_block::{BasicBlock, BasicBlockIdx};
 #[allow(unused)]
 pub use builder::MIRBuilder;
-use fusion_compiler::{
-    bug,
-    idx,
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{bug, idx, Idx, IdxVec};
 #[allow(unused)]
 pub use writer::MIRWriter;
 
-use crate::{
-    ast,
-    compilation_unit,
-    compilation_unit::VariableIdx,
-};
+use crate::{ast, compilation_unit, compilation_unit::VariableIdx};
 
 mod basic_block;
 mod builder;

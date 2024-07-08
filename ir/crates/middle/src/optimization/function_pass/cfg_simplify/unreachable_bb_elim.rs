@@ -1,17 +1,11 @@
-use tracing::{
-    debug,
-    trace,
-};
+use itertools::Itertools;
+use tracing::{debug, trace};
 
 use crate::{
-    instruction::{
-        InstrKind,
-        OpInstr,
-    },
+    instruction::{InstrKind, OpInstr},
     module::Module,
     optimization::function_pass::FunctionPass,
-    FunctionId,
-    Instr,
+    FunctionRef,
 };
 
 /// # Unreachable Basic Block Elimination
@@ -73,36 +67,38 @@ impl crate::optimization::Pass for Pass {
 }
 
 impl FunctionPass for Pass {
-    fn run_on_function(&mut self, module: &mut Module, function: FunctionId) -> usize {
+    fn run_on_function(&mut self, module: &mut Module, function: FunctionRef) -> usize {
         let function = &mut module.functions[function];
         let domtree = function.cfg.dom_tree();
-        let entry_block = function.cfg.entry_block();
+        let entry_block = function.cfg.entry_block_ref();
         // Find all unreachable basic blocks.
         // A basic block is unreachable iff it is not dominated by the entry block.
         let unreachable_bbs = function
             .cfg
-            .basic_block_ids()
+            .basic_blocks
+            .keys()
             .filter(|&bb| !domtree.dominates(entry_block, bb))
-            .collect::<Vec<_>>();
+            .collect_vec();
         if unreachable_bbs.is_empty() {
             return 0;
         }
-        trace!(
+        debug!(
             "Removing {} unreachable basic blocks: {:?}",
             unreachable_bbs.len(),
             unreachable_bbs
         );
         let removed = unreachable_bbs.len();
-        for bb in unreachable_bbs {
+        for bb_ref in unreachable_bbs {
             // Remove the unreachable block from the cfg
-            debug!("Removing {bb}");
-            let successors = function.cfg.successors(bb).collect::<Vec<_>>();
-            function.cfg.remove_basic_block(bb);
-            for successor_id in successors {
+            let bb = &function.cfg.basic_blocks[bb_ref];
+            trace!("Removing {bb}");
+            let successors = function.cfg.successors(bb_ref).collect_vec();
+            function.cfg.remove_basic_block(bb_ref);
+            for successor_ref in successors {
                 // Check if we can remove basic block arguments from one of the unreachable block's successors
                 // This is the case if the successor now only has one predecessor
                 let pred_id = {
-                    let mut preds = function.cfg.predecessors(successor_id);
+                    let mut preds = function.cfg.predecessors(successor_ref);
                     let Some(pred_id) = preds.next() else {
                         continue;
                     };
@@ -111,34 +107,41 @@ impl FunctionPass for Pass {
                     }
                     pred_id
                 };
-                debug!("Removing jump target argument list from {pred_id}");
                 // Clear the jump target argument list of the predecessor
-                let pred = function.cfg.basic_block_mut(pred_id);
+                let pred = &mut function.cfg.basic_blocks[pred_id];
+                trace!("Removing jump target argument list from {pred}");
                 let Some(branch_args) =
-                    pred.update_terminator(|terminator| terminator.clear_args(successor_id))
+                    pred.update_terminator(|terminator| terminator.clear_args(successor_ref))
                 else {
                     continue;
                 };
-                debug!("Removing basic block arguments from {successor_id}");
-                let branch_args = branch_args.collect::<Vec<_>>();
+                let branch_args = branch_args.collect_vec();
+                let successor = &function.cfg.basic_blocks[successor_ref];
+                trace!("Removing basic block arguments from {successor}");
                 // Remove the basic block arguments from the successor
-                let successors_args = function
-                    .cfg
-                    .basic_block_mut(successor_id)
+                let successors_args = function.cfg.basic_blocks[successor_ref]
                     .clear_arguments()
-                    .collect::<Vec<_>>();
-                for (argument, op) in successors_args.into_iter().zip(branch_args) {
-                    let ty = function.cfg.vreg_ty_cloned(argument);
+                    .collect_vec();
+                for (bb_arg_ref, op) in successors_args.into_iter().zip(branch_args) {
+                    let bb_arg = &function.cfg.bb_args[bb_arg_ref];
+                    let ty = bb_arg.ty.clone();
                     // To keep the program consistent, we need to insert move instruction for each argument
                     // They look like this:
                     // <previous argument> = <previous value argument in branch instruction>
-                    function.cfg.basic_block_mut(pred_id).append_instruction(
+                    let instr_id = function.cfg.add_instruction(
+                        pred_id,
                         ty,
-                        InstrKind::Op(OpInstr {
-                            value: argument,
-                            op,
-                        }),
+                        InstrKind::Op(OpInstr { op }),
+                        bb_arg.symbol.clone(),
                     );
+                    for instruction in function.cfg.instructions.values_mut() {
+                        instruction.update_refs(bb_arg_ref.into(), instr_id.into());
+                    }
+                    for bb in function.cfg.basic_blocks.values_mut() {
+                        bb.update_terminator(|term| {
+                            term.update_refs(bb_arg_ref.into(), instr_id.into())
+                        });
+                    }
                 }
             }
         }
@@ -151,16 +154,8 @@ mod tests {
     use tracing_test::traced_test;
 
     use crate::{
-        cfg,
-        optimization::{
-            CFGSimplifyPipelineConfig,
-            Pipeline,
-            PipelineConfig,
-        },
-        test::{
-            assert_module_is_equal_to_src,
-            create_test_module_from_source,
-        },
+        optimization::{CFGSimplifyPipelineConfig, PipelineConfig},
+        test::{assert_module_is_equal_to_src, create_test_module_from_source},
     };
 
     #[test]
@@ -170,14 +165,14 @@ mod tests {
             r#"
             fun void @test() {
             bb0:
-              v0 = bool 1;
+              bool %0 = true;
               br bb2;
             bb1:
-              v1 = i32 7;
+              i32 %1 = 7i32;
               br bb2;
             bb2:
-              v3 = i32 8;
-              ret void;
+              i32 %3 = 8i32;
+              ret;
             }
         "#,
         );
@@ -189,11 +184,11 @@ mod tests {
             "
             fun void @test() {
             bb0:
-                v0 = bool 1;
+                bool %0 = true;
                 br bb2;
             bb2:
-                v3 = i32 8;
-                ret void;
+                i32 %3 = 8i32;
+                ret;
             }
             ",
         )
@@ -205,14 +200,14 @@ mod tests {
             r#"
             fun i32 @test() {
             bb0:
-              v0 = i32 8;
-              br bb2(v0);
+              i32 %0 = 8i32;
+              br bb2(%0);
             bb1:
-              v1 = i32 7;
-              br bb2(v1);
-            bb2(i32 v4):
-              v3 = i32 v4;
-              ret i32 v3;
+              i32 %1 = 7i32;
+              br bb2(%1);
+            bb2(i32 %4):
+              i32 %3 = %4;
+              ret %3;
             }
         "#,
         );
@@ -224,12 +219,12 @@ mod tests {
             "
             fun i32 @test() {
             bb0:
-                v0 = i32 8;
-                v4 = i32 8;
+                i32 %0 = 8i32;
+                i32 %4 = 8i32;
                 br bb2;
             bb2:
-              v3 = i32 v4;
-              ret i32 v3;
+              i32 %3 = %4;
+              ret %3;
             }
         ",
         )

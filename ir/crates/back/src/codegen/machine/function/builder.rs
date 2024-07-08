@@ -1,46 +1,24 @@
-use daggy::{
-    petgraph::prelude::Bfs,
-    Walker,
-};
+use daggy::{petgraph::prelude::Bfs, Walker};
 use natrix_middle::instruction::CmpOp;
 use rustc_hash::FxHashMap;
 use tracing::debug;
 
 use crate::codegen::{
     machine::{
-        backend::{
-            Backend,
-            Pattern,
-        },
-        function::{
-            cfg::BasicBlockId,
-            Function,
-        },
-        instr::{
-            InstrOperand,
-            PseudoInstr,
-        },
-        Instr,
-        MachInstr,
-        Register,
-        Size,
-        TargetMachine,
+        backend::{Backend, Pattern},
+        function::{cfg::BasicBlockId, Function},
+        instr::{InstrOperand, PseudoInstr},
+        Instr, MachInstr, Register, Size, TargetMachine,
     },
     selection_dag,
-    selection_dag::{
-        Immediate,
-        MachineOp,
-        Op,
-        Operand,
-        PseudoOp,
-    },
+    selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp},
 };
 
 #[derive(Debug)]
 pub struct FunctionBuilder<TM: TargetMachine> {
     function: Function<TM>,
     backend: TM::Backend,
-    bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockId, BasicBlockId>,
+    bb_mapping: FxHashMap<natrix_middle::cfg::BasicBlockRef, BasicBlockId>,
 }
 
 impl<TM: TargetMachine> FunctionBuilder<TM> {
@@ -68,11 +46,17 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
                 .find(|(_, mbb)| **mbb == mbb_id)
                 .unwrap()
                 .0;
-            debug!("Building machine basic block for basic block {}", bb);
+            debug!(
+                "Building machine basic block for basic block {}",
+                bb.display(&function.cfg)
+            );
             let dag = sel_dag.get_bb_dag(bb);
-            dag.save_graphviz("out").unwrap();
+            dag.save_graphviz("out", &function.cfg).unwrap();
             let mut node_list = Vec::with_capacity(dag.node_count());
-            debug!("Determining traversal order for basic block {}", bb);
+            debug!(
+                "Determining traversal order for basic block {}",
+                bb.display(&function.cfg)
+            );
             let bfs = Bfs::new(dag.graph(), dag.term_node());
             for n in bfs.iter(dag.graph()) {
                 node_list.push(n);
@@ -222,7 +206,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         self.function
     }
 
-    fn create_bb(&mut self, bb: natrix_middle::cfg::BasicBlockId) -> BasicBlockId {
+    fn create_bb(&mut self, bb: natrix_middle::cfg::BasicBlockRef) -> BasicBlockId {
         let mbb = self.function.create_bb();
         self.bb_mapping.insert(bb, mbb);
         mbb

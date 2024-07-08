@@ -1,13 +1,7 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    ast::lexer::{
-        Token,
-        TokenKind,
-    },
+    ast::lexer::{Token, TokenKind},
     text::span::TextSpan,
     typings::Type,
 };
@@ -164,10 +158,7 @@ impl DiagnosticsBag {
 mod test {
     use crate::{
         compilation_unit::CompilationUnit,
-        diagnostics::{
-            Diagnostic,
-            DiagnosticKind,
-        },
+        diagnostics::{Diagnostic, DiagnosticKind},
         text::span::TextSpan,
     };
 

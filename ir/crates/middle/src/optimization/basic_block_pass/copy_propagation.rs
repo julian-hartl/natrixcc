@@ -1,34 +1,24 @@
 use rustc_hash::FxHashMap;
 
 use crate::{
-    cfg::{
-        BasicBlockId,
-        TerminatorKind,
-    },
-    instruction::{
-        InstrKind,
-        Op,
-    },
+    cfg::{BasicBlockRef, TerminatorKind},
+    instruction::{InstrKind, Op},
     module::Module,
-    optimization::{
-        basic_block_pass::BasicBlockPass,
-        Pass,
-    },
-    FunctionId,
-    VReg,
+    optimization::{basic_block_pass::BasicBlockPass, Pass},
+    FunctionRef, Value,
 };
 
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
 struct CopyGraph {
-    edges: FxHashMap<VReg, VReg>,
+    edges: FxHashMap<Value, Value>,
 }
 
 impl CopyGraph {
-    pub fn insert_copy(&mut self, original_value: VReg, copy: VReg) {
+    pub fn insert_copy(&mut self, original_value: Value, copy: Value) {
         self.edges.insert(copy, original_value);
     }
 
-    pub fn find_original_value(&self, value: VReg) -> VReg {
+    pub fn find_original_value(&self, value: Value) -> Value {
         let mut value = value;
         while let Some(original_value) = self.edges.get(&value).copied() {
             value = original_value;
@@ -50,14 +40,15 @@ impl BasicBlockPass for CopyPropagationPass {
     fn run_on_basic_block(
         &mut self,
         module: &mut Module,
-        function: FunctionId,
-        basic_block: BasicBlockId,
+        function: FunctionRef,
+        basic_block: BasicBlockRef,
     ) -> usize {
         let cfg = &mut module.functions[function].cfg;
-        let bb = cfg.basic_block_mut(basic_block);
+        let bb = &mut cfg.basic_blocks[basic_block];
         let mut changes = 0;
         let mut copy_graph = CopyGraph::default();
-        for instr in bb.instructions_mut() {
+        for instr_Id in bb.instructions() {
+            let instr = &mut cfg.instructions[instr_Id];
             match &mut instr.kind {
                 InstrKind::Alloca(_) => {}
                 InstrKind::Store(store_instr) => {
@@ -69,8 +60,8 @@ impl BasicBlockPass for CopyPropagationPass {
                 InstrKind::Load(_) => {}
                 InstrKind::Op(op_instr) => match &op_instr.op {
                     Op::Const(_) => {}
-                    Op::Vreg(value) => {
-                        copy_graph.insert_copy(*value, op_instr.value);
+                    Op::Value(value) => {
+                        copy_graph.insert_copy(*value, instr.value());
                     }
                 },
                 InstrKind::Sub(sub_instr) => {
@@ -124,7 +115,7 @@ impl CopyPropagationPass {
     fn apply_copy_graph_to_op(copy_graph: &CopyGraph, op: &mut Op) -> bool {
         match op {
             Op::Const(_) => false,
-            Op::Vreg(value) => {
+            Op::Value(value) => {
                 let original_value = copy_graph.find_original_value(*value);
                 if original_value != *value {
                     *value = original_value;
@@ -139,22 +130,19 @@ impl CopyPropagationPass {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        optimization::PipelineConfig,
-        test::create_test_module_from_source,
-    };
+    use crate::{optimization::PipelineConfig, test::create_test_module_from_source};
 
     #[test]
     fn should_propagate_copies() {
         let mut module = create_test_module_from_source(
             "
                 fun i32 @test(i32) {
-                bb0(i32 v0):
-                    v1 = i32 v0;
-                    v2 = add i32 v1, v0;
-                    v3 = i32 v1;
-                    v4 = sub i32 v2, v3;
-                    ret i32 v4;
+                bb0(i32 %0):
+                    i32 %1 = %0;
+                    i32 %2 = add %1, %0;
+                    i32 %3 = %1;
+                    i32 %4 = sub %2, %3;
+                    ret %4;
                 }
             ",
         );
@@ -163,12 +151,12 @@ mod tests {
         assert_eq!(
             function.to_string(),
             "fun i32 @test(i32) {
-bb0(i32 v0):
-    v1 = i32 v0;
-    v2 = add i32 v0, v0;
-    v3 = i32 v1;
-    v4 = sub i32 v2, v0;
-    ret i32 v4;
+bb0(i32 %0):
+    i32 %1 = %0;
+    i32 %2 = add %0, %0;
+    i32 %3 = %1;
+    i32 %4 = sub %2, %0;
+    ret %4;
 }
 "
         )

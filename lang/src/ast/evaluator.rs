@@ -4,33 +4,11 @@ use fusion_compiler::Idx;
 
 use crate::{
     ast::{
-        visitor::ASTVisitor,
-        AssignExpr,
-        Ast,
-        BinOpKind,
-        BinaryExpr,
-        BlockExpr,
-        Body,
-        BoolExpr,
-        CallExpr,
-        Expr,
-        FunctionDeclaration,
-        IfExpr,
-        ItemId,
-        LetStmt,
-        NumberExpr,
-        ParenthesizedExpr,
-        Stmt,
-        UnOpKind,
-        UnaryExpr,
-        VarExpr,
-        WhileStmt,
+        visitor::ASTVisitor, AssignExpr, Ast, BinOpKind, BinaryExpr, BlockExpr, Body, BoolExpr,
+        CallExpr, Expr, FunctionDeclaration, IfExpr, ItemId, LetStmt, NumberExpr,
+        ParenthesizedExpr, Stmt, UnOpKind, UnaryExpr, VarExpr, WhileStmt,
     },
-    compilation_unit::{
-        FunctionIdx,
-        GlobalScope,
-        VariableIdx,
-    },
+    compilation_unit::{FunctionIdx, GlobalScope, VariableIdx},
     text::span::TextSpan,
 };
 

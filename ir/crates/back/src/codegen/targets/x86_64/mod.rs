@@ -1,9 +1,6 @@
 use machine::instr::Instr as MInstr;
 use natrix_middle::instruction::CmpOp;
-use smallvec::{
-    smallvec,
-    SmallVec,
-};
+use smallvec::{smallvec, SmallVec};
 use strum::VariantArray;
 
 use crate::codegen::{
@@ -11,24 +8,12 @@ use crate::codegen::{
     machine::{
         backend,
         function::{
-            builder::{
-                MatchedPattern,
-                PatternIn,
-                PatternInOperand,
-                PatternInOutput,
-            },
-            BasicBlockId,
-            Function,
+            builder::{MatchedPattern, PatternIn, PatternInOperand, PatternInOutput},
+            BasicBlockId, Function,
         },
-        instr::{
-            InstrOperand,
-            PseudoInstr,
-        },
+        instr::{InstrOperand, PseudoInstr},
         isa::PhysicalRegister as MachPhysicalRegister,
-        Architecture,
-        Endianness,
-        Size,
-        TargetMachine,
+        Architecture, Endianness, Size, TargetMachine,
     },
     selection_dag::Immediate,
     targets::calling_convention::systemv::SystemV,

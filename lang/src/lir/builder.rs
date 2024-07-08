@@ -3,32 +3,13 @@ use std::collections::HashMap;
 use fusion_compiler::Idx;
 
 use crate::{
-    compilation_unit::{
-        GlobalScope,
-        VariableIdx,
-    },
+    compilation_unit::{GlobalScope, VariableIdx},
     lir::{
-        BasicBlock,
-        BasicBlockIdx,
-        ConstOp,
-        Function,
-        Instruction,
-        InstructionKind,
-        Operand,
-        OperandKind,
-        Place,
-        PlaceIdx,
-        Terminator,
-        Type,
-        LIR,
+        BasicBlock, BasicBlockIdx, ConstOp, Function, Instruction, InstructionKind, Operand,
+        OperandKind, Place, PlaceIdx, Terminator, Type, LIR,
     },
     mir,
-    mir::{
-        Binop,
-        InstructionIdx,
-        Value,
-        MIR,
-    },
+    mir::{Binop, InstructionIdx, Value, MIR},
 };
 
 pub struct LIRBuilder<'mir> {

@@ -1,19 +1,8 @@
-use std::fmt::{
-    Display,
-    Formatter,
-};
+use std::fmt::{Display, Formatter};
 
-use fusion_compiler::{
-    bug,
-    idx,
-    Idx,
-};
+use fusion_compiler::{bug, idx, Idx};
 
-use crate::mir::{
-    InstructionIdx,
-    Terminator,
-    TerminatorKind,
-};
+use crate::mir::{InstructionIdx, Terminator, TerminatorKind};
 
 /// A node in the MIR.
 ///

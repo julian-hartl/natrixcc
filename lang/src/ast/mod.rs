@@ -1,30 +1,17 @@
 use std::{
-    fmt::{
-        Display,
-        Formatter,
-    },
+    fmt::{Display, Formatter},
     hash::Hash,
     ops::Deref,
 };
 
-use fusion_compiler::{
-    idx,
-    Idx,
-    IdxVec,
-};
+use fusion_compiler::{idx, Idx, IdxVec};
 use printer::ASTPrinter;
-use termion::color::{
-    Fg,
-    Reset,
-};
+use termion::color::{Fg, Reset};
 use visitor::ASTVisitor;
 
 use crate::{
     ast::lexer::Token,
-    compilation_unit::{
-        FunctionIdx,
-        VariableIdx,
-    },
+    compilation_unit::{FunctionIdx, VariableIdx},
     text::span::TextSpan,
     typings::Type,
 };
@@ -812,24 +799,9 @@ mod test {
     use super::visitor::ASTVisitor;
     use crate::{
         ast::{
-            AssignExpr,
-            Ast,
-            BinaryExpr,
-            BlockExpr,
-            BoolExpr,
-            CallExpr,
-            Expr,
-            FunctionDeclaration,
-            IfExpr,
-            ItemId,
-            LetStmt,
-            NumberExpr,
-            ParenthesizedExpr,
-            ReturnStmt,
-            Stmt,
-            UnaryExpr,
-            VarExpr,
-            WhileStmt,
+            AssignExpr, Ast, BinaryExpr, BlockExpr, BoolExpr, CallExpr, Expr, FunctionDeclaration,
+            IfExpr, ItemId, LetStmt, NumberExpr, ParenthesizedExpr, ReturnStmt, Stmt, UnaryExpr,
+            VarExpr, WhileStmt,
         },
         compilation_unit::CompilationUnit,
         text::span::TextSpan,

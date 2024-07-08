@@ -1,21 +1,10 @@
-use rustc_hash::{
-    FxHashMap,
-    FxHashSet,
-};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
-    analysis::dataflow::{
-        forward::ForwardAnalysisRunner,
-        lattice,
-    },
-    cfg::Terminator,
-    instruction::{
-        Const,
-        Op,
-    },
-    Instr,
-    InstrKind,
-    VReg,
+    analysis::dataflow::{forward::ForwardAnalysisRunner, lattice},
+    cfg::{BasicBlock, Terminator},
+    instruction::{Const, Op},
+    Instr, InstrKind, Value,
 };
 
 #[derive(Debug, Default, Clone)]
@@ -55,20 +44,20 @@ pub struct Analysis;
 pub type AnalysisRunner<'a> = ForwardAnalysisRunner<'a, Analysis>;
 
 impl super::Analysis for Analysis {
-    type V = FxHashMap<VReg, ConcreteValues>;
+    type V = FxHashMap<Value, ConcreteValues>;
 
-    fn analyse_instr(instr: &Instr, values: &mut Self::V) {
-        if let InstrKind::Op(instr) = &instr.kind {
-            if let Op::Const(const_val) = &instr.op {
+    fn analyse_instr(bb: &BasicBlock, instr: &Instr, values: &mut Self::V) {
+        if let InstrKind::Op(op_instr) = &instr.kind {
+            if let Op::Const(const_val) = &op_instr.op {
                 values.insert(
-                    instr.value,
+                    instr.value(),
                     ConcreteValues::from_single_value(const_val.clone()),
                 );
             }
         };
     }
 
-    fn analyse_term(term: &Terminator, v: &mut Self::V) {
+    fn analyse_term(bb: &BasicBlock, term: &Terminator, v: &mut Self::V) {
         // todo: add concrete branch args
     }
 }

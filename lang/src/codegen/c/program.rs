@@ -1,22 +1,10 @@
-use std::{
-    fs::File,
-    io::Write,
-    process::Command,
-};
+use std::{fs::File, io::Write, process::Command};
 
 use anyhow::anyhow;
 
 use crate::{
     codegen::c::{
-        ast::{
-            CAst,
-            CBlock,
-            CExpr,
-            CFunctionDecl,
-            CItem,
-            CParameter,
-            CStmt,
-        },
+        ast::{CAst, CBlock, CExpr, CItem, CParameter, CStmt},
         CTranspiler,
     },
     compilation_unit::CompilationUnit,
@@ -54,12 +42,15 @@ impl CProgram {
         let mut file = File::create(Self::C_INPUT_FILE)?;
         let transpiled_code = self.source_code();
         file.write_all(transpiled_code.as_bytes())?;
-        Command::new(Self::C_COMPILER)
+        if !Command::new(Self::C_COMPILER)
             .arg(Self::C_INPUT_FILE)
             .arg("-o")
             .arg(Self::OUTPUT_FILE)
             .status()?
-            .exit_ok()?;
+            .success()
+        {
+            return Err(anyhow!("Failed to compile C program"));
+        }
         Ok(file)
     }
 

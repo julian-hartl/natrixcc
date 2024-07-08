@@ -5,13 +5,7 @@ use fusion_compiler::Idx;
 
 use crate::{
     compilation_unit::GlobalScope,
-    hir::{
-        HIRExpr,
-        HIRExprKind,
-        HIRStmt,
-        HIRStmtKind,
-        HIR,
-    },
+    hir::{HIRExpr, HIRExprKind, HIRStmt, HIRStmtKind, HIR},
 };
 
 pub struct HIRWriter<W> {
