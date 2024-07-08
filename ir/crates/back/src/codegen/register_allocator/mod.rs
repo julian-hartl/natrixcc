@@ -802,7 +802,7 @@ impl<TM: TargetMachine> Function<TM> {
                 if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
                     live_sets.remove(bb_id, reg);
                     local_live_ranges[reg]
-                        .get_or_insert_default()
+                        .get_or_insert_with(Default::default)
                         .set_start(ProgPoint::Write(instr_nr));
                 }
                 let read = instr.reads();
@@ -812,7 +812,7 @@ impl<TM: TargetMachine> Function<TM> {
                     };
                     live_sets.insert(bb_id, reg);
                     local_live_ranges[reg]
-                        .get_or_insert_default()
+                        .get_or_insert_with(Default::default)
                         .maybe_set_end(ProgPoint::Read(instr_nr));
                 }
                 if let Some(val) = instr_nr.checked_sub(1) {
@@ -823,7 +823,7 @@ impl<TM: TargetMachine> Function<TM> {
                 if let Some(def) = def.try_as_virtual() {
                     live_sets.remove(bb_id, def);
                     local_live_ranges[def]
-                        .get_or_insert_default()
+                        .get_or_insert_with(Default::default)
                         .set_start(entry_pp);
                 }
             }

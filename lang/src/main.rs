@@ -1,5 +1,3 @@
-#![feature(exit_status_error)]
-
 use std::{fs::File, io::Write};
 
 use anyhow::{anyhow, Result};

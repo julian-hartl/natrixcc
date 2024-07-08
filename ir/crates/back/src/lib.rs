@@ -1,4 +1,3 @@
-#![feature(option_get_or_insert_default)]
 #![deny(clippy::enum_glob_use)]
 #![warn(clippy::pedantic)]
 #![forbid(unsafe_code)]
