@@ -1,15 +1,13 @@
-use std::collections::VecDeque;
-
-use indexmap::IndexSet;
-
 use crate::{
     analysis::dataflow::{Analysis, DFState, InstrWalker},
     cfg::BasicBlockRef,
     Function, Instr,
 };
+use fxindexmap::FxIndexSet;
+use std::collections::VecDeque;
 pub struct BackwardAnalysisRunner<'a, A: Analysis> {
     pub state: DFState<A::V>,
-    visited: IndexSet<BasicBlockRef>,
+    visited: FxIndexSet<BasicBlockRef>,
     worklist: VecDeque<BasicBlockRef>,
     pub function: &'a mut Function,
     _analysis: std::marker::PhantomData<A>,
@@ -19,7 +17,7 @@ impl<'a, A: Analysis> BackwardAnalysisRunner<'a, A> {
         let worklist = function.cfg.dfs_postorder().collect();
         Self {
             worklist,
-            visited: IndexSet::default(),
+            visited: FxIndexSet::default(),
             state: DFState::new(),
             function,
             _analysis: std::marker::PhantomData,

@@ -6,6 +6,8 @@ members = [
     "ir/crates/front",
     "ir/crates/middle",
     "lang"
+,
+    "crates/fxindexmap"
 ]
 
 [profile.release]

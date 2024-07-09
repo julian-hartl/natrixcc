@@ -2,18 +2,17 @@
 
 use std::fmt::{Debug, Display, Formatter};
 
-pub use builder::Builder;
-pub use domtree::DomTree;
-use indexmap::IndexSet;
-#[allow(unused_imports)]
-pub use petgraph::{prelude::*, visit::Walker};
-use slotmap::{new_key_type, SlotMap};
-use smallvec::SmallVec;
-
 use crate::{
     instruction::{Instr, Op},
     InstrKind, Type, Value,
 };
+pub use builder::Builder;
+pub use domtree::DomTree;
+use fxindexmap::FxIndexSet;
+#[allow(unused_imports)]
+pub use petgraph::{prelude::*, visit::Walker};
+use slotmap::{new_key_type, SlotMap};
+use smallvec::SmallVec;
 
 mod builder;
 mod domtree;
@@ -243,8 +242,8 @@ impl Display for BBArg {
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
     pub id: BasicBlockRef,
-    pub arguments: IndexSet<BBArgRef>,
-    pub instructions: IndexSet<InstrRef>,
+    pub arguments: FxIndexSet<BBArgRef>,
+    pub instructions: FxIndexSet<InstrRef>,
     pub terminator: Option<Terminator>,
     node_index: NodeIndex,
     pub symbol: String,
@@ -254,8 +253,8 @@ impl BasicBlock {
     pub fn new(id: BasicBlockRef, graph_index: NodeIndex, symbol: String) -> Self {
         Self {
             id,
-            arguments: IndexSet::new(),
-            instructions: IndexSet::new(),
+            arguments: FxIndexSet::default(),
+            instructions: FxIndexSet::default(),
             symbol,
             node_index: graph_index,
             terminator: None,

@@ -1,14 +1,13 @@
-use indexmap::IndexSet;
-
 use crate::{
     analysis::dataflow::{Analysis, DFState, InstrWalker},
     cfg::BasicBlockRef,
     Function, Instr,
 };
+use fxindexmap::FxIndexSet;
 
 pub struct ForwardAnalysisRunner<'a, A: Analysis> {
     pub state: DFState<A::V>,
-    visited: IndexSet<BasicBlockRef>,
+    visited: FxIndexSet<BasicBlockRef>,
     worklist: Vec<BasicBlockRef>,
     pub function: &'a mut Function,
     _analysis: std::marker::PhantomData<A>,
@@ -18,7 +17,7 @@ impl<'a, A: Analysis> ForwardAnalysisRunner<'a, A> {
     pub fn new(function: &'a mut Function) -> Self {
         Self {
             worklist: vec![function.cfg.entry_block_ref()],
-            visited: IndexSet::default(),
+            visited: FxIndexSet::default(),
             state: DFState::new(),
             function,
             _analysis: std::marker::PhantomData,
