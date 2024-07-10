@@ -1,6 +1,7 @@
+use crate::instruction::const_op::Const;
 use crate::{
     cfg::{BasicBlockRef, BranchTerm, TerminatorKind},
-    instruction::{Const, Op},
+    instruction::Op,
     module::Module,
     optimization::basic_block_pass,
     FunctionRef,
@@ -79,11 +80,10 @@ impl basic_block_pass::BasicBlockPass for Pass {
                 TerminatorKind::CondBranch(condbr_term) => {
                     match &condbr_term.cond {
                         Op::Const(const_val) => {
-                            let is_true_branch = match const_val {
-                                // It is important to not check equality with one, as any other value than 0 is evaluated to true at runtime.
-                                // For example: 2 => true, -1 => true, 0 => false
-                                Const::Int(_, value) => *value != 0,
-                            };
+                            let is_true_branch = const_val
+                                .try_as_bool_ref()
+                                .copied()
+                                .expect("Expected boolean constant");
                             let target = if is_true_branch {
                                 condbr_term.true_target.clone()
                             } else {

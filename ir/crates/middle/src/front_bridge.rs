@@ -1,14 +1,16 @@
 use itertools::Itertools;
-use natrix_front::module::{Identifier, Instruction, Literal, Operand};
 use rustc_hash::FxHashMap;
 
+use natrix_front::module::{Identifier, Instruction, Literal, Operand};
+
+use crate::instruction::const_op::Const;
 use crate::{
     cfg,
     cfg::{
         BBArgRef, BasicBlockRef, BranchTerm, CondBranchTerm, InstrRef, JumpTarget, RetTerm,
         TerminatorKind,
     },
-    instruction::{CmpOp, Const, Op},
+    instruction::{CmpOp, Op},
     Function, Module, Type, Value,
 };
 
@@ -166,12 +168,10 @@ impl FrontBridge {
     fn operand_to_op(&self, operand: Operand) -> Op {
         match operand {
             Operand::Literal(literal) => Op::Const(match literal {
-                Literal::Int(value, ty) => Const::Int(ty.into(), value),
-                Literal::Bool(value) =>
-                // todo: Migrate to Const::Bool
-                {
-                    Const::Int(Type::Bool, value as i64)
+                Literal::Int(value, ty) => {
+                    Const::from_ty(ty.into(), value).expect("Invalid integer value")
                 }
+                Literal::Bool(value) => Const::Bool(value),
             }),
             Operand::Value(value) => {
                 Op::Value(match self.instr_symbol_table.get(&value).copied() {

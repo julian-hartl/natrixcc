@@ -17,3 +17,14 @@ slotmap = "1.0.7"
 fxindexmap = { path = "../../../crates/fxindexmap" }
 itertools = "0.13.0"
 derive_more = "0.99.18"
+rand = "0.8.5"
+
+[dev-dependencies]
+test-case = "*"
+
+[profile.dev.package.test-case]
+opt-level = 3
+[profile.dev.package.derive_more]
+opt-level = 3
+[profile.dev.package.strum_macros]
+opt-level = 3

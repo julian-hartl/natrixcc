@@ -1,17 +1,3 @@
-use codegen::selection_dag;
-use daggy::{petgraph::visit::IntoNodeIdentifiers, NodeIndex, Walker};
-use iter_tools::Itertools;
-use natrix_middle::{
-    cfg::{BBArgRef, BasicBlockRef, BranchTerm, InstrRef, JumpTarget, Terminator, TerminatorKind},
-    instruction::{Const, OpInstr},
-    ty::Type,
-    InstrKind, Value,
-};
-use rustc_hash::FxHashMap;
-use selection_dag::SelectionDAG;
-use slotmap::SecondaryMap;
-use tracing::debug;
-
 use crate::{
     codegen,
     codegen::{
@@ -23,6 +9,20 @@ use crate::{
         selection_dag::{Immediate, MachineOp, Op, Operand, PseudoOp},
     },
 };
+use codegen::selection_dag;
+use daggy::{petgraph::visit::IntoNodeIdentifiers, NodeIndex, Walker};
+use iter_tools::Itertools;
+use natrix_middle::const_op::Const;
+use natrix_middle::{
+    cfg::{BBArgRef, BasicBlockRef, BranchTerm, InstrRef, JumpTarget, Terminator, TerminatorKind},
+    instruction::OpInstr,
+    ty::Type,
+    InstrKind, Value,
+};
+use rustc_hash::FxHashMap;
+use selection_dag::SelectionDAG;
+use slotmap::SecondaryMap;
+use tracing::debug;
 
 pub struct Builder<'func, TM: TargetMachine> {
     function: &'func mut Function<TM>,
@@ -244,7 +244,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                 Operand::Reg(Register::Virtual(self.map_value(*vreg, func)))
             }
             natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
-                Const::Int(ty, value) => {
+                Const::I64(ty, value) => {
                     let value = *value;
                     match ty {
                         Type::U8 => Immediate::from(value as u8),

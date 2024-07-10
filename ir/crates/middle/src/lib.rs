@@ -9,7 +9,6 @@ pub use module::Module;
 pub use ty::Type;
 
 use crate::cfg::{BBArgRef, Cfg, InstrRef};
-
 pub mod cfg;
 pub mod function;
 

@@ -1,8 +1,9 @@
 use rustc_hash::FxHashMap;
 
+use crate::instruction::const_op::Const;
 use crate::{
     cfg::{BasicBlockRef, TerminatorKind},
-    instruction::{CmpOp, Const, InstrKind, Op, OpInstr},
+    instruction::{CmpOp, InstrKind, Op, OpInstr},
     module::Module,
     optimization::{basic_block_pass::BasicBlockPass, Pass},
     FunctionRef, Value,
@@ -42,7 +43,7 @@ impl BasicBlockPass for ConstantFoldPass {
                         &constant_values,
                         &sub_instr.lhs,
                         &sub_instr.rhs,
-                        |lhs, rhs| lhs.sub(rhs).unwrap(),
+                        |lhs, rhs| lhs.checked_sub(rhs).unwrap(),
                     ) {
                         instr.kind = InstrKind::Op(OpInstr {
                             op: Op::Const(const_val),
@@ -61,7 +62,7 @@ impl BasicBlockPass for ConstantFoldPass {
                         &constant_values,
                         &add_instr.lhs,
                         &add_instr.rhs,
-                        |lhs, rhs| lhs.add(rhs).unwrap(),
+                        |lhs, rhs| lhs.checked_add(rhs).unwrap(),
                     ) {
                         instr.kind = InstrKind::Op(OpInstr {
                             op: Op::Const(const_val),

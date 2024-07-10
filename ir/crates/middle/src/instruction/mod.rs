@@ -1,12 +1,16 @@
 use std::fmt::{Display, Formatter};
 
+use rand::Rng;
 use smallvec::{smallvec, SmallVec};
 use strum_macros::{Display, EnumTryAs};
 
+use crate::instruction::const_op::Const;
 use crate::{
     cfg::{BasicBlockRef, Cfg, InstrRef},
     Type, Value,
 };
+
+pub mod const_op;
 
 /// An instruction in a basic block.
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -155,6 +159,19 @@ pub enum InstrKind {
     Cmp(CmpInstr),
 }
 
+impl InstrKind {
+    pub fn produced_ty(&self, cfg: &Cfg) -> Type {
+        match self {
+            InstrKind::Alloca(alloca_instr) => Type::Ptr(Box::new(alloca_instr.ty.clone())),
+            InstrKind::Store(_) => Type::Void,
+            InstrKind::Load(_) => todo!(),
+            InstrKind::Op(op_instr) => op_instr.op.ty(cfg),
+            InstrKind::Sub(instr) | InstrKind::Add(instr) => instr.lhs.ty(cfg),
+            InstrKind::Cmp(_) => Type::Bool,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct AllocaInstr {
     pub num_elements: u32,
@@ -212,6 +229,13 @@ impl Op {
         }
     }
 
+    pub fn ty(&self, cfg: &Cfg) -> Type {
+        match self {
+            Op::Const(c) => c.ty(),
+            Op::Value(v) => cfg.value_ty(*v).clone(),
+        }
+    }
+
     pub fn display<'cfg>(&self, cfg: &'cfg Cfg) -> OpDisplay<'cfg, '_> {
         OpDisplay { cfg, op: self }
     }
@@ -234,61 +258,6 @@ impl Display for OpDisplay<'_, '_> {
         match self.op {
             Op::Const(c) => write!(f, "{}{}", c, c.ty()),
             Op::Value(l) => write!(f, "{}", l.display(self.cfg)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum Const {
-    Int(Type, i64),
-}
-
-impl Const {
-    pub fn cmp(self, other: Const, op: CmpOp) -> Option<Self> {
-        match (self, other) {
-            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
-                assert_eq!(lty, rty, "comparison of different types");
-                let res = match op {
-                    CmpOp::Eq => (lhs == rhs) as i64,
-                    CmpOp::Gt => (lhs > rhs) as i64,
-                };
-                Some(Self::Int(Type::Bool, res))
-            }
-        }
-    }
-
-    pub fn sub(self, other: Const) -> Option<Self> {
-        match (self, other) {
-            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
-                assert_eq!(lty, rty, "subtraction of different types");
-                let res = lhs.checked_sub(rhs)?;
-                // todo: check if result has overflown
-                Some(Self::Int(lty, res))
-            }
-        }
-    }
-
-    pub fn add(self, other: Const) -> Option<Self> {
-        match (self, other) {
-            (Self::Int(lty, lhs), Self::Int(rty, rhs)) => {
-                assert_eq!(lty, rty, "addition of different types");
-                let res = lhs.checked_add(rhs)?;
-                Some(Self::Int(lty, res))
-            }
-        }
-    }
-
-    pub fn ty(&self) -> Type {
-        match self {
-            Const::Int(ty, _) => ty.clone(),
-        }
-    }
-}
-
-impl Display for Const {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Int(_, value) => write!(f, "{}", value),
         }
     }
 }
@@ -316,10 +285,11 @@ pub enum CmpOp {
 #[cfg(test)]
 mod tests {
     mod instruction_type {
+        use crate::instruction::const_op::Const;
         use crate::{
             cfg,
             cfg::{RetTerm, TerminatorKind},
-            instruction::{Const, Op},
+            instruction::Op,
             test::create_test_function,
             ty::Type,
         };
@@ -332,8 +302,8 @@ mod tests {
             let instr_ref = cfg_builder.sub(
                 "v0".into(),
                 Type::I8,
-                Op::Const(Const::Int(Type::I8, 0)),
-                Op::Const(Const::Int(Type::I8, 1)),
+                Op::Const(Const::I8(0)),
+                Op::Const(Const::I8(1)),
             );
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             assert_eq!(function.cfg.instructions[instr_ref].ty, Type::I8);
@@ -357,8 +327,7 @@ mod tests {
             let mut function = create_test_function();
             let mut cfg_builder = cfg::Builder::new(&mut function);
             cfg_builder.start_bb("".into());
-            let op_instr_ref =
-                cfg_builder.op("v0".into(), Type::I8, Op::Const(Const::Int(Type::I8, 0)));
+            let op_instr_ref = cfg_builder.op("v0".into(), Type::I8, Op::Const(Const::I8(0)));
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
             assert_eq!(function.cfg.instructions[op_instr_ref].ty, Type::I8);
         }
@@ -372,7 +341,7 @@ mod tests {
             cfg_builder.store(
                 "v1".into(),
                 alloca_instr_ref.into(),
-                Op::Const(Const::Int(Type::I8, 0)),
+                Op::Const(Const::I8(0)),
             );
             cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         }

@@ -1,9 +1,10 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::instruction::const_op::Const;
 use crate::{
     analysis::dataflow::{forward::ForwardAnalysisRunner, lattice},
     cfg::{BasicBlock, Terminator},
-    instruction::{Const, Op},
+    instruction::Op,
     Instr, InstrKind, Value,
 };
 

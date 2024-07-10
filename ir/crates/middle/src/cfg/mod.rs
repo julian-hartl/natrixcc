@@ -2,33 +2,23 @@
 
 use std::fmt::{Debug, Display, Formatter};
 
-use crate::{
-    instruction::{Instr, Op},
-    InstrKind, Type, Value,
-};
-pub use builder::Builder;
-pub use domtree::DomTree;
-use fxindexmap::FxIndexSet;
 #[allow(unused_imports)]
 pub use petgraph::{prelude::*, visit::Walker};
 use slotmap::{new_key_type, SlotMap};
 use smallvec::SmallVec;
 
+pub use builder::Builder;
+pub use domtree::DomTree;
+use fxindexmap::FxIndexSet;
+
+use crate::{
+    instruction::{Instr, Op},
+    InstrKind, Type, Value,
+};
+
 mod builder;
 mod domtree;
-
-new_key_type! { pub struct BasicBlockRef; }
-
-impl BasicBlockRef {
-    pub fn display(self, cfg: &Cfg) -> &String {
-        &cfg.basic_blocks[self].symbol
-    }
-}
-#[derive(Debug, Clone, Eq, PartialEq)]
-struct CFGNode {
-    bb_ref: BasicBlockRef,
-}
-pub type Graph = StableGraph<CFGNode, (), Directed>;
+mod generator;
 
 #[derive(Debug, Default, Clone)]
 pub struct Cfg {
@@ -173,7 +163,27 @@ impl Cfg {
             .map(move |instr_id| Value::Instr(instr_id))
             .chain(self.bb_args.keys().map(move |arg_id| Value::BBArg(arg_id)))
     }
+
+    pub fn value_ty(&self, value: Value) -> &Type {
+        match value {
+            Value::Instr(instr) => &self.instructions[instr].ty,
+            Value::BBArg(arg) => &self.bb_args[arg].ty,
+        }
+    }
 }
+new_key_type! { pub struct BasicBlockRef; }
+impl BasicBlockRef {
+    pub fn display(self, cfg: &Cfg) -> &String {
+        &cfg.basic_blocks[self].symbol
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct CFGNode {
+    bb_ref: BasicBlockRef,
+}
+
+pub type Graph = StableGraph<CFGNode, (), Directed>;
 
 impl Display for Cfg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -208,6 +218,76 @@ mod cfg_tests {
     use itertools::Itertools;
 
     use super::*;
+
+    mod new_basic_block {
+        use super::*;
+
+        #[test]
+        fn should_create_basic_block() {
+            let name = "bb0".to_string();
+            let mut cfg = Cfg::new();
+            let bb_ref = cfg.new_basic_block(name.clone());
+            let bb = &cfg.basic_blocks[bb_ref];
+            assert_eq!(bb.symbol, name);
+            assert_eq!(bb.id, bb_ref);
+            assert_eq!(bb.instructions.len(), 0);
+            assert_eq!(bb.terminator, None);
+            assert_eq!(bb.arguments.len(), 0);
+            assert_eq!(cfg.graph[bb.node_index].bb_ref, bb_ref);
+        }
+
+        #[test]
+        fn should_set_first_basic_block_as_entry_block() {
+            let mut cfg = Cfg::new();
+            let bb0_ref = cfg.new_basic_block("bb0".into());
+            let bb1_ref = cfg.new_basic_block("bb1".into());
+            assert_eq!(cfg.entry_block, Some(bb0_ref));
+            assert_eq!(cfg.entry_block_ref(), bb0_ref);
+        }
+    }
+
+    mod remove_basic_block {
+        use super::*;
+
+        #[test]
+        fn should_remove_basic_block_from_arena() {
+            let mut cfg = Cfg::new();
+            let bb0 = cfg.new_basic_block("bb0".into());
+            let bb1 = cfg.new_basic_block("bb1".into());
+            cfg.remove_basic_block(bb0);
+            assert!(cfg.basic_blocks.get(bb0).is_none());
+            assert!(cfg.basic_blocks.get(bb1).is_some());
+        }
+
+        #[test]
+        fn should_remove_respective_node_in_graph() {
+            let mut cfg = Cfg::new();
+            let bb0_ref = cfg.new_basic_block("bb0".into());
+            let bb0_node_index = cfg.basic_blocks[bb0_ref].node_index;
+            let bb1 = cfg.new_basic_block("bb1".into());
+            let bb1_node_index = cfg.basic_blocks[bb1].node_index;
+            cfg.remove_basic_block(bb0_ref);
+            assert!(!cfg.graph.contains_node(bb0_node_index));
+            assert!(cfg.graph.contains_node(bb1_node_index));
+        }
+
+        #[test]
+        fn should_return_correct_bb() {
+            let mut cfg = Cfg::new();
+            let bb0 = cfg.new_basic_block("bb0".into());
+            cfg.new_basic_block("bb1".into());
+            let removed_bb = cfg.remove_basic_block(bb0);
+            assert_eq!(removed_bb.unwrap().id, bb0);
+        }
+    }
+
+    mod set_terminator {
+        #[test]
+        fn test() {
+            let mut cfg = super::generator::Generator::default().generate();
+            println!("{}", cfg);
+        }
+    }
 
     #[test]
     fn should_not_return_removed_basic_block() {
@@ -329,10 +409,8 @@ impl Display for BasicBlock {
 #[cfg(test)]
 mod bb_tests {
     use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
-    use crate::{
-        instruction::{Const, Op},
-        Type,
-    };
+    use crate::instruction::const_op::Const;
+    use crate::{instruction::Op, Type};
 
     #[test]
     fn should_set_entry_block() {
@@ -358,7 +436,7 @@ mod bb_tests {
         cfg.set_terminator(
             bb0,
             TerminatorKind::CondBranch(CondBranchTerm::new(
-                Op::Const(Const::Int(Type::I32, 1)),
+                Op::Const(Const::I32(1)),
                 JumpTarget::new(bb1, vec![]),
                 JumpTarget::new(bb2, vec![]),
             )),

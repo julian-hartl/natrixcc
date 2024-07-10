@@ -106,10 +106,11 @@ impl<'func> Builder<'func> {
 
 #[cfg(test)]
 mod tests {
+    use crate::instruction::const_op::Const;
     use crate::{
         cfg,
         cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind},
-        instruction::{CmpOp, Const, Op},
+        instruction::{CmpOp, Op},
         test::create_test_function,
         ty::Type,
     };
@@ -139,8 +140,8 @@ mod tests {
         cfg_builder.sub(
             "v0".into(),
             Type::I32,
-            Op::Const(Const::Int(Type::I32, 0)),
-            Op::Const(Const::Int(Type::I32, 1)),
+            Op::Const(Const::I32(0)),
+            Op::Const(Const::I32(1)),
         );
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
@@ -157,7 +158,7 @@ mod tests {
         let mut function = create_test_function();
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb("bb0".into());
-        cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::Int(Type::I32, 0)));
+        cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::I32(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             function.cfg.to_string(),
@@ -174,11 +175,7 @@ mod tests {
         let mut cfg_builder = cfg::Builder::new(&mut function);
         cfg_builder.start_bb("bb0".into());
         let alloca_value = cfg_builder.alloca("v0".into(), Type::I32, None);
-        cfg_builder.store(
-            "t".into(),
-            alloca_value.into(),
-            Op::Const(Const::Int(Type::I32, 0)),
-        );
+        cfg_builder.store("t".into(), alloca_value.into(), Op::Const(Const::I32(0)));
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
         assert_eq!(
             "bb0:
@@ -218,8 +215,8 @@ mod tests {
         let cmp_value = cfg_builder.icmp(
             "v0".into(),
             CmpOp::Eq,
-            Op::Const(Const::Int(Type::I32, 0)),
-            Op::Const(Const::Int(Type::I32, 1)),
+            Op::Const(Const::I32(0)),
+            Op::Const(Const::I32(1)),
         );
         cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm {
             cond: Op::Value(cmp_value.into()),
@@ -256,13 +253,13 @@ bb2:
             JumpTarget::no_args(bb1),
         )));
         cfg_builder.set_bb(bb1);
-        let var_0 = cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::Int(Type::I32, 0)));
+        let var_0 = cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::I32(0)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
             vec![Op::Value(var_0.into())],
         ))));
         cfg_builder.set_bb(bb2);
-        let var_1 = cfg_builder.op("v1".into(), Type::I32, Op::Const(Const::Int(Type::I32, 1)));
+        let var_1 = cfg_builder.op("v1".into(), Type::I32, Op::Const(Const::I32(1)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
             vec![Op::Value(var_1.into())],
@@ -271,7 +268,7 @@ bb2:
         let var_2 = cfg_builder.add_argument(Type::I32, "v2".into());
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(var_2.into()))));
         cfg_builder.set_bb(bb4);
-        let var_3 = cfg_builder.op("v3".into(), Type::I32, Op::Const(Const::Int(Type::I32, 2)));
+        let var_3 = cfg_builder.op("v3".into(), Type::I32, Op::Const(Const::I32(2)));
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
             bb3,
             vec![Op::Value(var_3.into())],

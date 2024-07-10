@@ -16,6 +16,17 @@ pub enum Type {
 }
 
 impl Type {
+    pub const INTEGERS: [Type; 8] = [
+        Type::U8,
+        Type::U16,
+        Type::U32,
+        Type::U64,
+        Type::I8,
+        Type::I16,
+        Type::I32,
+        Type::I64,
+    ];
+
     pub const fn size(&self) -> u32 {
         match self {
             Self::U8 => 1,
@@ -36,7 +47,7 @@ impl Type {
         self.size()
     }
 
-    pub fn deref(&self) -> &Type {
+    pub fn deref_ty(&self) -> &Type {
         match self {
             Type::Ptr(ty) => ty,
             _ => self,
