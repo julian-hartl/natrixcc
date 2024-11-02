@@ -36,7 +36,7 @@ impl<TM: TargetMachine> FunctionBuilder<TM> {
         debug!("Building machine function for function {}", function.name);
         let sel_dag_builder = selection_dag::Builder::new(&mut self.function);
         let mut sel_dag = sel_dag_builder.build(function);
-        for bb in function.cfg.basic_block_ids_ordered() {
+        for bb in function.cfg.basic_blocks.keys() {
             self.create_bb(bb);
         }
         for mbb_id in self.function.basic_blocks.indices() {

@@ -12,7 +12,7 @@ use crate::{
 use codegen::selection_dag;
 use daggy::{petgraph::visit::IntoNodeIdentifiers, NodeIndex, Walker};
 use iter_tools::Itertools;
-use natrix_middle::const_op::Const;
+use natrix_middle::instruction::const_op::Const;
 use natrix_middle::{
     cfg::{BBArgRef, BasicBlockRef, BranchTerm, InstrRef, JumpTarget, Terminator, TerminatorKind},
     instruction::OpInstr,
@@ -243,24 +243,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
             natrix_middle::instruction::Op::Value(vreg) => {
                 Operand::Reg(Register::Virtual(self.map_value(*vreg, func)))
             }
-            natrix_middle::instruction::Op::Const(constant) => Operand::Imm(match constant {
-                Const::I64(ty, value) => {
-                    let value = *value;
-                    match ty {
-                        Type::U8 => Immediate::from(value as u8),
-                        Type::U16 => Immediate::from(value as u16),
-                        Type::U32 => Immediate::from(value as u32),
-                        Type::U64 => Immediate::from(value as u64),
-                        Type::I8 => Immediate::from(value as i8),
-                        Type::I16 => Immediate::from(value as i16),
-                        Type::I32 => Immediate::from(value as i32),
-                        Type::I64 => Immediate::from(value),
-                        Type::Bool => Immediate::from(value as u8),
-                        Type::Void => unreachable!("Cannot have a constant of type void"),
-                        Type::Ptr(_) => unimplemented!(),
-                    }
-                }
-            }),
+            natrix_middle::instruction::Op::Const(constant) => Operand::Imm(constant.into()),
         }
     }
 

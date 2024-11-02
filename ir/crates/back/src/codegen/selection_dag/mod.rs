@@ -3,19 +3,19 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use crate::codegen::machine::{
+    reg::{Register, VRegRef},
+    Size, TargetMachine,
+};
 pub use builder::Builder;
 use daggy::petgraph::dot::{Config, Dot};
+use natrix_middle::instruction::const_op::Const;
 use natrix_middle::{
     cfg::{BasicBlockRef, Cfg},
     instruction::CmpOp,
 };
 use rustc_hash::FxHashMap;
 use smallvec::{smallvec, SmallVec};
-
-use crate::codegen::machine::{
-    reg::{Register, VRegRef},
-    Size, TargetMachine,
-};
 
 pub mod builder;
 
@@ -196,6 +196,22 @@ impl From<i64> for Immediate {
             value: bytes,
             signed: true,
             size: Size::QWord,
+        }
+    }
+}
+
+impl From<&Const> for Immediate {
+    fn from(value: &Const) -> Self {
+        match value {
+            Const::I64(value) => Self::from(*value),
+            Const::I32(value) => Self::from(*value),
+            Const::I16(value) => Self::from(*value),
+            Const::I8(value) => Self::from(*value),
+            Const::U64(value) => Self::from(*value),
+            Const::U32(value) => Self::from(*value),
+            Const::U16(value) => Self::from(*value),
+            Const::U8(value) => Self::from(*value),
+            Const::Bool(value) => Self::from(*value as u64),
         }
     }
 }

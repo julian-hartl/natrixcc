@@ -8,8 +8,9 @@ pub use instruction::{Instr, InstrKind};
 pub use module::Module;
 pub use ty::Type;
 
-use crate::cfg::{BBArgRef, Cfg, InstrRef};
+use crate::cfg::{BBArgRef, InstrRef};
 pub mod cfg;
+pub use cfg::Cfg;
 pub mod function;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, From)]
@@ -29,6 +30,13 @@ impl Value {
             return 1;
         }
         0
+    }
+
+    pub fn ty(self, cfg: &Cfg) -> &Type {
+        match self {
+            Value::Instr(instr) => &cfg.instructions[instr].ty,
+            Value::BBArg(arg) => &cfg.bb_args[arg].ty,
+        }
     }
 }
 

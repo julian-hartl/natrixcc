@@ -22,10 +22,24 @@ mod generator;
 
 #[derive(Debug, Default, Clone)]
 pub struct Cfg {
+    /// A typical graph data structure that represents the nodes of the control flow graph.
+    ///
+    /// Any graph related algorithms are implemented using this graph, such as dominator tree computation,
+    /// depth-first search, etc.
     graph: Graph,
+    /// All basic blocks in the control flow graph.
     pub basic_blocks: SlotMap<BasicBlockRef, BasicBlock>,
+    /// All instructions in the control flow graph. Use [`BasicBlock::instructions`] to get a single basic block's instructions.
     pub instructions: SlotMap<InstrRef, Instr>,
+    /// All basic block arguments in the control flow graph. Use [`BasicBlock::arguments`] to get a single basic block's arguments.
     pub bb_args: SlotMap<BBArgRef, BBArg>,
+    /// The entry block of the control flow graph.
+    ///
+    /// This block is always the first block executed when the respective function is called.
+    /// It is wrapped
+    /// in an [`Option`] because the entry block is only set after the first basic block is created.
+    /// When you are sure that the entry block
+    /// has been created, you can use [`Cfg::entry_block_ref`], which panics otherwise.
     entry_block: Option<BasicBlockRef>,
 }
 
@@ -34,38 +48,90 @@ impl Cfg {
         Self::default()
     }
 
+    /// Inserts a new basic block in the control flow graph and returns a reference to it.
+    ///
+    /// Creates a new [`BasicBlock`] with the given `symbol`, inserts it into the arena and adds a node without any edges to the internal graph structure.
+    ///
+    /// Sets the entry block to the newly created block if it is the first block created.
+    ///
+    /// ```
+    /// # use natrix_middle::Cfg;
+    /// let mut cfg = Cfg::new();
+    /// let bb0_ref = cfg.new_basic_block("bb0".into());
+    /// assert_eq!(cfg.entry_block_ref(), bb0_ref);
+    /// let bb0 = &cfg.basic_blocks[bb0_ref];
+    /// assert_eq!(bb0.symbol, "bb0");
+    /// let bb1_ref = cfg.new_basic_block("bb1".into());
+    /// assert_eq!(cfg.entry_block_ref(), bb0_ref);
+    /// ```
     pub fn new_basic_block(&mut self, symbol: String) -> BasicBlockRef {
-        let bb = {
-            self.basic_blocks.insert_with_key(|id| {
-                let node_idx = self.graph.add_node(CFGNode { bb_ref: id });
-                BasicBlock::new(id, node_idx, symbol)
-            })
-        };
+        let bb = self.basic_blocks.insert_with_key(|id| {
+            let node_idx = self.graph.add_node(CFGNode { bb_ref: id });
+            BasicBlock::new(id, node_idx, symbol)
+        });
         if self.entry_block.is_none() {
             self.entry_block = Some(bb);
         }
         bb
     }
 
+    /// Removes a basic block from the control flow graph and returns it.
+    ///
+    /// Removes the basic block from the arena and the graph structure, which disconnects it from any predecessors/successors.
+    /// Returns `None` if the basic block does not exist.
+    ///
+    /// ```
+    /// # use natrix_middle::Cfg;
+    /// let mut cfg = Cfg::new();
+    /// let bb0_ref = cfg.new_basic_block("bb0".into());
+    /// let bb1_ref = cfg.new_basic_block("bb1".into());
+    /// let bb0 = cfg.remove_basic_block(bb0_ref);
+    /// assert_eq!(bb0.unwrap().symbol, "bb0");
+    /// assert!(cfg.remove_basic_block(bb0_ref).is_none());
+    /// assert!(cfg.basic_blocks.get(bb0_ref).is_none());
+    /// assert!(cfg.basic_blocks.get(bb1_ref).is_some());
+    /// ```
     pub fn remove_basic_block(&mut self, bb_id: BasicBlockRef) -> Option<BasicBlock> {
         let bb = self.basic_blocks.remove(bb_id)?;
         self.graph.remove_node(bb.node_index);
         Some(bb)
     }
 
-    pub fn basic_block_ids_ordered(&self) -> impl Iterator<Item = BasicBlockRef> + '_ {
-        Bfs::new(
-            &self.graph,
-            self.basic_blocks[self.entry_block_ref()].node_index,
-        )
-        .iter(&self.graph)
-        .map(|node| self.graph[node].bb_ref)
-    }
-
+    /// Returns the reference to the entry block of the control flow graph.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entry block has not been created yet iff. the control flow graph is empty.
     pub fn entry_block_ref(&self) -> BasicBlockRef {
         self.entry_block.expect("Entry block has not been created")
     }
 
+    /// Adds a new instruction to the control flow graph and returns a reference to it.
+    ///
+    /// Inserts the instruction into the arena and appends it to the tail of respective basic block's instructions.
+    /// The instruction will have the given `ty`, `instr` and `symbol`. E.g. `add i32 %0, %1` would have the symbol `add`,
+    /// the type [`Type::I32`] and the instruction [`InstrKind::Add`].
+    ///
+    /// Does *not* check whether the instruction is semantically correct, e.g. passing the wrong type to an instruction.
+    ///
+    /// ```
+    /// # use natrix_middle::{Cfg, InstrKind, Type};
+    /// use natrix_middle::instruction::{BinOpInstr, Op, OpInstr};
+    /// use natrix_middle::instruction::const_op::Const;
+    /// let mut cfg = Cfg::new();
+    /// let bb0_ref = cfg.new_basic_block("bb0".into());
+    /// let a_ref = cfg.add_instruction(bb0_ref, Type::I32, InstrKind::Op(OpInstr::new(Op::Const(Const::I32(1)))), "a".into());
+    /// let b_ref = cfg.add_instruction(bb0_ref, Type::I32, InstrKind::Op(OpInstr::new(Op::Const(Const::I32(1)))), "b".into());
+    /// let sum_ref = cfg.add_instruction(bb0_ref, Type::I32, InstrKind::Add(BinOpInstr{lhs: Op::Value(a_ref.into()), rhs: Op::Value(b_ref.into())}), "sum".into());
+    /// assert!(cfg.instructions.get(a_ref).is_some());
+    /// assert!(cfg.instructions.get(b_ref).is_some());
+    /// assert!(cfg.instructions.get(sum_ref).is_some());
+    /// let bb0 = &cfg.basic_blocks[bb0_ref];
+    /// assert!(bb0.instructions().eq(vec![a_ref, b_ref, sum_ref].into_iter()));
+    /// let a = &cfg.instructions[a_ref];
+    /// assert_eq!(a.symbol, "a");
+    /// assert_eq!(a.ty, Type::I32);
+    /// ```
     pub fn add_instruction(
         &mut self,
         defined_in: BasicBlockRef,
@@ -84,6 +150,21 @@ impl Cfg {
         instr_ref
     }
 
+    /// Sets the terminator of the basic block with the given `id` to `terminator` and adjusts the control flow graph accordingly.
+    ///
+    /// When doing batch updating of the control flow graph, it might be more efficient to set all terminators first directly on the basic block and call [`Cfg::recompute_successors`] afterwards.
+    ///
+    /// ```
+    /// # use natrix_middle::{Cfg};
+    /// use natrix_middle::cfg::{BranchTerm, JumpTarget, TerminatorKind};
+    /// let mut cfg = Cfg::new();
+    /// let bb0_ref = cfg.new_basic_block("bb0".into());
+    /// let bb1_ref = cfg.new_basic_block("bb1".into());
+    /// cfg.set_terminator(bb0_ref, TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1_ref, vec![]))));
+    /// assert_eq!(cfg.basic_blocks[bb0_ref].terminator().kind, TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1_ref, vec![]))));
+    /// assert!(cfg.successors(bb0_ref).eq(vec![bb1_ref].into_iter()));
+    /// assert!(cfg.predecessors(bb1_ref).eq(vec![bb0_ref].into_iter()));
+    /// ```
     pub fn set_terminator(&mut self, id: BasicBlockRef, terminator: TerminatorKind) {
         self.set_edges_from_terminator(id, &terminator);
         let terminator = Terminator::new(terminator, id);
@@ -120,12 +201,14 @@ impl Cfg {
         );
     }
 
+    /// Returns an iterator over all direct predecessors of the given basic block
     pub fn predecessors(&self, bb_ref: BasicBlockRef) -> impl Iterator<Item = BasicBlockRef> + '_ {
         self.graph
             .neighbors_directed(self.basic_blocks[bb_ref].node_index, Incoming)
             .map(|n| self.graph[n].bb_ref)
     }
 
+    /// Returns an iterator over all direct successors of the given basic block
     pub fn successors(&self, bb_ref: BasicBlockRef) -> impl Iterator<Item = BasicBlockRef> + '_ {
         self.graph
             .neighbors(self.basic_blocks[bb_ref].node_index)
@@ -138,10 +221,36 @@ impl Cfg {
         self.set_edges_from_terminator(bb_ref, &terminator);
     }
 
+    /// Returns the computed [`DomTree`]
     pub fn dom_tree(&self) -> DomTree {
         DomTree::compute(self)
     }
 
+    /// Returns a dfs iterator over all reachable nodes from the entry node in post order
+    ///
+    /// ```
+    /// # use natrix_middle::Cfg;
+    /// # use natrix_middle::cfg::{BranchTerm, CondBranchTerm, RetTerm, TerminatorKind};
+    /// # use natrix_middle::instruction::const_op::Const;
+    /// # use natrix_middle::instruction::Op;
+    /// let mut cfg = Cfg::new();
+    /// let bb0 = cfg.new_basic_block("bb0".to_string());
+    /// let bb1 = cfg.new_basic_block("bb1".to_string());
+    /// let bb2 = cfg.new_basic_block("bb2".to_string());
+    /// let bb3 = cfg.new_basic_block("bb3".to_string());
+    ///
+    /// cfg.set_terminator(bb0, TerminatorKind::CondBranch(CondBranchTerm::new(Op::Const(Const::Bool(true)), bb1.into(), bb2.into())));
+    /// cfg.set_terminator(bb1, TerminatorKind::Branch(BranchTerm::new(bb3.into())));
+    /// cfg.set_terminator(bb2, TerminatorKind::Branch(BranchTerm::new(bb0.into())));
+    /// cfg.set_terminator(bb3, TerminatorKind::Ret(RetTerm::empty()));
+    ///
+    /// let mut traversal = cfg.dfs_postorder();
+    /// assert_eq!(traversal.next(), Some(bb3));
+    /// assert_eq!(traversal.next(), Some(bb1));
+    /// assert_eq!(traversal.next(), Some(bb2));
+    /// assert_eq!(traversal.next(), Some(bb0));
+    /// assert_eq!(traversal.next(), None);
+    /// ```
     pub fn dfs_postorder(&self) -> impl Iterator<Item = BasicBlockRef> + '_ {
         DfsPostOrder::new(
             &self.graph,
@@ -151,24 +260,52 @@ impl Cfg {
         .map(|node| self.graph[node].bb_ref)
     }
 
-    pub fn add_bb_argument(&mut self, bb_id: BasicBlockRef, ty: Type, symbol: String) -> BBArgRef {
+    /// Adds a basic block argument to the given basic block with the given type and symbol.
+    ///
+    /// Returns a reference to the newly created basic block argument.
+    ///
+    /// ```
+    /// # use natrix_middle::{Cfg, Type};
+    /// # use natrix_middle::cfg::BBArg;
+    /// let mut cfg = Cfg::new();
+    /// let bb0 = cfg.new_basic_block("bb0".to_string());
+    /// let a_ref = cfg.add_bb_argument(bb0, Type::I16, "a".to_string());
+    ///
+    /// let mut args = cfg.basic_blocks[bb0].arguments.iter().copied();
+    /// assert_eq!(args.next(), Some(a_ref));
+    /// assert_eq!(args.next(), None);
+    /// assert_eq!(cfg.bb_args[a_ref], BBArg {symbol: "a".to_string(), id: a_ref, ty: Type::I16});
+    pub fn add_bb_argument(&mut self, bb_ref: BasicBlockRef, ty: Type, symbol: String) -> BBArgRef {
         let arg_ref = self.bb_args.insert_with_key(|id| BBArg { id, ty, symbol });
-        self.basic_blocks[bb_id].arguments.insert(arg_ref);
+        self.basic_blocks[bb_ref].arguments.insert(arg_ref);
         arg_ref
     }
 
+    /// Returns an iterator over all existing values, that could be referenced by instructions
+    ///
+    /// ```
+    /// # use natrix_middle::{Cfg, InstrKind, Type};
+    /// # use natrix_middle::instruction::{BinOpInstr, Op, OpInstr};
+    /// # use natrix_middle::instruction::const_op::Const;
+    /// let mut cfg = Cfg::new();
+    /// let bb0 = cfg.new_basic_block("bb0".to_string());
+    /// let bb1 = cfg.new_basic_block("bb1".to_string());
+    ///
+    /// let a_ref = cfg.add_instruction(bb0, Type::I16, InstrKind::Op(OpInstr::new(Op::Const(Const::I64(1)))), "a".to_string());
+    /// let b_ref = cfg.add_bb_argument(bb0, Type::I32, "b".to_string());
+    /// let c_ref = cfg.add_instruction(bb1, Type::I32, InstrKind::Add(BinOpInstr{lhs: Op::Value(a_ref.into()), rhs: Op::Value(b_ref.into())}), "c".to_string());
+    ///
+    /// let mut values = cfg.values();
+    /// assert_eq!(values.next(), Some(a_ref.into()));
+    /// assert_eq!(values.next(), Some(c_ref.into()));
+    /// assert_eq!(values.next(), Some(b_ref.into()));
+    /// assert_eq!(values.next(), None);
+    /// ```
     pub fn values(&self) -> impl Iterator<Item = Value> + '_ {
         self.instructions
             .keys()
-            .map(move |instr_id| Value::Instr(instr_id))
-            .chain(self.bb_args.keys().map(move |arg_id| Value::BBArg(arg_id)))
-    }
-
-    pub fn value_ty(&self, value: Value) -> &Type {
-        match value {
-            Value::Instr(instr) => &self.instructions[instr].ty,
-            Value::BBArg(arg) => &self.bb_args[arg].ty,
-        }
+            .map(Value::Instr)
+            .chain(self.bb_args.keys().map(Value::BBArg))
     }
 }
 new_key_type! { pub struct BasicBlockRef; }
@@ -301,8 +438,7 @@ mod cfg_tests {
     }
 }
 
-new_key_type! {
-pub struct InstrRef; }
+new_key_type! { pub struct InstrRef; }
 
 new_key_type! { pub struct BBArgRef; }
 
@@ -410,7 +546,7 @@ impl Display for BasicBlock {
 mod bb_tests {
     use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
     use crate::instruction::const_op::Const;
-    use crate::{instruction::Op, Type};
+    use crate::instruction::Op;
 
     #[test]
     fn should_set_entry_block() {
@@ -644,7 +780,13 @@ impl JumpTarget {
     }
 }
 
-struct JumpTargetDisplay<'cfg, 'target> {
+impl From<BasicBlockRef> for JumpTarget {
+    fn from(value: BasicBlockRef) -> Self {
+        Self::new(value, vec![])
+    }
+}
+
+pub struct JumpTargetDisplay<'cfg, 'target> {
     target: &'target JumpTarget,
     cfg: &'cfg Cfg,
 }

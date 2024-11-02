@@ -209,6 +209,12 @@ pub struct OpInstr {
     pub op: Op,
 }
 
+impl OpInstr {
+    pub fn new(op: Op) -> Self {
+        Self { op }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash, EnumTryAs)]
 pub enum Op {
     Const(Const),
@@ -232,7 +238,7 @@ impl Op {
     pub fn ty(&self, cfg: &Cfg) -> Type {
         match self {
             Op::Const(c) => c.ty(),
-            Op::Value(v) => cfg.value_ty(*v).clone(),
+            Op::Value(v) => v.ty(cfg).clone(),
         }
     }
 
