@@ -46,10 +46,13 @@ impl<TM: TargetMachine> Module<TM> {
         for (function_id, function) in self.functions() {
             let assembled = function.assemble(addr);
             let assembled_len = assembled.len() as u64;
-            fst[function_id] = FunctionSymbolTableEntry {
-                size: assembled_len,
-                offset: addr - base_addr,
-            };
+            fst.insert(
+                function_id,
+                FunctionSymbolTableEntry {
+                    size: assembled_len,
+                    offset: addr - base_addr,
+                },
+            );
             addr += assembled_len;
             result.extend(assembled);
         }

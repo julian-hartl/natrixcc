@@ -14,7 +14,9 @@ use daggy::{petgraph::visit::IntoNodeIdentifiers, NodeIndex, Walker};
 use iter_tools::Itertools;
 use natrix_middle::instruction::const_op::Const;
 use natrix_middle::{
-    cfg::{BBArgRef, BasicBlockRef, BranchTerm, InstrRef, JumpTarget, Terminator, TerminatorKind},
+    cfg::{
+        BBArgRef, BasicBlockRef, BranchTarget, BranchTerm, InstrRef, Terminator, TerminatorKind,
+    },
     instruction::OpInstr,
     ty::Type,
     InstrKind, Value,
@@ -27,8 +29,8 @@ use tracing::debug;
 pub struct Builder<'func, TM: TargetMachine> {
     function: &'func mut Function<TM>,
     sel_dag: SelectionDAG<TM>,
-    reg_mapping: SecondaryMap<InstrRef, Option<VRegRef>>,
-    bb_arg_reg_mapping: SecondaryMap<BBArgRef, Option<VRegRef>>,
+    reg_mapping: SecondaryMap<InstrRef, VRegRef>,
+    bb_arg_reg_mapping: SecondaryMap<BBArgRef, VRegRef>,
     defining_nodes: FxHashMap<(VRegRef, BasicBlockRef), NodeIndex>,
 }
 
@@ -88,7 +90,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                     );
                     let critical_edge_split_bb = func.cfg.new_basic_block(split_crit_bb_symbol);
                     func.cfg.basic_blocks[critical_edge_split_bb].set_terminator(Terminator::new(
-                        TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(bb_id))),
+                        TerminatorKind::Branch(BranchTerm::new(BranchTarget::no_args(bb_id))),
                         critical_edge_split_bb,
                     ));
                     func.cfg.recompute_successors(critical_edge_split_bb);
@@ -224,8 +226,8 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                         bb_id,
                         Op::Machine(MachineOp::CondBr(
                             op,
-                            branch_term.true_target.id.into(),
-                            branch_term.false_target.id.into(),
+                            branch_term.true_target.id,
+                            branch_term.false_target.id,
                         )),
                     );
                 }
@@ -301,12 +303,12 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
     fn map_value(&mut self, value: Value, func: &natrix_middle::Function) -> VRegRef {
         match value {
             Value::Instr(instr_ref) => {
-                if let Some(reg) = self.reg_mapping[instr_ref] {
+                if let Some(reg) = self.reg_mapping.get(instr_ref).copied() {
                     return reg;
                 }
             }
             Value::BBArg(bb_arg_ref) => {
-                if let Some(reg) = self.bb_arg_reg_mapping[bb_arg_ref] {
+                if let Some(reg) = self.bb_arg_reg_mapping.get(bb_arg_ref).copied() {
                     return reg;
                 }
             }
@@ -316,7 +318,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                 let instr = &func.cfg.instructions[instr_ref];
                 let ty = &instr.ty;
                 let mapped_vreg = self.function.alloc_vreg(ty.into(), instr.symbol.clone());
-                self.reg_mapping[instr_ref] = Some(mapped_vreg);
+                self.reg_mapping.insert(instr_ref, mapped_vreg);
                 mapped_vreg
             }
 
@@ -324,7 +326,7 @@ impl<'func, TM: TargetMachine> Builder<'func, TM> {
                 let bb_arg = &func.cfg.bb_args[bb_arg_ref];
                 let ty = &bb_arg.ty;
                 let mapped_vreg = self.function.alloc_vreg(ty.into(), bb_arg.symbol.clone());
-                self.bb_arg_reg_mapping[bb_arg_ref] = Some(mapped_vreg);
+                self.bb_arg_reg_mapping.insert(bb_arg_ref, mapped_vreg);
                 mapped_vreg
             }
         }

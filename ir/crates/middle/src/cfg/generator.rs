@@ -5,7 +5,8 @@ use rand::Rng;
 use rustc_hash::FxHashMap;
 
 use crate::cfg::{
-    BasicBlockRef, BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, Terminator, TerminatorKind,
+    BasicBlockRef, BranchTarget, BranchTerm, Cfg, CondBranchTerm, RetTerm, Terminator,
+    TerminatorKind,
 };
 use crate::instruction::const_op::Const;
 use crate::instruction::{BinOpInstr, Op, OpInstr};
@@ -254,8 +255,8 @@ impl TermBlueprint {
                 let false_target = basic_blocks.choose(rng).copied().unwrap();
                 TerminatorKind::CondBranch(CondBranchTerm::new(
                     Op::Value(cond),
-                    JumpTarget::no_args(true_target),
-                    JumpTarget::no_args(false_target),
+                    BranchTarget::no_args(true_target),
+                    BranchTarget::no_args(false_target),
                 ))
             }
             Self::CondBrC => {
@@ -264,13 +265,13 @@ impl TermBlueprint {
                 let false_target = basic_blocks.choose(rng).copied().unwrap();
                 TerminatorKind::CondBranch(CondBranchTerm::new(
                     cond,
-                    JumpTarget::no_args(true_target),
-                    JumpTarget::no_args(false_target),
+                    BranchTarget::no_args(true_target),
+                    BranchTarget::no_args(false_target),
                 ))
             }
             Self::Br => {
                 let target = basic_blocks.choose(rng).copied().unwrap();
-                TerminatorKind::Branch(BranchTerm::new(JumpTarget::no_args(target)))
+                TerminatorKind::Branch(BranchTerm::new(BranchTarget::no_args(target)))
             }
         }
     }

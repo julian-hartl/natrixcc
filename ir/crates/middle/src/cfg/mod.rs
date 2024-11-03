@@ -156,12 +156,12 @@ impl Cfg {
     ///
     /// ```
     /// # use natrix_middle::{Cfg};
-    /// use natrix_middle::cfg::{BranchTerm, JumpTarget, TerminatorKind};
+    /// use natrix_middle::cfg::{BranchTerm, BranchTarget, TerminatorKind};
     /// let mut cfg = Cfg::new();
     /// let bb0_ref = cfg.new_basic_block("bb0".into());
     /// let bb1_ref = cfg.new_basic_block("bb1".into());
-    /// cfg.set_terminator(bb0_ref, TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1_ref, vec![]))));
-    /// assert_eq!(cfg.basic_blocks[bb0_ref].terminator().kind, TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1_ref, vec![]))));
+    /// cfg.set_terminator(bb0_ref, TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(bb1_ref, vec![]))));
+    /// assert_eq!(cfg.basic_blocks[bb0_ref].terminator().kind, TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(bb1_ref, vec![]))));
     /// assert!(cfg.successors(bb0_ref).eq(vec![bb1_ref].into_iter()));
     /// assert!(cfg.predecessors(bb1_ref).eq(vec![bb0_ref].into_iter()));
     /// ```
@@ -308,7 +308,9 @@ impl Cfg {
             .chain(self.bb_args.keys().map(Value::BBArg))
     }
 }
-new_key_type! { pub struct BasicBlockRef; }
+new_key_type! {
+    pub struct BasicBlockRef;
+}
 impl BasicBlockRef {
     pub fn display(self, cfg: &Cfg) -> &String {
         &cfg.basic_blocks[self].symbol
@@ -325,7 +327,7 @@ pub type Graph = StableGraph<CFGNode, (), Directed>;
 impl Display for Cfg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let indent = "    ";
-        for (bb_id, bb) in &self.basic_blocks {
+        for (_, bb) in &self.basic_blocks {
             write!(f, "{}", bb)?;
             if !bb.arguments.is_empty() {
                 write!(f, "(")?;
@@ -442,10 +444,73 @@ new_key_type! { pub struct InstrRef; }
 
 new_key_type! { pub struct BBArgRef; }
 
+/// Represents an argument to a basic block.
+///
+/// Unlike traditional SSA-based compilers, this compiler uses basic block arguments instead of phi functions
+/// to manage variable values at control flow merge points.
+/// A basic block argument is passed explicitly whenever control flow transfers to the target block,
+/// providing several advantages, such as enhanced clarity and simpler SSA maintenance.
+///
+/// # Advantages
+///
+/// - **Code Simplicity**: Basic block arguments replace phi nodes with a function-like parameter passing style,
+///   improving code readability and unifying the handling of variable values across control flow.
+/// - **SSA Compliance**: Arguments naturally conform to SSA form, reducing the need for phi nodes
+///   and simplifying SSA transformations.
+/// - **Optimization Efficiency**: Basic block arguments streamline value propagation and other
+///   optimizations by clearly defining incoming values as parameters.
+///
+/// # Example
+///
+/// Instead of something like
+///
+/// ```text
+/// fun i32 @mul(i32 %0, i32 %1) {
+///  bb0:
+///    br bb1(0i32, %1);
+///  bb1:
+///    %2 = phi(bb0: 0i32, bb2: %5)
+///    %3 = phi(bb0: %1, bb2: %6)
+///    bool %4 = cmp gt %3, 0i32;
+///    condbr %4 bb2, bb3;
+///  bb2:
+///    i32 %5 = add %2, %0;
+///    i32 %6 = sub %3, 1i32;
+///    br bb1;
+///  bb3:
+///    i32 %7 = add %2, %2;
+///    ret %7;
+///  }
+/// ```
+///
+/// we'd write
+///
+/// ```text
+/// fun i32 @mul(i32, i32) {
+///  bb0(i32 %0, i32 %1):
+///    br bb1(0i32, %1);
+///  bb1(i32 %2, i32 %3):
+///    bool %4 = cmp gt %3, 0i32;
+///    condbr %4 bb2, bb3;
+///  bb2:
+///    i32 %5 = add %2, %0;
+///    i32 %6 = sub %3, 1i32;
+///    br bb1(%5, %6);
+///  bb3:
+///    i32 %7 = add %2, %2;
+///    ret %7;
+///  }
+/// ```
+///
+/// which makes control flow a lot more obvious as you don't have to go looking
+/// for where to phi arguments actually come from.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BBArg {
+    /// A unique identifier for this basic block argument
     pub id: BBArgRef,
+    /// The data type of the argument (e.g., `i16`, `i32`, etc.)
     pub ty: Type,
+    /// A debug symbol associated with this argument, used for diagnostics and debugging purposes
     pub symbol: String,
 }
 
@@ -455,13 +520,29 @@ impl Display for BBArg {
     }
 }
 
+/// Represents a basic block in a control flow graph (CFG).
+///
+/// A basic block is a sequence of instructions that executes sequentially without any internal branching
+/// or interruptions, such as jumps, branches, or exception handling. This guarantees that
+/// once the block is entered, all instructions within it will execute in order until the block's end.
+///
+/// Basic blocks are foundational to control flow analysis, as they provide a simplified,
+/// linear segment of code that is easy to analyze for runtime behavior within the block.
+/// By design, each block has a single entry point and a single exit point,
+/// ensuring straightforward reasoning about the block's local behavior at runtime.
 #[derive(Debug, Clone)]
 pub struct BasicBlock {
+    /// A unique identifier for this basic block
     pub id: BasicBlockRef,
+    /// A set of references to the basic block's arguments
     pub arguments: FxIndexSet<BBArgRef>,
+    /// A set of references to the basic block's instructions
     pub instructions: FxIndexSet<InstrRef>,
+    /// The basic block's terminator. Will be [`Option::None`] during construction
     pub terminator: Option<Terminator>,
+    /// The basic block's index into the control flow graph's internal graph data structure
     node_index: NodeIndex,
+    /// A debug symbol associated with this basic block, used for diagnostics and debugging purposes
     pub symbol: String,
 }
 
@@ -509,7 +590,9 @@ impl BasicBlock {
         f(self.terminator.as_mut().unwrap())
     }
 
-    /// Returns whether the [`Terminator`] is set.
+    /// Returns whether the basic block has a [`Terminator`].
+    ///
+    /// Should only return `false` during construction.
     pub fn has_terminator(&self) -> bool {
         self.terminator.is_some()
     }
@@ -527,6 +610,9 @@ impl BasicBlock {
         self.instructions.iter().copied()
     }
 
+    /// Removes the instruction locally from the basic block.
+    ///
+    /// Does *not* remove it from the internal arena managed by the (control flow graph)[Cfg]
     pub fn remove_instruction(&mut self, id: InstrRef) {
         self.instructions.retain(|instr_id| *instr_id != id)
     }
@@ -544,7 +630,7 @@ impl Display for BasicBlock {
 
 #[cfg(test)]
 mod bb_tests {
-    use super::{BranchTerm, Cfg, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind};
+    use super::{BranchTarget, BranchTerm, Cfg, CondBranchTerm, RetTerm, TerminatorKind};
     use crate::instruction::const_op::Const;
     use crate::instruction::Op;
 
@@ -566,15 +652,15 @@ mod bb_tests {
         assert!(cfg.successors(bb0).eq(vec![].into_iter()));
         cfg.set_terminator(
             bb0,
-            TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(bb1, vec![]))),
+            TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(bb1, vec![]))),
         );
         assert!(cfg.successors(bb0).eq(vec![bb1].into_iter()));
         cfg.set_terminator(
             bb0,
             TerminatorKind::CondBranch(CondBranchTerm::new(
                 Op::Const(Const::I32(1)),
-                JumpTarget::new(bb1, vec![]),
-                JumpTarget::new(bb2, vec![]),
+                BranchTarget::new(bb1, vec![]),
+                BranchTarget::new(bb2, vec![]),
             )),
         );
         assert!(cfg.successors(bb0).eq(vec![bb2, bb1].into_iter()));
@@ -592,10 +678,37 @@ impl Terminator {
         Self { kind, bb }
     }
 
-    pub fn clear_args<'a>(
-        &'a mut self,
-        target: BasicBlockRef,
-    ) -> Option<impl Iterator<Item = Op> + 'a> {
+    /// Removes all passed arguments from the terminator.
+    ///
+    /// ```
+    /// # use itertools::Itertools;
+    /// # use natrix_middle::{Cfg, Type};
+    /// # use natrix_middle::cfg::{BranchTarget, BranchTerm, CondBranchTerm, RetTerm, TerminatorKind};
+    /// # use natrix_middle::instruction::const_op::Const;
+    /// # use natrix_middle::instruction::Op;
+    /// let mut cfg = Cfg::new();
+    /// let bb0 = cfg.new_basic_block("bb0".to_string());
+    /// let bb1 = cfg.new_basic_block("bb1".to_string());
+    /// let bb2 = cfg.new_basic_block("bb2".to_string());
+    ///
+    /// let a_ref = cfg.add_bb_argument(bb1, Type::I32, "a".to_string());
+    /// let b_ref = cfg.add_bb_argument(bb0, Type::I32, "b".to_string());
+    /// let c_ref = cfg.add_bb_argument(bb2, Type::I32, "c".to_string());
+    ///
+    /// cfg.set_terminator(bb0, TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(bb1, vec![Op::Const(Const::I32(1))]))));
+    /// cfg.set_terminator(bb1, TerminatorKind::CondBranch(CondBranchTerm::new(Op::Const(Const::Bool(true)), BranchTarget::new(bb0, vec![Op::Const(Const::I32(1))]), BranchTarget::new(bb2, vec![Op::Const(Const::I32(2))]))));
+    /// cfg.set_terminator(bb2, TerminatorKind::Ret(RetTerm::empty()));
+    ///
+    /// cfg.basic_blocks[bb0].update_terminator(|term| assert!(term.clear_args(bb1).is_some(), "should clear args for existing branch target"));
+    /// cfg.basic_blocks[bb0].update_terminator(|term| assert!(term.clear_args(bb2).is_none(), "should not clear args when there is no branch to bb0"));
+    /// cfg.basic_blocks[bb1].update_terminator(|term| assert!(term.clear_args(bb2).is_some()));
+    ///
+    /// assert_eq!(cfg.basic_blocks[bb1].terminator().branch_args(bb0).unwrap().collect_vec(), vec![&Op::Const(Const::I32(1))], "branch from bb1 to bb0 should still have arguments");
+    /// assert_eq!(cfg.basic_blocks[bb0].terminator().branch_args(bb1).unwrap().collect_vec().len(), 0,"branch from bb0 to bb1 should not have any arguments");
+    /// assert_eq!(cfg.basic_blocks[bb1].terminator().branch_args(bb2).unwrap().collect_vec().len(),0, "branch from bb1 to bb2 should not have any arguments");
+    ///
+    /// ```
+    pub fn clear_args(&mut self, target: BasicBlockRef) -> Option<impl Iterator<Item = Op> + '_> {
         match &mut self.kind {
             TerminatorKind::Ret(_) => None,
             TerminatorKind::Branch(branch_term) => {
@@ -761,12 +874,12 @@ impl RetTerm {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct JumpTarget {
+pub struct BranchTarget {
     pub id: BasicBlockRef,
     pub arguments: Vec<Op>,
 }
 
-impl JumpTarget {
+impl BranchTarget {
     pub fn new(id: BasicBlockRef, arguments: Vec<Op>) -> Self {
         Self { id, arguments }
     }
@@ -780,14 +893,14 @@ impl JumpTarget {
     }
 }
 
-impl From<BasicBlockRef> for JumpTarget {
+impl From<BasicBlockRef> for BranchTarget {
     fn from(value: BasicBlockRef) -> Self {
         Self::new(value, vec![])
     }
 }
 
 pub struct JumpTargetDisplay<'cfg, 'target> {
-    target: &'target JumpTarget,
+    target: &'target BranchTarget,
     cfg: &'cfg Cfg,
 }
 
@@ -810,11 +923,11 @@ impl Display for JumpTargetDisplay<'_, '_> {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BranchTerm {
-    pub target: JumpTarget,
+    pub target: BranchTarget,
 }
 
 impl BranchTerm {
-    pub const fn new(target: JumpTarget) -> Self {
+    pub const fn new(target: BranchTarget) -> Self {
         Self { target }
     }
 }
@@ -822,12 +935,12 @@ impl BranchTerm {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct CondBranchTerm {
     pub cond: Op,
-    pub true_target: JumpTarget,
-    pub false_target: JumpTarget,
+    pub true_target: BranchTarget,
+    pub false_target: BranchTarget,
 }
 
 impl CondBranchTerm {
-    pub const fn new(cond: Op, true_target: JumpTarget, false_target: JumpTarget) -> Self {
+    pub const fn new(cond: Op, true_target: BranchTarget, false_target: BranchTarget) -> Self {
         Self {
             cond,
             true_target,
@@ -835,11 +948,11 @@ impl CondBranchTerm {
         }
     }
 
-    pub fn targets(&self) -> [&JumpTarget; 2] {
+    pub fn targets(&self) -> [&BranchTarget; 2] {
         [&self.true_target, &self.false_target]
     }
 
-    pub fn targets_mut(&mut self) -> [&mut JumpTarget; 2] {
+    pub fn targets_mut(&mut self) -> [&mut BranchTarget; 2] {
         [&mut self.true_target, &mut self.false_target]
     }
 }

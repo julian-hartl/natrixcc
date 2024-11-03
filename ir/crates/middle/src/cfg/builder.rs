@@ -109,7 +109,7 @@ mod tests {
     use crate::instruction::const_op::Const;
     use crate::{
         cfg,
-        cfg::{BranchTerm, CondBranchTerm, JumpTarget, RetTerm, TerminatorKind},
+        cfg::{BranchTarget, BranchTerm, CondBranchTerm, RetTerm, TerminatorKind},
         instruction::{CmpOp, Op},
         test::create_test_function,
         ty::Type,
@@ -220,8 +220,8 @@ mod tests {
         );
         cfg_builder.end_bb(TerminatorKind::CondBranch(CondBranchTerm {
             cond: Op::Value(cmp_value.into()),
-            true_target: JumpTarget::no_args(bb1),
-            false_target: JumpTarget::no_args(bb2),
+            true_target: BranchTarget::no_args(bb1),
+            false_target: BranchTarget::no_args(bb2),
         }));
         cfg_builder.set_bb(bb1);
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::empty()));
@@ -250,17 +250,17 @@ bb2:
         let bb3 = cfg_builder.create_bb("bb3".into());
         let bb4 = cfg_builder.create_bb("bb4".into());
         cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(
-            JumpTarget::no_args(bb1),
+            BranchTarget::no_args(bb1),
         )));
         cfg_builder.set_bb(bb1);
         let var_0 = cfg_builder.op("v0".into(), Type::I32, Op::Const(Const::I32(0)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(
             bb3,
             vec![Op::Value(var_0.into())],
         ))));
         cfg_builder.set_bb(bb2);
         let var_1 = cfg_builder.op("v1".into(), Type::I32, Op::Const(Const::I32(1)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(
             bb3,
             vec![Op::Value(var_1.into())],
         ))));
@@ -269,7 +269,7 @@ bb2:
         cfg_builder.end_bb(TerminatorKind::Ret(RetTerm::new(Op::Value(var_2.into()))));
         cfg_builder.set_bb(bb4);
         let var_3 = cfg_builder.op("v3".into(), Type::I32, Op::Const(Const::I32(2)));
-        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(JumpTarget::new(
+        cfg_builder.end_bb(TerminatorKind::Branch(BranchTerm::new(BranchTarget::new(
             bb3,
             vec![Op::Value(var_3.into())],
         ))));

@@ -7,7 +7,7 @@ use crate::instruction::const_op::Const;
 use crate::{
     cfg,
     cfg::{
-        BBArgRef, BasicBlockRef, BranchTerm, CondBranchTerm, InstrRef, JumpTarget, RetTerm,
+        BBArgRef, BasicBlockRef, BranchTarget, BranchTerm, CondBranchTerm, InstrRef, RetTerm,
         TerminatorKind,
     },
     instruction::{CmpOp, Op},
@@ -148,9 +148,9 @@ impl FrontBridge {
         &mut self,
         target: natrix_front::module::Target,
         builder: &mut cfg::Builder,
-    ) -> JumpTarget {
+    ) -> BranchTarget {
         let target_bb_ref = self.bb_symbol_table[&target.0];
-        JumpTarget::new(
+        BranchTarget::new(
             target_bb_ref,
             target
                 .1

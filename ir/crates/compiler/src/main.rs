@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use natrix_back::{codegen::targets::x86_64, emu::Emulator};
 use natrix_middle::{optimization, FrontBridge};
@@ -65,7 +65,7 @@ fn main() -> Result<()> {
     let mut emu = Emulator::new(&asm_module);
     let result = emu
         .run_function(x86_mod.functions().next().unwrap().0, &[30000, 20000])
-        .unwrap();
+        .context("running function")?;
     println!("Result: {}", result);
     Ok(())
 }

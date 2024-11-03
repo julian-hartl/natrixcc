@@ -488,9 +488,13 @@ impl<TM: TargetMachine> LivenessRepr<TM> {
     }
 
     pub fn add_range(&mut self, vreg: VRegRef, range: LiveRange) {
+        if (!self.lifetimes.contains_key(vreg)) {
+            self.lifetimes.insert(vreg, Lifetime::default());
+        }
         self.lifetimes[vreg].add_range(range);
     }
 
+    #[must_use]
     pub fn display<'func>(
         &'func self,
         func: &'func Function<TM>,
@@ -790,10 +794,13 @@ impl<TM: TargetMachine> Function<TM> {
                 let liveset = live_sets.get(succ).collect::<SmallVec<[_; 3]>>();
                 for liveout in liveset {
                     live_sets.insert(bb_id, liveout);
-                    local_live_ranges[liveout] = Some(IncompleteLiveRange {
-                        start: None,
-                        end: Some(exit_pp),
-                    });
+                    local_live_ranges.insert(
+                        liveout,
+                        IncompleteLiveRange {
+                            start: None,
+                            end: Some(exit_pp),
+                        },
+                    );
                 }
             }
             let mut instr_nr = exit_pp.instr_nr();
@@ -801,8 +808,12 @@ impl<TM: TargetMachine> Function<TM> {
                 let out = instr.writes();
                 if let Some(reg) = out.and_then(|reg| reg.try_as_virtual()) {
                     live_sets.remove(bb_id, reg);
-                    local_live_ranges[reg]
-                        .get_or_insert_with(Default::default)
+                    if (!local_live_ranges.contains_key(reg)) {
+                        local_live_ranges.insert(reg, IncompleteLiveRange::default());
+                    }
+                    local_live_ranges
+                        .get_mut(reg)
+                        .expect("Should have been inserted if not present")
                         .set_start(ProgPoint::Write(instr_nr));
                 }
                 let read = instr.reads();
@@ -811,8 +822,12 @@ impl<TM: TargetMachine> Function<TM> {
                         continue;
                     };
                     live_sets.insert(bb_id, reg);
-                    local_live_ranges[reg]
-                        .get_or_insert_with(Default::default)
+                    if (!local_live_ranges.contains_key(reg)) {
+                        local_live_ranges.insert(reg, IncompleteLiveRange::default());
+                    }
+                    local_live_ranges
+                        .get_mut(reg)
+                        .expect("Should have been inserted if not present")
                         .maybe_set_end(ProgPoint::Read(instr_nr));
                 }
                 if let Some(val) = instr_nr.checked_sub(1) {
@@ -822,15 +837,16 @@ impl<TM: TargetMachine> Function<TM> {
             for (def, _) in &bb.phis {
                 if let Some(def) = def.try_as_virtual() {
                     live_sets.remove(bb_id, def);
-                    local_live_ranges[def]
-                        .get_or_insert_with(Default::default)
+                    if (!local_live_ranges.contains_key(def)) {
+                        local_live_ranges.insert(def, IncompleteLiveRange::default());
+                    }
+                    local_live_ranges
+                        .get_mut(def)
+                        .expect("Should have been inserted if not present")
                         .set_start(entry_pp);
                 }
             }
-            for (vreg, range) in local_live_ranges
-                .iter()
-                .filter_map(|(vreg, range)| range.as_ref().map(|range| (vreg, range)))
-            {
+            for (vreg, range) in &local_live_ranges {
                 let start = range.start.unwrap_or(entry_pp);
                 let range = LiveRange::new(start, range.end.unwrap_or(start));
                 repr.add_range(vreg, range);
